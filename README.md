@@ -1,5 +1,4 @@
-
- See1View - Unity asset viewer for look dev and additional asset creation
+#See1View - Unity asset viewer for look dev and additional asset creation
 
  Copyright (C) 2020 See1 Studios - Jongwoo Park
 
