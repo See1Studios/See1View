@@ -1,4 +1,4 @@
-﻿//
+//
 // See1View - Unity asset viewer for look dev and additional asset creation
 //
 // Copyright (C) 2020 See1 Studios - Jongwoo Park
@@ -293,7 +293,7 @@ namespace See1.See1View
             Tools
         }
 
-        public enum CleaFlags
+        public enum ClearFlags
         {
             Color,
             Sky
@@ -528,20 +528,20 @@ namespace See1.See1View
         internal class Data : ICloneable
         {
             public string name;
-            private static bool _willBeDeleted = false;
+            //private static bool _willBeDeleted = false;
             public Color wireLineColor = Color.white;
             public Color wireFillColor = Color.black;
             public float wireThickness = 0.1f;
             public float wireUseDiscard = 1;
             public bool reframeToTarget = true;
             public bool recalculateBound;
-            public int rotSpeed = 2;
-            public int zoomSpeed = 2;
-            public int panSpeed = 2;
-            public int smoothFactor = 2;
+            public int rotSpeed = 3;
+            public int zoomSpeed = 3;
+            public int panSpeed = 3;
+            public int smoothFactor = 3;
             public FileExistsMode fileExistsMode = FileExistsMode.Overwrite;
             public bool openSavedImage = true;
-            public bool screenshotAlpha = true;
+            public bool screenShotAlpha = true;
             public int captureMultiplier = 1;
             public bool autoLoad = false;
             public int viewportMultiplier = 2;
@@ -557,7 +557,7 @@ namespace See1.See1View
             public string profilePath = string.Empty;
             public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
             public Color ambientSkyColor = Color.gray;
-            public CleaFlags clearFlag = CleaFlags.Color;
+            public ClearFlags clearFlag = ClearFlags.Color;
             public List<View> viewList = new List<View>();
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
@@ -589,14 +589,14 @@ namespace See1.See1View
                 }
             }
 
-            private float _cubeMapmipMapBias;
-            public float cubeMapmipMapBias
+            private float _cubeMapMipMapBias;
+            public float CubeMapMipMapBias
             {
-                get { return _cubeMapmipMapBias; }
+                get { return _cubeMapMipMapBias; }
                 set
                 {
-                    _cubeMapmipMapBias = value;
-                    if (_cubeMap) _cubeMap.mipMapBias = _cubeMapmipMapBias;
+                    _cubeMapMipMapBias = value;
+                    if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
                 }
             }
 #if UNITY_POST_PROCESSING_STACK_V2
@@ -895,7 +895,7 @@ namespace See1.See1View
             public SkinnedMeshRenderer[] skinnedMeshRenderers;
             public ParticleSystem[] particleSystems;
             public ParticleSystemRenderer[] particleSystemRenderers;
-            public Mesh[] meshes;
+            //public Mesh[] meshes;
 
             void Cleanup()
             {
@@ -1124,7 +1124,8 @@ namespace See1.See1View
                 public Blitter(Camera cam, CameraEvent cameraEvent, Material mat)
                 {
                     this.camera = cam;
-                    this.cameraEvent = this.cameraEvent;
+                    this.cameraEvent = cameraEvent;
+                    commandBuffer = new CommandBuffer();
                     this.mat = mat;
                 }
 
@@ -1139,17 +1140,17 @@ namespace See1.See1View
             }
 
             private List<Blitter> blitterList = new List<Blitter>();
-            private DepthTextureMode _mode;
+            //private DepthTextureMode _mode = DepthTextureMode.None;
             private Camera _camera;
             public void Add(Camera camera, DepthTextureMode mode, Material mat)
             {
                 this._camera = camera;
-                this._mode = mode;
-                camera.depthTextureMode = mode;
+                //this._mode = mode;
+                _camera.depthTextureMode = mode;
                 foreach (var blitter in blitterList)
                 {
-                    blitter.rt = RenderTexture.GetTemporary(camera.targetTexture.width, camera.targetTexture.height, 24);
-                    camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
+                    blitter.rt = RenderTexture.GetTemporary(camera.targetTexture.width, _camera.targetTexture.height, 24);
+                    _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
                     blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
                     blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
                 }
@@ -1158,7 +1159,7 @@ namespace See1.See1View
 
         class GridLayout
         {
-            private int column = 2;
+            //private int column = 2;
             private int width;
 
             public GridLayout(System.Collections.IEnumerable enumerable, int column)
@@ -1407,28 +1408,24 @@ namespace See1.See1View
                 // We use the GameObject instanceIDs as ids for items as we want to 
                 // select the game objects and not the transform components.
                 rows.Clear();
-                if (scene != null)
+                var gameObjectRoots = scene.GetRootGameObjects();
+                foreach (var gameObject in gameObjectRoots)
                 {
-                    var gameObjectRoots = scene.GetRootGameObjects();
-                    foreach (var gameObject in gameObjectRoots)
+                    var item = CreateTreeViewItemForGameObject(gameObject);
+                    root.AddChild(item);
+                    rows.Add(item);
+                    if (gameObject.transform.childCount > 0)
                     {
-                        var item = CreateTreeViewItemForGameObject(gameObject);
-                        root.AddChild(item);
-                        rows.Add(item);
-                        if (gameObject.transform.childCount > 0)
+                        if (IsExpanded(item.id))
                         {
-                            if (IsExpanded(item.id))
-                            {
-                                AddChildrenRecursive(gameObject, item, rows);
-                            }
-                            else
-                            {
-                                item.children = CreateChildListForCollapsedParent();
-                            }
+                            AddChildrenRecursive(gameObject, item, rows);
+                        }
+                        else
+                        {
+                            item.children = CreateChildListForCollapsedParent();
                         }
                     }
                 }
-
                 SetupDepthsFromParentsAndChildren(root);
                 return rows;
             }
@@ -1860,8 +1857,8 @@ namespace See1.See1View
             public static GUIStyle headerFoldout;
 
             public static GUIStyle miniHeader;
-            public static GUIStyle miniHeaderCheckbox;
-            public static GUIStyle miniHeaderFoldout;
+            //public static GUIStyle miniHeaderCheckbox;
+            //public static GUIStyle miniHeaderFoldout;
 
             public static Texture2D playIcon;
             public static Texture2D checkerIcon;
@@ -2229,7 +2226,7 @@ namespace See1.See1View
         class ModelAssembler
         {
             internal UnityEditorInternal.ReorderableList rol;
-            internal List<ModelGroup> modelGroupList;
+            //internal List<ModelGroup> modelGroupList;
 
             private static string _nameBuffer = string.Empty;
             //static GUIContent plusIcon = EditorGUIUtility.IconContent("ShurikenPlus");
@@ -2250,9 +2247,9 @@ namespace See1.See1View
                 rol.headerHeight = 20;
                 rol.drawHeaderCallback = (position) =>
                 {
-                    var btn20 = position.width * 0.2f;
+                    //var btn20 = position.width * 0.2f;
                     var btn25 = position.width * 0.25f;
-                    var btn30 = position.width * 0.3f;
+                    //var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
                     position.width = btn50;
                     if (GUI.Button(position, "Reset Names", EditorStyles.miniButton))
@@ -2274,7 +2271,6 @@ namespace See1.See1View
                     position.x += position.width;
                     if (GUI.Button(position, "Remove", EditorStyles.miniButtonRight))
                     {
-                        var list = rol;
                         rol.onRemoveCallback(rol);
                     }
                 };
@@ -2304,11 +2300,11 @@ namespace See1.See1View
                     const float space = 2f;
                     const float lineHeight = 20f;
                     const float miniBtnWidth = 20f;
-                    var miniButtonwidth = listRect.width * 0.5f;
+                    //var miniButtonwidth = listRect.width * 0.5f;
                     const float miniButtonheight = 15f;
 
                     Rect color_area = new Rect(position.x - 15, position.y + 20, 10, 70);
-                    float hue = (1.0f / (float)((float)index + 1.0f));
+                    //float hue = (1.0f / (float)((float)index + 1.0f));
                     Color color = isActive ? Color.white : Color.black;// Color.HSVToRGB(hue, 1.0f, 1.0f);
                     if (pData.enabled.target)
                         EditorGUI.DrawRect(color_area, color * (isActive ? 0.5f : 0.25f));
@@ -2658,7 +2654,7 @@ namespace See1.See1View
             {
                 public AnimationClip clip;
                 public bool enabled;
-                public int loopTimes;
+                //public int loopTimes;
                 StringBuilder sb = new StringBuilder();
 
                 public ClipInfo(AnimationClip clip)
@@ -2689,7 +2685,7 @@ namespace See1.See1View
                     //sb.AppendFormat("Average Speed : {0}", clip.averageSpeed.ToString());
                 }
 
-                public string ToString()
+                public string Print()
                 {
                     return sb.ToString();
                 }
@@ -2697,7 +2693,7 @@ namespace See1.See1View
 
             internal UnityEditorInternal.ReorderableList reorderableObjectList;
             internal UnityEditorInternal.ReorderableList reorderableClipList;
-            internal UnityEditorInternal.ReorderableList reorderablePlayList;
+            //internal UnityEditorInternal.ReorderableList reorderablePlayList;
             internal List<Animated> animatedList = new List<Animated>();
             internal List<AnimationClip> playList = new List<AnimationClip>();
             internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
@@ -2733,9 +2729,9 @@ namespace See1.See1View
                 //draw callback
                 reorderableObjectList.drawHeaderCallback = (position) =>
                 {
-                    var btn20 = position.width * 0.2f;
-                    var btn25 = position.width * 0.25f;
-                    var btn30 = position.width * 0.3f;
+                    //var btn20 = position.width * 0.2f;
+                    //var btn25 = position.width * 0.25f;
+                    //var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
                     position.width = btn50;
                     using (new EditorGUI.DisabledScope(Selection.activeGameObject == null))
@@ -2862,9 +2858,9 @@ namespace See1.See1View
                 reorderableClipList.drawHeaderCallback = (position) =>
                 {
                     Event evt = Event.current;
-                    var btn20 = position.width * 0.2f;
-                    var btn25 = position.width * 0.25f;
-                    var btn30 = position.width * 0.3f;
+                    //var btn20 = position.width * 0.2f;
+                    //var btn25 = position.width * 0.25f;
+                    //var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
                     position.width = btn50;
                     if (GUI.Button(position, "Add Clip", EditorStyles.miniButtonLeft))
@@ -2957,9 +2953,9 @@ namespace See1.See1View
                 };
                 reorderableClipList.drawFooterCallback = position =>
                 {
-                    var btn20 = position.width * 0.2f;
-                    var btn25 = position.width * 0.25f;
-                    var btn30 = position.width * 0.3f;
+                    //var btn20 = position.width * 0.2f;
+                    //var btn25 = position.width * 0.25f;
+                    //var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
 
                     position.width = btn50;
@@ -3118,7 +3114,7 @@ namespace See1.See1View
 
                     using (var hr = new EditorGUILayout.HorizontalScope())
                     {
-                        EditorGUI.DropShadowLabel(hr.rect, string.Format("{0}", currentClipInfo.ToString()), EditorStyles.miniLabel);
+                        EditorGUI.DropShadowLabel(hr.rect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
                         GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
                         style.alignment = TextAnchor.MiddleRight;
                         EditorGUI.DropShadowLabel(hr.rect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
@@ -3334,7 +3330,7 @@ namespace See1.See1View
             public static string updateCheck = "";
             public static bool outOfDate = false;
             public static int versionNumPrimary = 0;
-            public static string version;
+            //public static string version;
             public static int versionNumSecondary = 9;
             public static string url = "https://gist.githubusercontent.com/See1Studios/58d573487d07e11e221a7a499545c1f4/raw/23c3a5ebac03b894fd307c86eedec00b5be05e19/AssetStudioVersion.txt";
             public static string downloadUrl = string.Empty;
@@ -3363,7 +3359,7 @@ namespace See1.See1View
             {
                 using (UnityWebRequest www = UnityWebRequest.Get(url))
                 {
-                    www.Send();
+                    www.SendWebRequest();
                     while (!www.isDone)
                     {
                         yield return null;
@@ -3464,7 +3460,7 @@ namespace See1.See1View
         bool _updateFOV;
 
         Vector2 _destRot = new Vector2(180, 0);
-        Vector2 _destLightRot = new Vector2(180, 0);
+        //Vector2 _destLightRot = new Vector2(180, 0);
         Vector3 _destPivotPos;
         float _destDistance = 1.0f;
         float _dist = 1.0f;
@@ -3524,6 +3520,7 @@ namespace See1.See1View
 
         void OnEnable()
         {
+            _updateFOV = false;
             SetEditorWindow();
             CreatePreview();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
@@ -3542,13 +3539,13 @@ namespace See1.See1View
             SetEditorDeltaTime();
             if (_autoRotateCamera)
             {
-                var rot = new Vector2(1, 0) * (_deltaTime * _cameraAutoRotationSpeed);
+                var rot = new Vector2(10, 0) * (_deltaTime * _cameraAutoRotationSpeed);
                 UpdateCamera(rot, Vector2.zero, 0);
             }
 
             if (_autoRotateLight)
             {
-                var rot = new Vector2(1, 0) * (_deltaTime * _lightAutoRotationSpeed);
+                var rot = new Vector2(10, 0) * (_deltaTime * _lightAutoRotationSpeed);
                 UpdateLight(rot);
             }
 
@@ -4081,7 +4078,7 @@ namespace See1.See1View
         //}
         void RenderAndSaveFile()
         {
-            Texture2D tex = RenderToTexture((int)currentData.captureMultiplier, currentData.screenshotAlpha);
+            Texture2D tex = RenderToTexture((int)currentData.captureMultiplier, currentData.screenShotAlpha);
             string baseName = _targetGo ? _targetGo.name : "Blank";
             string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots", baseName, settings.current.fileExistsMode);
             if (currentData.openSavedImage)
@@ -4464,10 +4461,10 @@ namespace See1.See1View
             {
                 if (fade.visible)
                 {
-                    currentData.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", currentData.rotSpeed, 1, 3);
-                    currentData.zoomSpeed = EditorGUILayout.IntSlider("Zoom Speed", currentData.zoomSpeed, 1, 3);
-                    currentData.panSpeed = EditorGUILayout.IntSlider("Pan Speed", currentData.panSpeed, 1, 3);
-                    currentData.smoothFactor = EditorGUILayout.IntSlider("Smoothness", currentData.smoothFactor, 1, 3);
+                    currentData.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", currentData.rotSpeed, 1, 5);
+                    currentData.zoomSpeed = EditorGUILayout.IntSlider("Zoom Speed", currentData.zoomSpeed, 1, 5);
+                    currentData.panSpeed = EditorGUILayout.IntSlider("Pan Speed", currentData.panSpeed, 1, 5);
+                    currentData.smoothFactor = EditorGUILayout.IntSlider("Smoothness", currentData.smoothFactor, 1, 5);
                     _targetOffset = EditorGUILayout.Vector3Field("Offset", _targetOffset);
                     using (new EditorGUILayout.HorizontalScope())
                     {
@@ -4493,7 +4490,7 @@ namespace See1.See1View
             using (new EditorGUILayout.HorizontalScope())
             {
                 currentData.captureMultiplier = EditorGUILayout.IntSlider(currentData.captureMultiplier, 1, 8);
-                currentData.screenshotAlpha = GUILayout.Toggle(currentData.screenshotAlpha, "Alpha", EditorStyles.miniButton);
+                currentData.screenShotAlpha = GUILayout.Toggle(currentData.screenShotAlpha, "Alpha", EditorStyles.miniButton);
             }
 
             using (new EditorGUILayout.HorizontalScope())
@@ -4520,7 +4517,7 @@ namespace See1.See1View
                 }
                 GUI.backgroundColor = Color.white;
             }
-            if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") && currentData.screenshotAlpha && currentData.enablePostProcess)
+            if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") && currentData.screenShotAlpha && currentData.enablePostProcess)
             {
                 EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ", MessageType.Warning);
             }
@@ -4593,15 +4590,15 @@ namespace See1.See1View
 
             using (var scope = new EditorGUILayout.HorizontalScope())
             {
-                float width = 0;
-                if (Event.current.type == EventType.Repaint)
-                {
+                //float width = 0;
+                //if (Event.current.type == EventType.Repaint)
+                //{
                     //Rect left = new Rect(scope.rect.position, new Vector2(scope.rect.size.x * 0.5f, scope.rect.size.y));
                     //EditorGUI.DrawRect(left, Color.red);
                     //Rect right = new Rect(new Vector2(scope.rect.position.x + left.size.x, scope.rect.position.y),                        left.size);
                     //EditorGUI.DrawRect(right, Color.green);
-                    width = scope.rect.size.x * 0.5f;
-                }
+                    //width = scope.rect.size.x * 0.5f;
+                //}
 
                 using (new EditorGUILayout.VerticalScope(GUILayout.Width(110)))
                 {
@@ -4732,19 +4729,19 @@ namespace See1.See1View
                 EditorGUILayout.PrefixLabel("Background");
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
-                    bool isSky = (currentData.clearFlag == CleaFlags.Sky);
+                    bool isSky = (currentData.clearFlag == ClearFlags.Sky);
                     isSky = !GUILayout.Toggle(!isSky, "Color", EditorStyles.miniButtonLeft);
                     isSky = GUILayout.Toggle(isSky, "Environment", EditorStyles.miniButtonRight);
                     if (check.changed)
                     {
-                        currentData.clearFlag = isSky ? CleaFlags.Sky : CleaFlags.Color;
+                        currentData.clearFlag = isSky ? ClearFlags.Sky : ClearFlags.Color;
 
                     }
                 }
             }
 
             ColorPickerHDRConfig config = new ColorPickerHDRConfig(0, 2, 0, 2);
-            if (currentData.clearFlag == CleaFlags.Sky)
+            if (currentData.clearFlag == ClearFlags.Sky)
             {
                 using (new EditorGUI.DisabledGroupScope(true))
                 {
@@ -4766,7 +4763,7 @@ namespace See1.See1View
                 EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, true, true, true, config);
             _probe.customBakedTexture = currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
 
-            currentData.cubeMapmipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.cubeMapmipMapBias, 0, 10);
+            currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
 
             //settings.enableSRP = GUILayout.Toggle(settings.enableSRP, "Enable Scriptable Render Pipeline", EditorStyles.miniButton);
 
@@ -5207,7 +5204,7 @@ namespace See1.See1View
             }
 
             Styles.Foldout(true, "Camera Target");
-            EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture));
+            EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
 
 
             EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.", Styles.centeredMinilabel);
@@ -5856,12 +5853,12 @@ namespace See1.See1View
                             if (bone==null) continue;
                             if (bone.parent == null) continue;
                             Handles.color = Color.yellow;
-                            var endpoint = bone.parent.position + bone.parent.rotation * bone.localPosition;
+                            //var endpoint = bone.parent.position + bone.parent.rotation * bone.localPosition;
                             Handles.DrawLine(bone.position, bone.parent.position);
                             Handles.color = Color.cyan;
                             Handles.SphereHandleCap(0, bone.position, bone.rotation, 0.01f, EventType.Repaint);
                             DrawBasis(bone, scale * 0.02f, false);
-                            var midPoint = (bone.position + bone.parent.position) / 2;
+                            //var midPoint = (bone.position + bone.parent.position) / 2;
                             var parentDirection = bone.position + (bone.position - bone.parent.position) * 0.1f;
                             var d =Mathf.Clamp01(1 / _destDistance);
                             GUI.color = Color.Lerp(Color.clear, Color.white, d);
@@ -6032,7 +6029,9 @@ namespace See1.See1View
             if (isScrolling) zoom = evt.delta.y;
             if (isLDoubleClicked) FitTargetToViewport();
             if (isRDoubleClicked) ResetLight();
-
+            axis0 *= currentData.rotSpeed;
+            axis2 *= currentData.panSpeed;
+            zoom *= currentData.zoomSpeed;
             UpdateCamera(axis0, axis2, zoom);
             UpdateLight(axis1);
 
@@ -6129,29 +6128,33 @@ namespace See1.See1View
 
         void UpdateCamera(Vector2 axis0, Vector2 axis2, float wheel)
         {
-            float smoothFactor = Mathf.Lerp(10f, 0f, Mathf.Pow(currentData.smoothFactor, 2) * 0.1f);
+            float smoothFactor = Mathf.Lerp(10f, 1f, currentData.smoothFactor * 0.2f);
 
             //ROTATE
-            var rotationFactor = axis0 * Mathf.Pow(currentData.rotSpeed, 2);
+            var rotationFactor = axis0;// * Mathf.Pow(currentData.rotSpeed, 2);
             _destRot += rotationFactor;
             _destRot.x = ClampAngle(_destRot.x, -360.0f, 360.0f);
             _destRot.y = ClampAngle(_destRot.y, -90.0f, 90.0f);
-            _camTr.rotation = Quaternion.Slerp(_camTr.rotation, Quaternion.Euler(_destRot.y, _destRot.x, 0), _deltaTime * smoothFactor);
+            var rotation = _camTr.rotation;
+            rotation = Quaternion.Slerp(rotation, Quaternion.Euler(_destRot.y, _destRot.x, 0), _deltaTime * smoothFactor);
+            _camTr.rotation = rotation;
 
             //PAN
-            var panFactor = new Vector2(-axis2.x, axis2.y) * Mathf.Pow(currentData.panSpeed, 2) * _dist * 0.001f;
-            _camPivot.rotation = _camTr.rotation;
+            var panFactor = new Vector2(-axis2.x, axis2.y) * (_dist * 0.001f);
+            _camPivot.rotation = rotation;
             _destPivotPos += _camPivot.rotation * panFactor;
-            _camPivot.position = Vector3.Slerp(_camPivot.position, _destPivotPos, _deltaTime * smoothFactor);
+            var pivotPos = _camPivot.position;
+            pivotPos = Vector3.Slerp(pivotPos, _destPivotPos, _deltaTime * smoothFactor);
+            _camPivot.position = pivotPos;
 
             //Zoom
-            var zoomFactor = wheel * Mathf.Pow(currentData.zoomSpeed,2) * Mathf.Abs(_destDistance) * 0.01f;
+            var zoomFactor = wheel * Mathf.Abs(_destDistance) * 0.01f;
             _destDistance += zoomFactor;
             _destDistance = Mathf.Clamp(_destDistance, _minDistance, _maxDistance);
             _dist = Mathf.Lerp(_dist, _destDistance, _deltaTime * smoothFactor);
 
             //Final
-            _camTr.position = _camPivot.position - (_camTr.rotation * Vector3.forward * _dist + _targetOffset);
+            _camTr.position = pivotPos - (rotation * Vector3.forward * _dist + _targetOffset);
 
             SetClipPlane();
 
@@ -6387,7 +6390,7 @@ namespace See1.See1View
             // Set the Inspector's Scrollbar position value to an arbitrary, yet extremely unlikely value.
             scope.GetType().GetProperty("scrollPosition").SetValue(scope, detectionValue, null);
             // ScrollBar Detection
-            Vector2 scrollValue = (Vector2)scope.GetType().GetProperty("scrollPosition").GetValue(scope, null);
+            //Vector2 scrollValue = (Vector2)scope.GetType().GetProperty("scrollPosition").GetValue(scope, null);
             // During the Repaint Event, it is finally calculated whether a scrollbar is needed, and the inspector's scroll position value is updated.
             // If a scrollbar is not needed, the value will be reset to 0, thus allowing detection of the scrollbar that will be accurate 99.9% of the time.
             if (Event.current.type == EventType.Repaint)
