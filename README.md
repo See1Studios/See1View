@@ -1,22 +1,17 @@
-#See1View - Unity asset viewer for look dev and additional asset creation
+# See1View 
 
- Copyright (C) 2020 See1 Studios - Jongwoo Park
+Unity asset viewer for look dev and additional asset creation
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
+![](/Documentation~/images/top.png)
 
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
+See1View is a tool Unity asset viewer for look dev and additional asset creation.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
+## Getting Started
+- User Manual: [English(1.7)](https://docs.google.com/document/d/e/2PACX-1vSG44o2kP9YalCpqd4Kx3Q-WpgS6mzgrF6ZMAh71KFIk2t_PNJCtx7yePvuVnfC0r7H1WyjaXDWL_jo/pub) |  [Japanese(1.7)](https://docs.google.com/document/d/e/2PACX-1vQBhFqcklSHMYCEvcMCFeQ_OoeV3QTzZ4fNFeQBx_tOVY3tBRcba6fgMy2vvR7WXjgUFsaDyaXTPNuM/pub)
+- [Quick Q&A](https://github.com/Unity-Technologies/AssetGraph/wiki/Q&A)
+- [ChangeLog](https://github.com/Unity-Technologies/AssetGraph/blob/1.7/release/CHANGELOG.md) for the latest version info.
+- If you find any bugs/issues or feature requests, please create a new Issue from [Issue Section](https://github.com/Unity-Technologies/AssetGraph/issues).
 
+
+
+ ### Copyright (C) 2020 See1 Studios
