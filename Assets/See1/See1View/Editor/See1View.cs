@@ -3350,7 +3350,7 @@ namespace See1.See1View
                     int latestMajor = int.Parse(split[0]);
                     int latestMinor = int.Parse(split[1]);
                     outOfDate = (latestMajor > versionNumPrimary || latestMajor == versionNumPrimary && latestMinor > versionNumSecondary);
-                    updateCheck = outOfDate ? "Asset Studio is out of date!\nThe latest version is " + update.version : "Asset Studio is up to date!";
+                    updateCheck = outOfDate ? "See1View is out of date!\nThe latest version is " + update.version : "See1View is up to date!";
                     downloadUrl = update.url;
                 }
             }
@@ -3524,6 +3524,7 @@ namespace See1.See1View
             SetEditorWindow();
             CreatePreview();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
+            Updater.CheckForUpdates();
         }
 
         void OnDisable()
@@ -5205,7 +5206,18 @@ namespace See1.See1View
 
             Styles.Foldout(true, "Camera Target");
             EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
-
+            if (Updater.outOfDate)
+            {
+                EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Error);
+                if (GUILayout.Button("Download latest version", GUILayout.ExpandHeight(true)))
+                {
+                    Application.OpenURL(Updater.downloadUrl);
+                }
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Info);
+            }
 
             EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.", Styles.centeredMinilabel);
             //GUILayout.Label("© 2020 See1 Studios All right reserved.", EditorStyles.miniLabel);
