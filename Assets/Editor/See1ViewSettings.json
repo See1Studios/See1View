@@ -1,1 +1,334 @@
-{"dataList":[{"name":"Default","wireLineColor":{"r":1.0,"g":1.0,"b":1.0,"a":1.0},"wireFillColor":{"r":0.0,"g":0.0,"b":0.0,"a":1.0},"wireThickness":0.10000000149011612,"wireUseDiscard":1.0,"reframeToTarget":true,"recalculateBound":false,"rotSpeed":3,"zoomSpeed":3,"panSpeed":3,"smoothFactor":3,"fileExistsMode":0,"openSavedImage":true,"screenShotAlpha":false,"captureMultiplier":1,"autoLoad":false,"viewportMultiplier":2,"planeShadowColor":{"r":0.0,"g":0.0,"b":0.0,"a":1.0},"enablePlaneShadows":false,"enableShadows":true,"shadowBias":0.009999999776482582,"enableSRP":false,"enablePostProcess":true,"lastTargetPath":"Assets/UnityChan/SD_unitychan/Models/SD_unitychan_generic.fbx","cubemapPath":"","profilePath":"","bgColor":{"r":0.0,"g":0.0,"b":0.0,"a":1.0},"ambientSkyColor":{"r":0.0,"g":0.0,"b":0.0,"a":1.0},"clearFlag":0,"viewList":[{"name":"","rotation":{"x":28.274337768554689,"y":-0.02060568332672119},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0},{"name":"","rotation":{"x":151.9781951904297,"y":-0.3719766139984131},"distance":2.489023208618164,"pivot":{"x":8.940696716308594e-8,"y":0.6330089569091797,"z":-0.21189898252487184},"fieldOfView":30.0}],"viewportSizes":[{"x":256.0,"y":256.0},{"x":1024.0,"y":1024.0}],"modelGroupList":[],"_lastTarget":{"instanceID":10836}},{"name":"Data_1_1_1_1_1_1_1_1_1","wireLineColor":{"r":1.0,"g":1.0,"b":1.0,"a":1.0},"wireFillColor":{"r":0.0,"g":0.0,"b":0.0,"a":1.0},"wireThickness":0.10000000149011612,"wireUseDiscard":1.0,"reframeToTarget":true,"recalculateBound":false,"rotSpeed":3,"zoomSpeed":3,"panSpeed":3,"smoothFactor":3,"fileExistsMode":0,"openSavedImage":true,"screenShotAlpha":true,"captureMultiplier":1,"autoLoad":false,"viewportMultiplier":2,"planeShadowColor":{"r":0.5,"g":0.5,"b":0.5,"a":1.0},"enablePlaneShadows":true,"enableShadows":true,"shadowBias":0.009999999776482582,"enableSRP":false,"enablePostProcess":true,"lastTargetPath":"","cubemapPath":"","profilePath":"","bgColor":{"r":0.3215686082839966,"g":0.3215686082839966,"b":0.3215686082839966,"a":1.0},"ambientSkyColor":{"r":0.5,"g":0.5,"b":0.5,"a":1.0},"clearFlag":0,"viewList":[],"viewportSizes":[],"modelGroupList":[],"_lastTarget":{"instanceID":0}}]}
+{
+    "dataList": [
+        {
+            "name": "Default",
+            "wireLineColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+            },
+            "wireFillColor": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "wireThickness": 0.10000000149011612,
+            "wireUseDiscard": 1.0,
+            "reframeToTarget": true,
+            "recalculateBound": false,
+            "rotSpeed": 3,
+            "zoomSpeed": 3,
+            "panSpeed": 3,
+            "smoothFactor": 3,
+            "fileExistsMode": 0,
+            "openSavedImage": true,
+            "screenShotAlpha": false,
+            "captureMultiplier": 1,
+            "autoLoad": false,
+            "viewportMultiplier": 2,
+            "planeShadowColor": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 0.2840000092983246
+            },
+            "enablePlaneShadows": false,
+            "enableShadows": true,
+            "shadowBias": 0.009999999776482582,
+            "enableSRP": false,
+            "enablePostProcess": true,
+            "lastTargetPath": "Assets/UnityChan/SD_unitychan/Models/SD_unitychan_generic.fbx",
+            "cubemapPath": "",
+            "profilePath": "",
+            "bgColor": {
+                "r": 0.44117647409439089,
+                "g": 0.44117647409439089,
+                "b": 0.44117647409439089,
+                "a": 1.0
+            },
+            "ambientSkyColor": {
+                "r": 0.27941179275512698,
+                "g": 0.27941179275512698,
+                "b": 0.27941179275512698,
+                "a": 1.0
+            },
+            "clearFlag": 0,
+            "lastView": {
+                "name": "",
+                "rotation": {
+                    "x": 150.6199951171875,
+                    "y": -11.111673355102539
+                },
+                "distance": 4.9139084815979,
+                "pivot": {
+                    "x": 8.940696716308594e-8,
+                    "y": 0.6330089569091797,
+                    "z": -0.21189898252487184
+                },
+                "fieldOfView": 30.0
+            },
+            "viewList": [
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 28.274337768554689,
+                        "y": -0.02060568332672119
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 151.9781951904297,
+                        "y": -0.3719766139984131
+                    },
+                    "distance": 2.489023208618164,
+                    "pivot": {
+                        "x": 8.940696716308594e-8,
+                        "y": 0.6330089569091797,
+                        "z": -0.21189898252487184
+                    },
+                    "fieldOfView": 30.0
+                }
+            ],
+            "viewportSizes": [
+                {
+                    "x": 256.0,
+                    "y": 256.0
+                },
+                {
+                    "x": 1024.0,
+                    "y": 1024.0
+                }
+            ],
+            "modelGroupList": [],
+            "_lastTarget": {
+                "instanceID": 10836
+            }
+        },
+        {
+            "name": "Data_1_1_1_1_1_1_1_1_1",
+            "wireLineColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+            },
+            "wireFillColor": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "wireThickness": 0.10000000149011612,
+            "wireUseDiscard": 1.0,
+            "reframeToTarget": true,
+            "recalculateBound": false,
+            "rotSpeed": 3,
+            "zoomSpeed": 3,
+            "panSpeed": 3,
+            "smoothFactor": 3,
+            "fileExistsMode": 0,
+            "openSavedImage": true,
+            "screenShotAlpha": true,
+            "captureMultiplier": 1,
+            "autoLoad": false,
+            "viewportMultiplier": 2,
+            "planeShadowColor": {
+                "r": 0.5,
+                "g": 0.5,
+                "b": 0.5,
+                "a": 1.0
+            },
+            "enablePlaneShadows": true,
+            "enableShadows": true,
+            "shadowBias": 0.009999999776482582,
+            "enableSRP": false,
+            "enablePostProcess": true,
+            "lastTargetPath": "",
+            "cubemapPath": "",
+            "profilePath": "",
+            "bgColor": {
+                "r": 0.3215686082839966,
+                "g": 0.3215686082839966,
+                "b": 0.3215686082839966,
+                "a": 1.0
+            },
+            "ambientSkyColor": {
+                "r": 0.5,
+                "g": 0.5,
+                "b": 0.5,
+                "a": 1.0
+            },
+            "clearFlag": 0,
+            "lastView": {
+                "name": "",
+                "rotation": {
+                    "x": -200.30068969726563,
+                    "y": -1.3732047080993653
+                },
+                "distance": 2.489023208618164,
+                "pivot": {
+                    "x": 8.940696716308594e-8,
+                    "y": 0.6330089569091797,
+                    "z": -0.21189898252487184
+                },
+                "fieldOfView": 30.0
+            },
+            "viewList": [],
+            "viewportSizes": [],
+            "modelGroupList": [],
+            "_lastTarget": {
+                "instanceID": 0
+            }
+        }
+    ]
+}

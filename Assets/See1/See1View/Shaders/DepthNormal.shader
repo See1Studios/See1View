@@ -113,7 +113,7 @@
 //Fallback off
 
 //}
-Shader "See1View/NormalVisualize"
+Shader "See1View/DepthNormal"
 {
 	Properties
 	{

@@ -275,6 +275,50 @@ namespace See1.See1View
             }
         }
 
+        public class Shaders
+        {
+            private static Shader _planarShadow;
+
+            public static Shader planarShadow
+            {
+                get
+                {
+                    if (_planarShadow == null)
+                    {
+                        _planarShadow = ShaderUtil.CreateShaderAsset(
+                            "Shader \"See1View/PlanarShadow\" \n{\n\nProperties {\n_ShadowColor (\"Shadow Color\", Color) = (0,0,0,1)\n_PlaneHeight (\"Plane Height\", Float) = 0\n}\n\nSubShader {\nTags {\"Queue\"=\"Transparent\" \"IgnoreProjector\"=\"True\" \"RenderType\"=\"Transparent\"}\n\n// shadow color\nPass {   \n\nZWrite On\nZTest LEqual \nBlend SrcAlpha  OneMinusSrcAlpha\n\nStencil {\nRef 0\nComp Equal\nPass IncrWrap\nZFail Keep\n}\n\nCGPROGRAM\n#include \"UnityCG.cginc\"\n\n// User-specified uniforms\nuniform float4 _ShadowColor;\nuniform float _PlaneHeight = 0;\n\nstruct vsOut\n{\nfloat4 pos: SV_POSITION;\n};\n\nvsOut vertPlanarShadow( appdata_base v)\n{\nvsOut o;\n                     \nfloat4 vPosWorld = mul( unity_ObjectToWorld, v.vertex);\nfloat4 lightDirection = -normalize(_WorldSpaceLightPos0); \n\nfloat opposite = vPosWorld.y - _PlaneHeight;\nfloat cosTheta = -lightDirection.y;// = lightDirection dot (0,-1,0)\nfloat hypotenuse = opposite / cosTheta;\nfloat3 vPos = vPosWorld.xyz + ( lightDirection * hypotenuse );\n\no.pos = mul (UNITY_MATRIX_VP, float4(vPos.x, _PlaneHeight, vPos.z ,1));  \n\nreturn o;\n}\n\nfloat4 fragPlanarShadow( vsOut i)\n{\nreturn _ShadowColor;\n}\n#pragma vertex vert\n#pragma fragment frag\n\nvsOut vert( appdata_base v)\n{\nreturn vertPlanarShadow(v);\n}\n\n\nfixed4 frag( vsOut i) : COLOR\n{\nreturn fragPlanarShadow(i);\n}\n\nENDCG\n\n}\n}\n}\n");
+                    }
+                    return _planarShadow;
+                }
+            }
+            private static Shader _wireFrame;
+            public static Shader wireFrame
+            {
+                get
+                {
+                    if (_wireFrame == null)
+                    {
+                        _wireFrame = ShaderUtil.CreateShaderAsset(
+                            "Shader \"See1View/Wireframe\"\n{\nProperties\n{\n_LineColor (\"LineColor\", Color) = (1,1,1,1)\n_FillColor (\"FillColor\", Color) = (0,0,0,0)\n_WireThickness (\"Wire Thickness\", RANGE(0, 800)) = 100\n[MaterialToggle] UseDiscard(\"Discard Fill\", Float) = 1\n[MaterialToggle] UVMode(\"UV Mode\", Float) = 0\n }\n\nSubShader\n{\nTags { \"RenderType\"=\"Opaque\" }\n\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n\nCGPROGRAM\n#pragma vertex vert\n#pragma geometry geom\n#pragma fragment frag\n#pragma multi_compile _ USEDISCARD_ON\n#pragma multi_compile _ UVMODE_ON\n#include \"UnityCG.cginc\"\n\nfloat _WireThickness;\n\nstruct appdata\n{\nfloat4 vertex : POSITION;\n};\n\nstruct v2g\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD1;\n};\n\nstruct g2f\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD0;\nfloat4 dist : TEXCOORD1;\n};\n\n\nv2g vert (appdata v)\n{\nv2g o;\n//UNITY_SETUP_INSTANCE_ID(v);\n//UNITY_INITIALIZE_OUTPUT(v2g, o);\n#ifdef UV_ON\nv.vertex = float4(v.uv.xy, 0.0, 1.0);\no.projectionSpaceVertex = mul(UNITY_MATRIX_P, v.vertex);\no.worldSpacePosition = mul(UNITY_MATRIX_P, v.vertex);\n//o.vertex = UnityObjectToClipPos(v.vertex);\n#else\no.projectionSpaceVertex = UnityObjectToClipPos(v.vertex);\no.worldSpacePosition = mul(unity_ObjectToWorld, v.vertex);\n#endif\nreturn o;\n}\n\n[maxvertexcount(3)]\nvoid geom(triangle v2g i[3], inout TriangleStream<g2f> triangleStream)\n{\nfloat2 p0 = i[0].projectionSpaceVertex.xy / i[0].projectionSpaceVertex.w;\nfloat2 p1 = i[1].projectionSpaceVertex.xy / i[1].projectionSpaceVertex.w;\nfloat2 p2 = i[2].projectionSpaceVertex.xy / i[2].projectionSpaceVertex.w;\n\nfloat2 edge0 = p2 - p1;\nfloat2 edge1 = p2 - p0;\nfloat2 edge2 = p1 - p0;\n\n// To find the distance to the opposite edge, we take the\n// formula for finding the area of a triangle Area = Base/2 * Height, \n// and solve for the Height = (Area * 2)/Base.\n// We can get the area of a triangle by taking its cross product\n// divided by 2.  However we can avoid dividing our area/base by 2\n// since our cross product will already be double our area.\nfloat area = abs(edge1.x * edge2.y - edge1.y * edge2.x);\nfloat wireThickness = 800 - _WireThickness;\n\ng2f o;\no.worldSpacePosition = i[0].worldSpacePosition;\no.projectionSpaceVertex = i[0].projectionSpaceVertex;\no.dist.xyz = float3( (area / length(edge0)), 0.0, 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[1].worldSpacePosition;\no.projectionSpaceVertex = i[1].projectionSpaceVertex;\no.dist.xyz = float3(0.0, (area / length(edge1)), 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[2].worldSpacePosition;\no.projectionSpaceVertex = i[2].projectionSpaceVertex;\no.dist.xyz = float3(0.0, 0.0, (area / length(edge2))) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n}\n\nuniform fixed4 _LineColor;\nuniform fixed4 _FillColor;\n\nfixed4 frag (g2f i) : SV_Target\n{\nfloat minDistanceToEdge = min(i.dist[0], min(i.dist[1], i.dist[2])) * i.dist[3];\n\n// Early out if we know we are not on a line segment.\nif(minDistanceToEdge > 0.9)\n{\n#ifdef USEDISCARD_ON\ndiscard;\n#else\nreturn _FillColor;\n#endif\n}\n\nreturn _LineColor;\n}\nENDCG\n}\n}\n}");
+                    }
+                    return _wireFrame;
+                }
+            }
+            private static Shader _depthNormal;
+            public static Shader depthNormal
+            {
+                get
+                {
+                    if (_depthNormal == null)
+                    {
+                        _depthNormal = ShaderUtil.CreateShaderAsset(
+                            "Shader \"See1View/DepthNormal\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" {}\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n\nsampler2D _MainTex;\nsampler2D _CameraDepthNormalsTexture;\nfloat4 _CameraDepthNormalsTexture_TexelSize;\n\nstruct appdata\n{\nfloat4 vertex : POSITION;\nfloat2 uv : TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv : TEXCOORD0;\nfloat4 vertex : SV_POSITION;\n};\n\nv2f vert (appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\nfixed4 frag (v2f i) : SV_Target\n{\nfixed3 tex = tex2D(_MainTex, i.uv).rgb;\nfixed4 col = tex2D(_CameraDepthNormalsTexture, i.uv);\nfloat depth;\nfloat3 normal;\nDecodeDepthNormal(col, depth, normal);\n//fixed grayscale = Luminance(tex.rgb);\n//return float4(grayscale,grayscale,grayscale, 1);\nreturn float4(normal, 1);\n}\nENDCG\n}\n}\n}");
+                    }
+                    return _depthNormal;
+                }
+            }
+        }
+
         [Flags]
         public enum GizmoMode
         {
@@ -558,6 +602,7 @@ namespace See1.See1View
             public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
             public Color ambientSkyColor = Color.gray;
             public ClearFlags clearFlag = ClearFlags.Color;
+            public View lastView;
             public List<View> viewList = new List<View>();
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
@@ -728,7 +773,7 @@ namespace See1.See1View
 
             public static void Save()
             {
-                var json = JsonUtility.ToJson(instance);
+                var json = JsonUtility.ToJson(instance,true);
                 DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets","") + Path.GetDirectoryName(path));
                 if(!di.Exists) di.Create();
                 AssetDatabase.Refresh();
@@ -989,7 +1034,7 @@ namespace See1.See1View
                 return string.Empty;
             }
 
-            public new string ToString()
+            public string Print()
             {
                 return sb.ToString();
             }
@@ -1183,7 +1228,7 @@ namespace See1.See1View
             {
                 get { return (float)System.Math.Round(1000f / fps, 1); }
             }
-            static float updateInterval = 0.5f;
+            public static float updateInterval = 0.25f;
             static float elapsedTime = 0;
             static float fps = 0.0F;
 
@@ -3444,9 +3489,9 @@ namespace See1.See1View
         CommandBuffer _shadowCommandBuffer;
         bool _shadowEnabled;
 
-        Material _normalMaterial;
-        CommandBuffer _normalCommandBuffer;
-        bool _normalVisualizeEnabled;
+        Material _depthNormalMaterial;
+        CommandBuffer _depthNormalCommandBuffer;
+        bool _DepthNormalEnabled;
 
         Material _gridMaterial;
         CommandBuffer _gridCommandBuffer;
@@ -3525,10 +3570,16 @@ namespace See1.See1View
             CreatePreview();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
             Updater.CheckForUpdates();
+            var view = settings.current.lastView;
+            _destRot = view.rotation;
+            _destDistance = view.distance;
+            _destPivotPos = view.pivot;
+            _preview.cameraFieldOfView = view.fieldOfView;
         }
 
         void OnDisable()
         {
+            settings.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
             CleanupPreview();
             EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
             See1ViewSettings.Save();
@@ -3721,14 +3772,17 @@ namespace See1.See1View
             _wireCommandBuffer = new CommandBuffer();
             _wireCommandBuffer.name = string.Format("{0} {1}", this.name, "WireFrame");
             _wireMaterial = new Material(FindShader("See1View/Wireframe"));
+            _wireMaterial = new Material(Shaders.wireFrame);
 
             _shadowCommandBuffer = new CommandBuffer();
             _shadowCommandBuffer.name = string.Format("{0} {1}", this.name, "Shadow");
-            _shadowMaterial = new Material(FindShader("See1View/PlanarShadow")); //PreviewCamera RT has no stencil buffer. OTL
+            //_shadowMaterial = new Material(FindShader("See1View/PlanarShadow")); //PreviewCamera RT has no stencil buffer. OTL
+            _shadowMaterial = new Material(Shaders.planarShadow);
 
-            _normalCommandBuffer = new CommandBuffer();
-            _normalCommandBuffer.name = string.Format("{0} {1}", this.name, "NormalVisualize");
-            _normalMaterial = new Material(FindShader("See1View/NormalVisualize"));
+            _depthNormalCommandBuffer = new CommandBuffer();
+            _depthNormalCommandBuffer.name = string.Format("{0} {1}", this.name, "DepthNormal");
+            _depthNormalMaterial = new Material(Shaders.depthNormal);
+            //_depthNormalMaterial = new Material(FindShader("See1View/DepthNormal"));
 
             var camPivotGo = EditorUtility.CreateGameObjectWithHideFlags("CamPivot", HideFlags.HideAndDontSave);
             _camPivot = camPivotGo.transform;
@@ -3775,12 +3829,12 @@ namespace See1.See1View
             }
             if (_shadowMaterial) DestroyImmediate(_shadowMaterial);
 
-            if (_normalCommandBuffer != null)
+            if (_depthNormalCommandBuffer != null)
             {
-                _normalCommandBuffer.Dispose();
-                _normalCommandBuffer = null;
+                _depthNormalCommandBuffer.Dispose();
+                _depthNormalCommandBuffer = null;
             }
-            if (_normalMaterial) DestroyImmediate(_normalMaterial);
+            if (_depthNormalMaterial) DestroyImmediate(_depthNormalMaterial);
 
             if (_colorCommandBuffer != null)
             {
@@ -4874,14 +4928,14 @@ namespace See1.See1View
             {
                 using (var cbCheck = new EditorGUI.ChangeCheckScope())
                 {
-                    _normalVisualizeEnabled = GUILayout.Toggle(_normalVisualizeEnabled, "Normal Visualize",
+                    _DepthNormalEnabled = GUILayout.Toggle(_DepthNormalEnabled, "Normal Visualize",
                         EditorStyles.miniButton);
                     if (cbCheck.changed)
                     {
                         _preview.camera.depthTextureMode =
-                            _normalVisualizeEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
-                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _normalCommandBuffer, _normalMaterial, _normalVisualizeEnabled);
-                        //if (_normalVisualizeEnabled)
+                            _DepthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
+                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, _DepthNormalEnabled);
+                        //if (_DepthNormalEnabled)
                         //{
                         //    _preview.camera.SetReplacementShader(_normalMaterial.shader, string.Empty);
                         //}
@@ -5206,6 +5260,9 @@ namespace See1.See1View
 
             Styles.Foldout(true, "Camera Target");
             EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
+            EditorGUILayout.ObjectField(_wireMaterial, typeof(Material), false);
+            EditorGUILayout.ObjectField(_shadowMaterial, typeof(Material), false);
+            EditorGUILayout.ObjectField(_depthNormalMaterial, typeof(Material), false);
             if (Updater.outOfDate)
             {
                 EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Error);
@@ -5644,14 +5701,14 @@ namespace See1.See1View
             //            {
             //                using (var cbCheck = new EditorGUI.ChangeCheckScope())
             //                {
-            //                    _normalVisualizeEnabled = GUILayout.Toggle(_normalVisualizeEnabled, "Normal Visualize",
+            //                    _DepthNormalEnabled = GUILayout.Toggle(_DepthNormalEnabled, "Normal Visualize",
             //                        EditorStyles.miniButton);
             //                    if (cbCheck.changed)
             //                    {
             //                        _preview.camera.depthTextureMode =
-            //                            _normalVisualizeEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
-            //                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _normalCommandBuffer, _normalMaterial, _normalVisualizeEnabled);
-            //                        //if (_normalVisualizeEnabled)
+            //                            _DepthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
+            //                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _normalCommandBuffer, _normalMaterial, _DepthNormalEnabled);
+            //                        //if (_DepthNormalEnabled)
             //                        //{
             //                        //    _preview.camera.SetReplacementShader(_normalMaterial.shader, string.Empty);
             //                        //}
@@ -5823,7 +5880,7 @@ namespace See1.See1View
                     {
                         Handles.color = Color.white;
                         DrawBasis(_targetGo.transform, scale * 0.1f, true);
-                        Handles.Label(_targetGo.transform.position, _targetInfo.ToString(), EditorStyles.miniLabel);
+                        Handles.Label(_targetGo.transform.position, _targetInfo.Print(), EditorStyles.miniLabel);
                     }
 
                     if ((_gizmoMode & GizmoMode.Bound) == GizmoMode.Bound)
