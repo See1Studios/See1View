@@ -43,7 +43,7 @@ using Object = UnityEngine.Object;
 using UnityEngine.Rendering.PostProcessing;
 #endif
 
-namespace See1.See1View
+namespace See1.Editor
 {
     public class See1View : EditorWindow
     {
