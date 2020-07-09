@@ -17,7 +17,7 @@
             "wireThickness": 0.10000000149011612,
             "wireUseDiscard": 1.0,
             "reframeToTarget": true,
-            "recalculateBound": false,
+            "recalculateBound": true,
             "rotSpeed": 3,
             "zoomSpeed": 3,
             "panSpeed": 3,
@@ -25,16 +25,16 @@
             "fileExistsMode": 0,
             "openSavedImage": true,
             "screenShotAlpha": false,
-            "captureMultiplier": 8,
-            "autoLoad": false,
+            "captureMultiplier": 1,
+            "autoLoad": true,
             "viewportMultiplier": 2,
             "planeShadowColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 0.2840000092983246
+                "r": 0.5661764740943909,
+                "g": 0.5661764740943909,
+                "b": 0.5661764740943909,
+                "a": 1.0
             },
-            "enablePlaneShadows": false,
+            "enablePlaneShadows": true,
             "enableShadows": true,
             "shadowBias": 0.009999999776482582,
             "enableSRP": false,
@@ -43,31 +43,31 @@
             "cubemapPath": "",
             "profilePath": "",
             "bgColor": {
-                "r": 0.44117647409439089,
-                "g": 0.44117647409439089,
-                "b": 0.44117647409439089,
+                "r": 0.5147058963775635,
+                "g": 0.5147058963775635,
+                "b": 0.5147058963775635,
                 "a": 1.0
             },
             "ambientSkyColor": {
-                "r": 0.27941179275512698,
-                "g": 0.27941179275512698,
-                "b": 0.27941179275512698,
+                "r": 0.5,
+                "g": 0.5,
+                "b": 0.5,
                 "a": 1.0
             },
             "clearFlag": 0,
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": 195.97447204589845,
-                    "y": -4.659886360168457
+                    "x": 210.0,
+                    "y": 0.0
                 },
-                "distance": 2.8120338916778566,
+                "distance": 1.072252631187439,
                 "pivot": {
                     "x": 8.940696716308594e-8,
                     "y": 0.6330089569091797,
                     "z": -0.21189898252487184
                 },
-                "fieldOfView": 30.0
+                "fieldOfView": 90.0
             },
             "viewList": [
                 {
@@ -239,6 +239,18 @@
                     "fieldOfView": 30.0
                 }
             ],
+            "lastLighting": {
+                "name": "",
+                "lightList": [],
+                "ambientSkyColor": {
+                    "r": 0.5,
+                    "g": 0.5,
+                    "b": 0.5,
+                    "a": 1.0
+                },
+                "cubemapPath": ""
+            },
+            "lightingList": [],
             "viewportSizes": [
                 {
                     "x": 256.0,
@@ -312,18 +324,30 @@
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": -200.30068969726563,
-                    "y": -1.3732047080993653
+                    "x": -65.73201751708985,
+                    "y": 6.27138614654541
                 },
-                "distance": 2.489023208618164,
+                "distance": 0.27299997210502627,
                 "pivot": {
-                    "x": 8.940696716308594e-8,
-                    "y": 0.6330089569091797,
-                    "z": -0.21189898252487184
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "fieldOfView": 30.0
             },
             "viewList": [],
+            "lastLighting": {
+                "name": "",
+                "lightList": [],
+                "ambientSkyColor": {
+                    "r": 0.5,
+                    "g": 0.5,
+                    "b": 0.5,
+                    "a": 1.0
+                },
+                "cubemapPath": ""
+            },
+            "lightingList": [],
             "viewportSizes": [],
             "modelGroupList": [],
             "_lastTarget": {

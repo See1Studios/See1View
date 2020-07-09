@@ -604,6 +604,8 @@ namespace See1.Editor
             public ClearFlags clearFlag = ClearFlags.Color;
             public View lastView;
             public List<View> viewList = new List<View>();
+            public Lighting lastLighting;
+            public List<Lighting> lightingList = new List<Lighting>();
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
             public GameObject _lastTarget;
@@ -925,6 +927,22 @@ namespace See1.Editor
                 this.pivot = camera.transform.position;
                 this.fieldOfView = camera.fieldOfView;
             }
+        }
+
+        [Serializable]
+        internal class Lighting
+        {
+            [Serializable]
+            public class LightInfo
+            {
+                public Vector2 position;
+                public Quaternion rotation;
+                public Light light;
+            }
+            public string name;
+            public List<LightInfo> lightList = new List<LightInfo>();
+            public Color ambientSkyColor = Color.gray;
+            public string cubemapPath = string.Empty;
         }
 
         class TargetInfo
@@ -3479,7 +3497,7 @@ namespace See1.Editor
         Material _colorMaterial;
         CommandBuffer _colorCommandBuffer;
         bool _colorEnabled;
-        private Color _color;
+        private Color _color= Color.white;
 
         Material _wireMaterial;
         CommandBuffer _wireCommandBuffer;
@@ -4814,26 +4832,20 @@ namespace See1.Editor
                 }
             }
 
-            _preview.ambientColor = currentData.ambientSkyColor =
-                EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, true, true, true, config);
             _probe.customBakedTexture = currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
 
             currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
 
             //settings.enableSRP = GUILayout.Toggle(settings.enableSRP, "Enable Scriptable Render Pipeline", EditorStyles.miniButton);
 
-            Styles.Foldout(true, "Light");
+            Styles.Foldout(true, "Lighting");
             using (var lightCheck = new EditorGUI.ChangeCheckScope())
             {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    currentData.enableShadows =
-                        GUILayout.Toggle(currentData.enableShadows, "Shadow", EditorStyles.miniButton,GUILayout.Width(50));
 
-                    EditorGUIUtility.labelWidth = 40;
-                    currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0, 1);
-                    EditorGUIUtility.labelWidth = _labelWidth;
-                }
+                EditorGUIUtility.labelWidth = 80;
+                _preview.ambientColor = currentData.ambientSkyColor =
+                    EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, true, true, true,
+                        config);
 
                 for (var i = 0; i < _preview.lights.Length; i++)
                 {
@@ -4841,8 +4853,9 @@ namespace See1.Editor
                     using (new EditorGUILayout.HorizontalScope())
                     {
                         EditorGUIUtility.labelWidth = 40;
-                        GUILayout.Label(string.Format("Light{0}",i.ToString()),EditorStyles.miniLabel);
-                        previewLight.color = EditorGUILayout.ColorField(new GUIContent(""),previewLight.color, true, true, true, config, GUILayout.Width(50));
+                        GUILayout.Label(string.Format("Light{0}", i.ToString()), EditorStyles.miniLabel);
+                        previewLight.color = EditorGUILayout.ColorField(new GUIContent(""), previewLight.color, true,
+                            true, true, config, GUILayout.Width(50));
                         previewLight.intensity = EditorGUILayout.Slider("", previewLight.intensity, 0, 2);
                         EditorGUIUtility.labelWidth = _labelWidth;
                     }
@@ -4852,6 +4865,16 @@ namespace See1.Editor
                         previewLight.shadows = currentData.enableShadows ? LightShadows.Soft : LightShadows.None;
                         previewLight.shadowBias = currentData.shadowBias;
                     }
+                }
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    currentData.enableShadows =
+                        GUILayout.Toggle(currentData.enableShadows, "Shadow", EditorStyles.miniButton,
+                            GUILayout.Width(50));
+
+                    EditorGUIUtility.labelWidth = 40;
+                    currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0, 1);
+                    EditorGUIUtility.labelWidth = _labelWidth;
                 }
             }
 
@@ -6271,6 +6294,7 @@ namespace See1.Editor
                 _preview.lights[i].shadowResolution = LightShadowResolution.VeryHigh;
                 _preview.lights[i].shadowBias = 0.01f;
             }
+            _preview.ambientColor = currentData.ambientSkyColor = Color.gray;
         }
 
         static ParticleSystem GetRoot(ParticleSystem ps)
