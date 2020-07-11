@@ -36,6 +36,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Networking;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
@@ -43,10 +44,44 @@ using Object = UnityEngine.Object;
 using UnityEngine.Rendering.PostProcessing;
 #endif
 
-namespace See1.Editor
+namespace See1
 {
     public class See1View : EditorWindow
     {
+        #region Enum & Flags
+
+        [Flags]
+        public enum GizmoMode
+        {
+            //None = (1<<0),
+            Info = (1 << 1),
+            Light = (1 << 2),
+            Bound = (1 << 3),
+            Bone = (1 << 4)
+        }
+
+        public enum SidePanelMode
+        {
+            View,
+            Model,
+            Animation,
+            Tools
+        }
+
+        public enum ClearFlags
+        {
+            Color,
+            Sky
+        }
+
+        public enum FileExistsMode
+        {
+            Overwrite,
+            Rename
+        }
+
+        #endregion
+
         #region Inner Classes
 
         public class EditorCoroutine
@@ -319,35 +354,6 @@ namespace See1.Editor
             }
         }
 
-        [Flags]
-        public enum GizmoMode
-        {
-            //None = (1<<0),
-            Info = (1 << 1),
-            Light = (1 << 2),
-            Bound = (1 << 3),
-            Bone = (1 << 4)
-        }
-
-        public enum SidePanelMode
-        {
-            View,
-            Model,
-            Animation,
-            Tools
-        }
-
-        public enum ClearFlags
-        {
-            Color,
-            Sky
-        }
-
-        public enum FileExistsMode
-        {
-            Overwrite,
-            Rename
-        }
 
         [Serializable]
         class SmoothAnimBool : BaseAnimValue<bool>
@@ -923,8 +929,9 @@ namespace See1.Editor
             {
                 this.name = camera.name;
                 this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y, camera.transform.rotation.eulerAngles.x);
-                this.distance = Vector3.Distance(camera.transform.position,Vector3.zero);
-                this.pivot = camera.transform.position;
+                var distanceToZero = Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
+                this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f,0.5f,0)) + camera.transform.rotation * Vector3.forward * distanceToZero;
+                this.distance = Vector3.Distance(camera.transform.position, this.pivot);
                 this.fieldOfView = camera.fieldOfView;
             }
         }
@@ -937,7 +944,8 @@ namespace See1.Editor
             {
                 public Vector2 position;
                 public Quaternion rotation;
-                public Light light;
+                public Color lightColor;
+                public float intensity;
             }
             public string name;
             public List<LightInfo> lightList = new List<LightInfo>();
@@ -1220,26 +1228,7 @@ namespace See1.Editor
             }
         }
 
-        class GridLayout
-        {
-            //private int column = 2;
-            private int width;
-
-            public GridLayout(System.Collections.IEnumerable enumerable, int column)
-            {
-                using (new GUILayout.HorizontalScope())
-                {
-                    for (int i = 0; i < column + 1; i++)
-                    {
-                        using (new GUILayout.VerticalScope())
-                        {
-                        }
-                    }
-                }
-            }
-        }
-
-        static class FPS
+        class FPS
         {
             static string formatedString = "{0} FPS ({1}ms)";
             static float ms
@@ -1268,7 +1257,7 @@ namespace See1.Editor
             }
         }
 
-        static class TexUtil
+        class TexUtil
         {
             public enum ImageFilterMode : int
             {
@@ -1765,7 +1754,7 @@ namespace See1.Editor
             }
         }
 
-        static class Textures
+        class Textures
         {
             static Texture2D m_WhiteTexture;
 
@@ -1909,191 +1898,6 @@ namespace See1.Editor
                 }
             }
         }
-
-        static class Styles
-        {
-            public static GUIStyle centeredBoldLabel;
-
-            public static GUIStyle header;
-            public static GUIStyle blackHeader;
-            public static GUIStyle headerCheckbox;
-            public static GUIStyle headerFoldout;
-
-            public static GUIStyle miniHeader;
-            //public static GUIStyle miniHeaderCheckbox;
-            //public static GUIStyle miniHeaderFoldout;
-
-            public static Texture2D playIcon;
-            public static Texture2D checkerIcon;
-
-            public static GUIStyle centeredMiniLabel;
-
-            public static GUIStyle miniButton;
-            public static GUIStyle transButton;
-            public static GUIStyle miniTransButton;
-            public static GUIStyle transFoldout;
-
-            public static GUIStyle tabToolBar;
-
-            public static GUIStyle centeredMinilabel;
-            public static GUIStyle centeredMiniBoldLabel;
-            public static GUIStyle rightAlignedMinilabel;
-            //public static GUIStyle tabToolBar;
-
-            static Styles()
-            {
-                centeredBoldLabel = new GUIStyle("Label")
-                {
-                    alignment = TextAnchor.UpperCenter,
-                    fontStyle = FontStyle.Bold
-                };
-
-                centeredMiniLabel = new GUIStyle()
-                {
-                    alignment = TextAnchor.UpperCenter
-                };
-
-                header = new GUIStyle("ShurikenModuleTitle")
-                {
-                    font = (new GUIStyle("Label")).font,
-                    border = new RectOffset(15, 7, 4, 4),
-                    fixedHeight = 22,
-                    contentOffset = new Vector2(20f, -2f)
-                };
-
-                headerCheckbox = new GUIStyle("ShurikenCheckMark");
-                headerFoldout = new GUIStyle("Foldout");
-
-
-                blackHeader = new GUIStyle("AnimationEventTooltip");
-                //blackHeader.contentOffset = Vector2.zero;
-                //blackHeader.margin = new RectOffset(2, 2, 2, 2);
-                //blackHeader.padding = new RectOffset(2, 2, 2, 2);
-                blackHeader.overflow = new RectOffset(0, 0, 0, 0);
-                miniHeader = new GUIStyle("ShurikenModuleTitle")
-                {
-                    font = (new GUIStyle("Label")).font,
-                    fontSize = 8,
-                    fontStyle = FontStyle.Bold,
-                    border = new RectOffset(15, 7, 4, 4),
-                    fixedHeight = 18,
-                    contentOffset = new Vector2(8f, -2f)
-                };
-
-                playIcon = (Texture2D) EditorGUIUtility.LoadRequired(
-                    "Builtin Skins/DarkSkin/Images/IN foldout act.png");
-                checkerIcon = (Texture2D) EditorGUIUtility.LoadRequired("Icons/CheckerFloor.png");
-
-                miniButton = new GUIStyle("miniButton");
-                transButton = new GUIStyle("Button");
-                transButton.active.background = Texture2D.blackTexture;
-                transButton.hover.background = Texture2D.blackTexture;
-                transButton.focused.background = Texture2D.blackTexture;
-                transButton.normal.background = Texture2D.blackTexture;
-                transButton.active.textColor = Color.white;
-                transButton.normal.textColor = Color.gray;
-                transButton.onActive.background = Texture2D.blackTexture;
-                transButton.onFocused.background = Texture2D.blackTexture;
-                transButton.onNormal.background = Texture2D.blackTexture;
-                transButton.onHover.background = Texture2D.blackTexture;
-                transButton.fontStyle = FontStyle.Bold;
-
-                miniTransButton = new GUIStyle("miniButton");
-                miniTransButton.active.background = Texture2D.blackTexture;
-                miniTransButton.hover.background = Texture2D.blackTexture;
-                miniTransButton.focused.background = Texture2D.blackTexture;
-                miniTransButton.normal.background = Texture2D.blackTexture;
-                miniTransButton.onActive.background = Texture2D.blackTexture;
-                miniTransButton.onFocused.background = Texture2D.blackTexture;
-                miniTransButton.onNormal.background = Texture2D.blackTexture;
-                miniTransButton.onHover.background = Texture2D.blackTexture;
-                miniTransButton.active.textColor = Color.white;
-                miniTransButton.normal.textColor = Color.gray;
-                miniTransButton.normal.background = null;
-                miniTransButton.fontStyle = FontStyle.Normal;
-                miniTransButton.alignment = TextAnchor.MiddleLeft;
-
-                transFoldout = new GUIStyle("Foldout");
-                transFoldout.alignment = TextAnchor.MiddleCenter;
-                transFoldout.contentOffset = Vector2.zero;
-
-                tabToolBar = new GUIStyle("dragtab");
-                //tabToolBar.onNormal.textColor = Color.white;
-                tabToolBar.fontSize = 9;
-                tabToolBar.alignment = TextAnchor.MiddleCenter;
-                centeredMinilabel = new GUIStyle();
-                centeredMinilabel.alignment = TextAnchor.MiddleCenter;
-                centeredMiniBoldLabel = new GUIStyle();
-                centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
-                rightAlignedMinilabel = new GUIStyle();
-                rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
-                //tabToolBar = new GUIStyle("dragtab");
-                //tabToolBar.onNormal.textColor = Color.white;
-                //tabToolBar.fontSize = 9;
-                //tabToolBar.alignment = TextAnchor.MiddleCenter;
-                //
-            }
-
-            static Texture2D staticTex;
-
-            public static GUIStyle GetStyle(GUIStyle baseStyle, Color bgColor, int fontSize, FontStyle fontStyle,
-                TextAnchor alignment)
-            {
-                var dragOKstyle = new GUIStyle(GUI.skin.box)
-                    {fontSize = 10, fontStyle = fontStyle, alignment = alignment};
-                staticTex = new Texture2D(1, 1);
-                staticTex.hideFlags = HideFlags.HideAndDontSave;
-                Color[] colors = new Color[1] {bgColor};
-                staticTex.SetPixels(colors);
-                staticTex.Apply();
-                dragOKstyle.normal.background = staticTex;
-                return dragOKstyle;
-            }
-
-            public static float GetToolbarHeight()
-            {
-                return 18;
-                //return EditorStyles.toolbar.CalcHeight(GUIContent.none, 0f);
-            }
-
-            public static Color GetDefaultBackgroundColor()
-            {
-                float kViewBackgroundIntensity = EditorGUIUtility.isProSkin ? 0.22f : 0.76f;
-                return new Color(kViewBackgroundIntensity, kViewBackgroundIntensity, kViewBackgroundIntensity, 1f);
-            }
-
-            public static bool Foldout(bool display, string title)
-            {
-                GUI.backgroundColor = GetDefaultBackgroundColor() * 0.5f;
-                var style = new GUIStyle("ShurikenModuleTitle");
-                style.font = new GUIStyle(EditorStyles.label).font;
-                style.normal.textColor = Color.white;
-                style.fontSize = 10;
-                style.border = new RectOffset(15, 7, 4, 4);
-                style.fixedHeight = 20;
-                style.contentOffset = new Vector2(20f, -2f);
-                var rect = GUILayoutUtility.GetRect(16f, style.fixedHeight, style);
-                GUI.Box(rect, title, style);
-                GUI.backgroundColor = Color.white;
-                style.margin = new RectOffset(4, 4, 4, 4);
-                var e = Event.current;
-
-                var toggleRect = new Rect(rect.x + 4f, rect.y + 2f, 13f, 13f);
-                if (e.type == EventType.Repaint)
-                {
-                    EditorStyles.foldout.Draw(toggleRect, false, false, display, false);
-                }
-
-                if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
-                {
-                    display = !display;
-                    e.Use();
-                }
-
-                return display;
-            }
-        }
-
 
         struct Fade : System.IDisposable
         {
@@ -3439,6 +3243,239 @@ namespace See1.Editor
             }
         }
 
+        class Description
+        {
+            internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
+        }
+
+        class GUILayouts
+        {
+            public static void GridLayout(int count, int column, Action<int> action)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    for (int x = 0; x < column; x++)
+                    {
+                        int temp = x;
+                        using (new EditorGUILayout.VerticalScope())
+                        {
+                            for (int y = temp; y < count; y += column)
+                            {
+                                using (new EditorGUILayout.HorizontalScope())
+                                {
+                                    action(y);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            static void Table(string Scores, int NrOfDividers)
+            {
+                float widthOfACell = (float)Screen.width / (float)NrOfDividers;
+                string[] fields;
+
+                foreach (string line in Scores.Split("\n"[0]))
+                {
+                    fields = line.Split("\t"[0]);
+                    if (fields.Length >= NrOfDividers)
+                    {
+                        GUILayout.BeginHorizontal();
+                        for (int x = 0; x < NrOfDividers; x++)
+                        {
+                            GUILayout.Label(fields[x], GUILayout.Width(widthOfACell));
+                        }
+                        GUILayout.EndHorizontal();
+                    }
+                }
+            }
+        }
+
+        class Styles
+        {
+            public static GUIStyle centeredBoldLabel;
+
+            public static GUIStyle header;
+            public static GUIStyle blackHeader;
+            public static GUIStyle headerCheckbox;
+            public static GUIStyle headerFoldout;
+
+            public static GUIStyle miniHeader;
+            //public static GUIStyle miniHeaderCheckbox;
+            //public static GUIStyle miniHeaderFoldout;
+
+            public static Texture2D playIcon;
+            public static Texture2D checkerIcon;
+
+            public static GUIStyle centeredMiniLabel;
+
+            public static GUIStyle miniButton;
+            public static GUIStyle transButton;
+            public static GUIStyle miniTransButton;
+            public static GUIStyle transFoldout;
+
+            public static GUIStyle tabToolBar;
+
+            public static GUIStyle centeredMinilabel;
+            public static GUIStyle centeredMiniBoldLabel;
+            public static GUIStyle rightAlignedMinilabel;
+            //public static GUIStyle tabToolBar;
+
+            static Styles()
+            {
+                centeredBoldLabel = new GUIStyle("Label")
+                {
+                    alignment = TextAnchor.UpperCenter,
+                    fontStyle = FontStyle.Bold
+                };
+
+                centeredMiniLabel = new GUIStyle()
+                {
+                    alignment = TextAnchor.UpperCenter
+                };
+
+                header = new GUIStyle("ShurikenModuleTitle")
+                {
+                    font = (new GUIStyle("Label")).font,
+                    border = new RectOffset(15, 7, 4, 4),
+                    fixedHeight = 22,
+                    contentOffset = new Vector2(20f, -2f)
+                };
+
+                headerCheckbox = new GUIStyle("ShurikenCheckMark");
+                headerFoldout = new GUIStyle("Foldout");
+
+
+                blackHeader = new GUIStyle("AnimationEventTooltip");
+                //blackHeader.contentOffset = Vector2.zero;
+                //blackHeader.margin = new RectOffset(2, 2, 2, 2);
+                //blackHeader.padding = new RectOffset(2, 2, 2, 2);
+                blackHeader.overflow = new RectOffset(0, 0, 0, 0);
+                miniHeader = new GUIStyle("ShurikenModuleTitle")
+                {
+                    font = (new GUIStyle("Label")).font,
+                    fontSize = 8,
+                    fontStyle = FontStyle.Bold,
+                    border = new RectOffset(15, 7, 4, 4),
+                    fixedHeight = 18,
+                    contentOffset = new Vector2(8f, -2f)
+                };
+
+                playIcon = (Texture2D)EditorGUIUtility.LoadRequired(
+                    "Builtin Skins/DarkSkin/Images/IN foldout act.png");
+                checkerIcon = (Texture2D)EditorGUIUtility.LoadRequired("Icons/CheckerFloor.png");
+
+                miniButton = new GUIStyle("miniButton");
+                transButton = new GUIStyle("Button");
+                transButton.active.background = Texture2D.blackTexture;
+                transButton.hover.background = Texture2D.blackTexture;
+                transButton.focused.background = Texture2D.blackTexture;
+                transButton.normal.background = Texture2D.blackTexture;
+                transButton.active.textColor = Color.white;
+                transButton.normal.textColor = Color.gray;
+                transButton.onActive.background = Texture2D.blackTexture;
+                transButton.onFocused.background = Texture2D.blackTexture;
+                transButton.onNormal.background = Texture2D.blackTexture;
+                transButton.onHover.background = Texture2D.blackTexture;
+                transButton.fontStyle = FontStyle.Bold;
+
+                miniTransButton = new GUIStyle("miniButton");
+                miniTransButton.active.background = Texture2D.blackTexture;
+                miniTransButton.hover.background = Texture2D.blackTexture;
+                miniTransButton.focused.background = Texture2D.blackTexture;
+                miniTransButton.normal.background = Texture2D.blackTexture;
+                miniTransButton.onActive.background = Texture2D.blackTexture;
+                miniTransButton.onFocused.background = Texture2D.blackTexture;
+                miniTransButton.onNormal.background = Texture2D.blackTexture;
+                miniTransButton.onHover.background = Texture2D.blackTexture;
+                miniTransButton.active.textColor = Color.white;
+                miniTransButton.normal.textColor = Color.gray;
+                miniTransButton.normal.background = null;
+                miniTransButton.fontStyle = FontStyle.Normal;
+                miniTransButton.alignment = TextAnchor.MiddleLeft;
+
+                transFoldout = new GUIStyle("Foldout");
+                transFoldout.alignment = TextAnchor.MiddleCenter;
+                transFoldout.contentOffset = Vector2.zero;
+
+                tabToolBar = new GUIStyle("dragtab");
+                //tabToolBar.onNormal.textColor = Color.white;
+                tabToolBar.fontSize = 9;
+                tabToolBar.alignment = TextAnchor.MiddleCenter;
+                centeredMinilabel = new GUIStyle();
+                centeredMinilabel.alignment = TextAnchor.MiddleCenter;
+                centeredMiniBoldLabel = new GUIStyle();
+                centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
+                rightAlignedMinilabel = new GUIStyle();
+                rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
+                //tabToolBar = new GUIStyle("dragtab");
+                //tabToolBar.onNormal.textColor = Color.white;
+                //tabToolBar.fontSize = 9;
+                //tabToolBar.alignment = TextAnchor.MiddleCenter;
+                //
+            }
+
+            static Texture2D staticTex;
+
+            public static GUIStyle GetStyle(GUIStyle baseStyle, Color bgColor, int fontSize, FontStyle fontStyle,
+                TextAnchor alignment)
+            {
+                var dragOKstyle = new GUIStyle(GUI.skin.box)
+                { fontSize = 10, fontStyle = fontStyle, alignment = alignment };
+                staticTex = new Texture2D(1, 1);
+                staticTex.hideFlags = HideFlags.HideAndDontSave;
+                Color[] colors = new Color[1] { bgColor };
+                staticTex.SetPixels(colors);
+                staticTex.Apply();
+                dragOKstyle.normal.background = staticTex;
+                return dragOKstyle;
+            }
+
+            public static float GetToolbarHeight()
+            {
+                return 18;
+                //return EditorStyles.toolbar.CalcHeight(GUIContent.none, 0f);
+            }
+
+            public static Color GetDefaultBackgroundColor()
+            {
+                float kViewBackgroundIntensity = EditorGUIUtility.isProSkin ? 0.22f : 0.76f;
+                return new Color(kViewBackgroundIntensity, kViewBackgroundIntensity, kViewBackgroundIntensity, 1f);
+            }
+
+            public static bool Foldout(bool display, string title)
+            {
+                GUI.backgroundColor = GetDefaultBackgroundColor() * 0.5f;
+                var style = new GUIStyle("ShurikenModuleTitle");
+                style.font = new GUIStyle(EditorStyles.label).font;
+                style.normal.textColor = Color.white;
+                style.fontSize = 10;
+                style.border = new RectOffset(15, 7, 4, 4);
+                style.fixedHeight = 20;
+                style.contentOffset = new Vector2(20f, -2f);
+                var rect = GUILayoutUtility.GetRect(16f, style.fixedHeight, style);
+                GUI.Box(rect, title, style);
+                GUI.backgroundColor = Color.white;
+                style.margin = new RectOffset(4, 4, 4, 4);
+                var e = Event.current;
+
+                var toggleRect = new Rect(rect.x + 4f, rect.y + 2f, 13f, 13f);
+                if (e.type == EventType.Repaint)
+                {
+                    EditorStyles.foldout.Draw(toggleRect, false, false, display, false);
+                }
+
+                if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
+                {
+                    display = !display;
+                    e.Use();
+                }
+
+                return display;
+            }
+        }
+
         #endregion
 
         #region Properties & Fields
@@ -3588,20 +3625,20 @@ namespace See1.Editor
             CreatePreview();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
             Updater.CheckForUpdates();
-            var view = settings.current.lastView;
-            _destRot = view.rotation;
-            _destDistance = view.distance;
-            _destPivotPos = view.pivot;
-            _preview.cameraFieldOfView = view.fieldOfView;
+            ApplyView(settings.current.lastView);
+            ApplyLighting(settings.current.lastLighting);
         }
 
         void OnDisable()
         {
+            settings.current.lastLighting = GetCurrentLighting();
             settings.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
             CleanupPreview();
             EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
             See1ViewSettings.Save();
             if (_popup) _popup.Close();
+            GC.Collect();
+            Resources.UnloadUnusedAssets();
         }
 
         void Update()
@@ -3645,13 +3682,12 @@ namespace See1.Editor
             OnGUI_ParticleSystemControl(_controlRect);
             OnGUI_Info(_viewPortRect);
             OnGUI_Log(_viewPortRect);
-
             if (!_guiEnabled)
                 EditorGUI.DrawRect(_rs.full, Color.black * 0.5f);
             if (_overlayEnabled)
                 EditorGUI.DrawRect(_controlRect, Color.black * 0.1f);
 
-            OnGUI_Gizmos(_viewPortRect);
+            //OnGUI_Gizmos(_viewPortRect);
 
         }
 
@@ -4256,15 +4292,52 @@ namespace See1.Editor
                     //    //    EditorUtility.SetDirty(settings);
                     //    //}
                     //}
-                    //if (GUILayout.Button("Size", EditorStyles.toolbarDropDown))
-                    //{
-                    //    var menu = new GenericMenu();
-                    //    foreach (var size in settings.viewPortSizes)
-                    //    {
-                    //        menu.AddItem(new GUIContent(string.Format("{0}x{1}", size.x, size.y)), false, _ => { viewPortSize = size; ResizeWindow(); }, new PartData(name));
-                    //    }
-                    //    menu.ShowAsContext();
-                    //}
+                    GUI.backgroundColor = Color.cyan;
+                    settings.current.autoLoad = GUILayout.Toggle(settings.current.autoLoad,"Auto", EditorStyles.toolbarButton);
+                    GUI.backgroundColor = Color.white;
+                    if (GUILayout.Button("Size", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        for (var i = 0; i < settings.current.viewportSizes.Count; i++)
+                        {
+                            var size = settings.current.viewportSizes[i];
+                            menu.AddItem(new GUIContent(string.Format("{0}x{1}", size.x, size.y)), false,
+                                x => { ResizeWindow((Vector2)x); }, size);
+                        }
+
+                        menu.ShowAsContext();
+                    }
+                    if (GUILayout.Button("View", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        for (var i = 0; i < settings.current.viewList.Count; i++)
+                        {
+                            var view = settings.current.viewList[i];
+                            menu.AddItem(new GUIContent(string.Format("{0}.{1}",i.ToString(), view.name)), false,
+                                x => { ApplyView(x as View); }, view);
+                        }
+
+                        menu.ShowAsContext();
+                    }
+                    if (GUILayout.Button("Lighting", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        for (var i = 0; i < settings.current.lightingList.Count; i++)
+                        {
+                            var lighting = settings.current.lightingList[i];
+                            menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), lighting.name)), false,
+                                x => { ApplyLighting(x as Lighting); }, lighting);
+                        }
+
+                        menu.ShowAsContext();
+                    }
+
+                    GUI.backgroundColor = Color.red;
+                    if (GUILayout.Button("Render", EditorStyles.toolbarButton))
+                    {
+                        RenderAndSaveFile();
+                    }
+                    GUI.backgroundColor = Color.white;
                     //viewPortSize.x = (int)EditorGUILayout.Slider(viewPortSize.x, this.minSize.x - rs.right.size.x, this.maxSize.x, GUILayout.Width(200));
                     //viewPortSize.y = (int)EditorGUILayout.Slider(viewPortSize.y, this.minSize.y - rs.stretchedTop.size.y - rs.stretchedBottom.size.y, this.maxSize.y, GUILayout.Width(200));
                     //if (GUILayout.Button("Set", EditorStyles.toolbarButton))
@@ -4497,7 +4570,7 @@ namespace See1.Editor
                 {
                     using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        panelMode = (SidePanelMode) GUILayout.Toolbar((int) panelMode,
+                        panelMode = (SidePanelMode)GUILayout.Toolbar((int)panelMode,
                             Enum.GetNames(typeof(SidePanelMode)), EditorStyles.toolbarButton);
                         if (check.changed)
                         {
@@ -4556,6 +4629,36 @@ namespace See1.Editor
                 }
             }
 
+            Styles.Foldout(true, "Size");
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("New", EditorStyles.miniButtonLeft))
+                {
+                    ShowPopupWindow();
+                }
+
+                if (GUILayout.Button("Add Current", EditorStyles.miniButtonRight))
+                {
+                    AddViewportSize(_viewPortRect.size);
+                }
+            }
+
+            GUILayouts.GridLayout(currentData.viewportSizes.Count, 2, (i) =>
+            {
+                if (i < 0 || i > currentData.viewportSizes.Count - 1) return;
+                var size = currentData.viewportSizes[i];
+                if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
+                    EditorStyles.miniButtonLeft, GUILayout.MaxWidth(90)))
+                {
+                    ResizeWindow(size);
+                }
+
+                if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
+                {
+                    currentData.viewportSizes.Remove(size);
+                }
+            });
+
             Styles.Foldout(true, "Render");
 
             //GUILayout.Label(string.Format("Name : {0}"), EditorStyles.miniLabel);
@@ -4595,7 +4698,6 @@ namespace See1.Editor
                 EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ", MessageType.Warning);
             }
 
-
             Styles.Foldout(true, "View");
             //_targetOffset = EditorGUILayout.Vector3Field("Target Offset", _targetOffset);
             using (new EditorGUILayout.HorizontalScope())
@@ -4634,7 +4736,7 @@ namespace See1.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 _preview.camera.fieldOfView =
-                    EditorGUILayout.IntSlider("Field Of View", (int)_preview.camera.fieldOfView, 10, 90);
+                    EditorGUILayout.IntSlider("Field Of View", (int)_preview.camera.fieldOfView, 1, 179);
                 _preview.camera.orthographic =
                     GUILayout.Toggle(_preview.camera.orthographic, _preview.camera.orthographic ? "O" : "P",
                         EditorStyles.miniButton, GUILayout.Width(20));
@@ -4647,153 +4749,49 @@ namespace See1.Editor
                     currentData.viewList.Add(new View(_destRot, _destDistance, _destPivotPos,
                         _preview.cameraFieldOfView));
                 }
-
-                using (new EditorGUI.DisabledScope(!Selection.activeGameObject))
+                if (GUILayout.Button("From Scene", EditorStyles.miniButtonRight))
                 {
-                    if (GUILayout.Button("Add From Camera", EditorStyles.miniButtonRight))
+                    var menu = new GenericMenu();
+                    var cameras = FindAllObjectsInScene().SelectMany(x=>x.GetComponentsInChildren<Camera>()).ToArray(); //Find Inactive
+                    for (var i = 0; i < cameras.Length; i++)
                     {
-                        var camera = Selection.activeGameObject.GetComponent<Camera>();
-                        if (camera)
-                        {
-                            currentData.viewList.Add(new View(camera));
-                        }
+                        var cam = cameras[i];
+                        menu.AddItem(new GUIContent(string.Format("{0}", cam.name)), false,
+                            x =>
+                            {
+                                var view = new View((Camera) x);
+                                currentData.viewList.Add(view);
+                                ApplyView(view);
+                            }, cam);
                     }
+                    menu.ShowAsContext();
                 }
             }
 
-            using (var scope = new EditorGUILayout.HorizontalScope())
+            GUILayouts.GridLayout(currentData.viewList.Count, 2, (i) =>
             {
-                //float width = 0;
-                //if (Event.current.type == EventType.Repaint)
-                //{
-                    //Rect left = new Rect(scope.rect.position, new Vector2(scope.rect.size.x * 0.5f, scope.rect.size.y));
-                    //EditorGUI.DrawRect(left, Color.red);
-                    //Rect right = new Rect(new Vector2(scope.rect.position.x + left.size.x, scope.rect.position.y),                        left.size);
-                    //EditorGUI.DrawRect(right, Color.green);
-                    //width = scope.rect.size.x * 0.5f;
-                //}
-
-                using (new EditorGUILayout.VerticalScope(GUILayout.Width(110)))
+                if(i<0 || i>currentData.viewList.Count-1 ) return;
+                var view = currentData.viewList[i];
+                if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                 {
-                    for (var i = 0; i < currentData.viewList.Count; i = i + 2)
-                    {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            var view = currentData.viewList[i];
-                            if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
-                            {
-                                view.rotation = _destRot;
-                                view.distance = _destDistance;
-                                view.pivot = _destPivotPos;
-                                view.fieldOfView = _preview.cameraFieldOfView;
-                                Notice.Log(string.Format("Current view saved to slot {0}",i.ToString()),false);
-                            }
-
-                            if (GUILayout.Button(string.Format("{0}.{1}",i.ToString(),view.name), EditorStyles.miniButtonMid))
-                            {
-                                ApplyView(i);
-                            }
-
-                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
-                            {
-                                currentData.viewList.Remove(view);
-                                Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
-                            }
-                        }
-                    }
+                    view.rotation = _destRot;
+                    view.distance = _destDistance;
+                    view.pivot = _destPivotPos;
+                    view.fieldOfView = _preview.cameraFieldOfView;
+                    Notice.Log(string.Format("Current view saved to slot {0}", i.ToString()), false);
                 }
 
-                using (new EditorGUILayout.VerticalScope())
+                if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), view.name), EditorStyles.miniButtonMid, GUILayout.MaxWidth(70)))
                 {
-                    for (var i = 1; i < currentData.viewList.Count; i = i + 2)
-                    {
-
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            var view = currentData.viewList[i];
-                            if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
-                            {
-                                view.rotation = _destRot;
-                                view.distance = _destDistance;
-                                view.pivot = _destPivotPos;
-                                view.fieldOfView = _preview.cameraFieldOfView;
-                                Notice.Log(string.Format("Current view saved to slot {0}", i.ToString()), false);
-                            }
-
-                            if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), view.name), EditorStyles.miniButtonMid))
-                            {
-                                ApplyView(i);
-                            }
-
-
-                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
-                            {
-                                currentData.viewList.Remove(view);
-                                Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
-                            }
-                        }
-                    }
-                }
-            }
-
-            GUILayout.Label("Viewport Sizes", EditorStyles.miniLabel);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("New", EditorStyles.miniButtonLeft))
-                {
-                    ShowPopupWindow();
+                    ApplyView(i);
                 }
 
-                if (GUILayout.Button("Add Current", EditorStyles.miniButtonRight))
+                if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
                 {
-                    AddViewportSize(_viewPortRect.size);
+                    currentData.viewList.Remove(view);
+                    Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
                 }
-            }
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                using (new EditorGUILayout.VerticalScope())
-                {
-                    for (var i = 0; i < currentData.viewportSizes.Count; i = i + 2)
-                    {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            var size = currentData.viewportSizes[i];
-                            if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
-                                EditorStyles.miniButtonLeft))
-                            {
-                                ResizeWindow(size);
-                            }
-
-                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-                            {
-                                currentData.viewportSizes.Remove(size);
-                            }
-                        }
-                    }
-                }
-
-                using (new EditorGUILayout.VerticalScope())
-                {
-                    for (var i = 1; i < currentData.viewportSizes.Count; i = i + 2)
-                    {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            var size = currentData.viewportSizes[i];
-                            if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
-                                EditorStyles.miniButtonLeft))
-                            {
-                                ResizeWindow(size);
-                            }
-
-                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-                            {
-                                currentData.viewportSizes.Remove(size);
-                            }
-                        }
-                    }
-                }
-            }
+            });
 
             Styles.Foldout(true, "Environment");
 
@@ -4876,6 +4874,64 @@ namespace See1.Editor
                     currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0, 1);
                     EditorGUIUtility.labelWidth = _labelWidth;
                 }
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Add Current", EditorStyles.miniButtonLeft))
+                    {
+                        var lighting = GetCurrentLighting();
+                        currentData.lightingList.Add(lighting);
+                        ApplyLighting(lighting);
+                    }
+
+                    if (GUILayout.Button("From Scene", EditorStyles.miniButtonRight))
+                    {
+                        var lighting = new Lighting();
+                        lighting.ambientSkyColor = RenderSettings.ambientSkyColor;
+                        var lights = FindObjectsOfType<Light>(); //Not Find Inactive
+                        foreach (var light in lights)
+                        {
+                            var info = new Lighting.LightInfo();
+                            info.position = light.transform.position;
+                            info.rotation = light.transform.rotation;
+                            info.lightColor = light.color;
+                            info.intensity = light.intensity;
+                            lighting.lightList.Add(info);
+                        }
+                        currentData.lightingList.Add(lighting);
+                        ApplyLighting(lighting);
+                    }
+                }
+                GUILayouts.GridLayout(currentData.lightingList.Count, 2, (i) =>
+                {
+                    if (i < 0 || i > currentData.lightingList.Count - 1) return;
+                    var lighting = currentData.lightingList[i];
+                    if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
+                    {
+                        lighting.ambientSkyColor = settings.current.ambientSkyColor;
+                        lighting.lightList.Clear();
+                        foreach (var light in _preview.lights)
+                        {
+                            var info = new Lighting.LightInfo();
+                            info.position = light.transform.position;
+                            info.rotation = light.transform.rotation;
+                            info.lightColor = light.color;
+                            info.intensity = light.intensity;
+                            lighting.lightList.Add(info);
+                        }
+                        Notice.Log(string.Format("Current view saved to slot {0}", i.ToString()), false);
+                    }
+
+                    if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), lighting.name), EditorStyles.miniButtonMid, GUILayout.MaxWidth(70)))
+                    {
+                        ApplyLighting(lighting);
+                    }
+
+                    if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
+                    {
+                        currentData.lightingList.Remove(lighting);
+                        Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
+                    }
+                });
             }
 
 
@@ -5030,6 +5086,23 @@ namespace See1.Editor
             GUI.backgroundColor = Color.white;
         }
 
+        private Lighting GetCurrentLighting()
+        {
+            var lighting = new Lighting();
+            lighting.ambientSkyColor = settings.current.ambientSkyColor;
+            foreach (var light in _preview.lights)
+            {
+                var info = new Lighting.LightInfo();
+                info.position = light.transform.position;
+                info.rotation = light.transform.rotation;
+                info.lightColor = light.color;
+                info.intensity = light.intensity;
+                lighting.lightList.Add(info);
+            }
+
+            return lighting;
+        }
+
         void OnGUI_Model()
         {
             _fadeDic["Model"].target = Styles.Foldout(_fadeDic["Model"].target, "Model");
@@ -5038,7 +5111,7 @@ namespace See1.Editor
                 if (fade.visible)
                 {
                     GUI.backgroundColor = Color.cyan;
-                    currentData.autoLoad = GUILayout.Toggle(currentData.autoLoad, "Auto Load Selection", "Button",
+                    currentData.autoLoad = GUILayout.Toggle(currentData.autoLoad, "Auto Load Selected", "Button",
                         GUILayout.Height(32));
                     GUI.backgroundColor = Color.white;
 
@@ -5280,7 +5353,16 @@ namespace See1.Editor
                     view.name = EditorGUILayout.TextField(view.name);
                 }
             }
-
+            Styles.Foldout(true, "Lighting");
+            for (var i = 0; i < settings.current.lightingList.Count; i++)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var lighting = settings.current.lightingList[i];
+                    EditorGUILayout.PrefixLabel(i.ToString());
+                    lighting.name = EditorGUILayout.TextField(lighting.name);
+                }
+            }
             Styles.Foldout(true, "Camera Target");
             EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
             EditorGUILayout.ObjectField(_wireMaterial, typeof(Material), false);
@@ -5827,13 +5909,13 @@ namespace See1.Editor
                     //_sb0.AppendLine();
                 }
             }
-            _sb0.Append("\n");
-            _sb0.Append(string.Format("{0}:{1}", "Dest Distance : ", _destDistance.ToString()));
-            _sb0.Append("\n");
-            _sb0.Append(string.Format("{0}:{1}", "Dest Rotation : ", _destRot.ToString()));
-            _sb0.Append("\n");
-            _sb0.Append(string.Format("{0}:{1}", "Dest Pivot Position : ", _destPivotPos.ToString()));
-            _sb0.Append("\n");
+            //_sb0.Append("\n");
+            //_sb0.Append(string.Format("{0}:{1}", "Dest Distance : ", _destDistance.ToString()));
+            //_sb0.Append("\n");
+            //_sb0.Append(string.Format("{0}:{1}", "Dest Rotation : ", _destRot.ToString()));
+            //_sb0.Append("\n");
+            //_sb0.Append(string.Format("{0}:{1}", "Dest Pivot Position : ", _destPivotPos.ToString()));
+            //_sb0.Append("\n");
             //_sb0.Append(string.Format("{0}:{1}", "Viewport Rect : ", _viewPortRect.ToString()));
             //_sb0.Append("\n");
             //_sb0.Append(string.Format("RenderTexture : {0}:{1}x{2}", _preview.camera.targetTexture.GetInstanceID(), _preview.camera.targetTexture.width, _preview.camera.targetTexture.height.ToString()));
@@ -5884,6 +5966,8 @@ namespace See1.Editor
 
                     DrawBasis(_targetGo.transform, scale * 0.1f, true);
 
+                    DrawBasis(_camPivot.transform, scale * 0.1f, true);
+                    Handles.Label(_camPivot.transform.position, string.Format("Pivot: Position {0} Rotation {1}\nCam: Postion {2} Rotation {3}", _camPivot.transform.position, _camPivot.transform.rotation.eulerAngles,_camTr.position,_camTr.rotation.eulerAngles), EditorStyles.miniLabel);
 
                     var length = 0.05f;// _maxDistance;
                     Handles.color = Color.magenta * 1f;
@@ -5894,7 +5978,7 @@ namespace See1.Editor
                     Handles.DrawLine(rotateCenter, rotateCenter - Vector3.up * length);
                     Handles.DrawLine(rotateCenter, rotateCenter + Vector3.forward * length);
                     Handles.DrawLine(rotateCenter, rotateCenter - Vector3.forward * length);
-                    Handles.Label(rotateCenter, string.Format("View Pivot : {0}\nCam Pivot: {1}\nOffset : {2}", rotateCenter.ToString(), _camPivot.transform.position.ToString(),_targetOffset.ToString()),EditorStyles.miniLabel);
+                    Handles.Label(rotateCenter + new Vector3(0,0.1f,0), string.Format("View Pivot : {0}\nCam Pivot: {1}\nOffset : {2}", rotateCenter, _camPivot.transform.position,_targetOffset),EditorStyles.miniLabel);
 
                     //DrawGrid();
 
@@ -6193,10 +6277,13 @@ namespace See1.Editor
                     case KeyCode.F1:
                         RenderAndSaveFile();
                         break;
+                    case KeyCode.F2:
+                        _colorEnabled = !_colorEnabled;
+                        SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
+                        break;
                     case KeyCode.F3:
                         _wireFrameEnabled = !_wireFrameEnabled;
-                        SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial,
-                            _wireFrameEnabled);
+                        SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
                         break;
                     case KeyCode.W:
                         _destDistance -= 0.01f;
@@ -6336,16 +6423,78 @@ namespace See1.Editor
         {
             if (currentData.viewList.Count - 1 < viewListIndex) return;
             var view = currentData.viewList[viewListIndex];
+            var message = string.Format("View {0} Loaded", viewListIndex.ToString());
+            ApplyView(view,message);
+        }
+
+        void ApplyView(View view,string message = "")
+        {
             _destRot = view.rotation;
             _destDistance = view.distance;
             _destPivotPos = view.pivot;
             _preview.cameraFieldOfView = view.fieldOfView;
-            Notice.Log(string.Format("View {0} Loaded", viewListIndex.ToString()), false);
+            Notice.Log(message, false);
+        }
+
+        void ApplyLighting(Lighting lighting, string message = "")
+        {
+            for (int i = 0; i < _preview.lights.Length; i++)
+            {
+                try
+                {
+                    var light = lighting.lightList[i];
+                    _preview.lights[i].color = light.lightColor;
+                    _preview.lights[i].intensity = light.intensity;
+                    _preview.lights[i].transform.position = light.position;
+                    _preview.lights[i].transform.rotation = light.rotation;
+
+                }
+                catch
+                {
+                    _preview.lights[i].color = Color.black;
+                    _preview.lights[i].intensity = 0;
+                }
+            }
+
+            settings.current.ambientSkyColor = lighting.ambientSkyColor;
+            Notice.Log(message, false);
         }
 
         #endregion
 
         #region Utils
+
+        public static List<GameObject> FindAllObjectsInScene()
+        {
+            UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+
+            GameObject[] rootObjects = activeScene.GetRootGameObjects();
+
+            GameObject[] allObjects = Resources.FindObjectsOfTypeAll<GameObject>();
+
+            List<GameObject> objectsInScene = new List<GameObject>();
+
+            for (int i = 0; i < rootObjects.Length; i++)
+            {
+                objectsInScene.Add(rootObjects[i]);
+            }
+
+            for (int i = 0; i < allObjects.Length; i++)
+            {
+                if (allObjects[i].transform.root)
+                {
+                    for (int i2 = 0; i2 < rootObjects.Length; i2++)
+                    {
+                        if (allObjects[i].transform.root == rootObjects[i2].transform && allObjects[i] != rootObjects[i2])
+                        {
+                            objectsInScene.Add(allObjects[i]);
+                            break;
+                        }
+                    }
+                }
+            }
+            return objectsInScene;
+        }
 
         public static Mesh GetMesh(GameObject gameObject)
         {
@@ -6573,9 +6722,8 @@ namespace See1.Editor
         [MenuItem("Tools/See1/See1View", false, 0)]
         private static void Init()
         {
-            See1View window = EditorWindow.GetWindow<See1View>("See1View");
-            window.titleContent =
-                new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
+            See1View window = EditorWindow.GetWindow<See1View>(Description.title.text);
+            window.titleContent = Description.title;
             window.minSize = new Vector2(128, 128);
             window.Show();
         }
