@@ -36,7 +36,6 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Networking;
-using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
@@ -1145,7 +1144,7 @@ namespace See1
             }
         }
 
-        class ShowObjectScope : IDisposable
+        struct ShowObjectScope : IDisposable
         {
             private Renderer[] _renderers;
 
@@ -1164,6 +1163,10 @@ namespace See1
                             }
                         }
                     }
+                }
+                else
+                {
+                    _renderers = null;
                 }
             }
 
@@ -1437,6 +1440,7 @@ namespace See1
         class TransformTreeView : TreeView
         {
             Scene scene;
+            public Action<GameObject> onDragObject;
 
             public TransformTreeView(Scene scene, TreeViewState state)
                 : base(state)
@@ -1640,8 +1644,9 @@ namespace See1
                     {
                         return DragAndDropVisualMode.None;
                     }
-
-                    transforms.Add(go.transform);
+                    //프로젝트 뷰에서 드래그하면 인스턴스를 만들어 Add 하도록 해봄
+                    if(onDragObject!=null) onDragObject(go);
+                    //transforms.Add(go.transform);
                 }
 
                 // Filter out any unnecessary transforms before the reparent operation
@@ -3489,6 +3494,7 @@ namespace See1
         GameObject _prefab;
         GameObject _tempPickedObject;
         GameObject _targetGo;
+        List<GameObject> _additionalObjectList = new List<GameObject>(); //멀티오브젝트 검사용
         //GameObject _shadowGo; //Hacky ShadowCaster
         ReflectionProbe _probe;
         Transform _lightPivot;
@@ -3516,7 +3522,7 @@ namespace See1
         int _labelWidth = 95;
         Dictionary<string,SmoothAnimBool> _fadeDic = new Dictionary<string, SmoothAnimBool>();
         //SmoothAnimBool _fade = new SmoothAnimBool();
-        TreeView _treeView;
+        TransformTreeView _treeView;
         TreeViewState _treeViewState;
         TargetInfo _targetInfo = new TargetInfo();
         bool _shortcutEnabled;
@@ -3546,7 +3552,7 @@ namespace See1
 
         Material _depthNormalMaterial;
         CommandBuffer _depthNormalCommandBuffer;
-        bool _DepthNormalEnabled;
+        bool _depthNormalEnabled;
 
         Material _gridMaterial;
         CommandBuffer _gridCommandBuffer;
@@ -3687,7 +3693,7 @@ namespace See1
             if (_overlayEnabled)
                 EditorGUI.DrawRect(_controlRect, Color.black * 0.1f);
 
-            //OnGUI_Gizmos(_viewPortRect);
+            OnGUI_Gizmos(_viewPortRect);
 
         }
 
@@ -3791,6 +3797,28 @@ namespace See1
                 Repaint();
                 //_fade.target = true;
                 //_fade.target = false;
+            }
+        }
+        //메인오브젝트 이외에 하이어라키를 열어 강제로 오브젝트를 추가할 용도.
+        void AddModel(GameObject prefab)
+        {
+            if (!prefab) return;
+            if (_additionalObjectList.Contains(prefab)) return;
+            _additionalObjectList.Add(prefab);
+            var instance = PrefabUtility.InstantiateAttachedAsset(prefab) as GameObject;
+            if (instance != null)
+            {
+                instance.name = prefab.name;
+                SetFlagsAll(instance, HideFlags.HideAndDontSave);
+                SetLayerAll(instance, _previewLayer);
+                _preview.AddSingleGO(instance);
+                _targetInfo.Init(instance);
+                if (_treeView != null)
+                {
+                    _treeView.Reload();
+                }
+                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
+                Repaint();
             }
         }
 
@@ -3912,11 +3940,12 @@ namespace See1
             if (fi != null)
             {
                 var previewScene = fi.GetValue(_preview);
-                var scene = (UnityEngine.SceneManagement.Scene)(previewScene.GetType()
+                var scene = (UnityEngine.SceneManagement.Scene) (previewScene.GetType()
                     .GetField("m_Scene", BindingFlags.Instance | BindingFlags.NonPublic)).GetValue(previewScene);
                 if (_treeViewState == null)
                     _treeViewState = new TreeViewState();
                 _treeView = new TransformTreeView(scene, _treeViewState);
+                _treeView.onDragObject = (go) => { AddModel(go); };
             }
         }
 
@@ -4298,37 +4327,40 @@ namespace See1
                     if (GUILayout.Button("Size", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Add Current"), false, () => { AddViewportSize(_viewPortRect.size); });
+                        menu.AddSeparator("");
                         for (var i = 0; i < settings.current.viewportSizes.Count; i++)
                         {
                             var size = settings.current.viewportSizes[i];
                             menu.AddItem(new GUIContent(string.Format("{0}x{1}", size.x, size.y)), false,
                                 x => { ResizeWindow((Vector2)x); }, size);
                         }
-
                         menu.ShowAsContext();
                     }
                     if (GUILayout.Button("View", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Add Current"), false, () => { currentData.viewList.Add(new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView)); });
+                        menu.AddSeparator("");
                         for (var i = 0; i < settings.current.viewList.Count; i++)
                         {
                             var view = settings.current.viewList[i];
                             menu.AddItem(new GUIContent(string.Format("{0}.{1}",i.ToString(), view.name)), false,
                                 x => { ApplyView(x as View); }, view);
                         }
-
                         menu.ShowAsContext();
                     }
                     if (GUILayout.Button("Lighting", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Add Current"), false, () => { currentData.lightingList.Add(GetCurrentLighting()); });
+                        menu.AddSeparator("");
                         for (var i = 0; i < settings.current.lightingList.Count; i++)
                         {
                             var lighting = settings.current.lightingList[i];
                             menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), lighting.name)), false,
                                 x => { ApplyLighting(x as Lighting); }, lighting);
                         }
-
                         menu.ShowAsContext();
                     }
 
@@ -5007,13 +5039,13 @@ namespace See1
             {
                 using (var cbCheck = new EditorGUI.ChangeCheckScope())
                 {
-                    _DepthNormalEnabled = GUILayout.Toggle(_DepthNormalEnabled, "Normal Visualize",
+                    _depthNormalEnabled = GUILayout.Toggle(_depthNormalEnabled, "Normal Visualize",
                         EditorStyles.miniButton);
                     if (cbCheck.changed)
                     {
                         _preview.camera.depthTextureMode =
-                            _DepthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
-                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, _DepthNormalEnabled);
+                            _depthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
+                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, _depthNormalEnabled);
                         //if (_DepthNormalEnabled)
                         //{
                         //    _preview.camera.SetReplacementShader(_normalMaterial.shader, string.Empty);
@@ -6460,6 +6492,18 @@ namespace See1
             Notice.Log(message, false);
         }
 
+        IEnumerator Interpolate(float value, float startValue, float endValue, float time)
+        {
+            float elapedTime = 0f;
+            while (elapedTime<time)
+            {
+                elapedTime += _deltaTime;
+                var delta = elapedTime / time;
+                value = Mathf.Lerp(startValue, endValue, delta);
+                yield return value;
+            }
+        }
+
         #endregion
 
         #region Utils
@@ -6693,6 +6737,19 @@ namespace See1
         #endregion
 
         #region Reflection
+
+        private Scene GetPreviewScene()
+        {
+            var fi = _preview.GetType().GetField("m_PreviewScene", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (fi != null)
+            {
+                var previewScene = fi.GetValue(_preview);
+                var scene = (UnityEngine.SceneManagement.Scene)(previewScene.GetType()
+                    .GetField("m_Scene", BindingFlags.Instance | BindingFlags.NonPublic)).GetValue(previewScene);
+                return scene;
+            }
+            return EditorSceneManager.NewPreviewScene();
+        }
 
         private void GetPreviewLayerID()
         {
