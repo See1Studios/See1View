@@ -2526,7 +2526,7 @@ namespace See1
             {
                 public AnimationClip clip;
                 public bool enabled;
-                //public int loopTimes;
+                public int loopTimes;
                 StringBuilder sb = new StringBuilder();
 
                 public ClipInfo(AnimationClip clip)
@@ -2557,7 +2557,7 @@ namespace See1
                     //sb.AppendFormat("Average Speed : {0}", clip.averageSpeed.ToString());
                 }
 
-                public string Print()
+                public string ToString()
                 {
                     return sb.ToString();
                 }
@@ -2565,7 +2565,7 @@ namespace See1
 
             internal UnityEditorInternal.ReorderableList reorderableObjectList;
             internal UnityEditorInternal.ReorderableList reorderableClipList;
-            //internal UnityEditorInternal.ReorderableList reorderablePlayList;
+            internal UnityEditorInternal.ReorderableList reorderablePlayList;
             internal List<Animated> animatedList = new List<Animated>();
             internal List<AnimationClip> playList = new List<AnimationClip>();
             internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
@@ -2573,7 +2573,7 @@ namespace See1
             internal double time = 0.0f;
             internal float timeSpeed = 1.0f;
             private bool _isOptimized { get; set; }
-            internal bool isPlayable { get { return animatedList.Count > 0 && playList.Count > 0; } }
+            internal bool isPlayable { get { return animatedList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
             internal bool isPlaying { get; set; }
             internal bool isLooping { get; set; }
             internal AnimationClip _currentClip { get { return playList[0]; } }
@@ -2582,11 +2582,18 @@ namespace See1
             {
                 get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
             }
+            Texture aniIcon = EditorGUIUtility.IconContent("Animator Icon").image;
 
             public AnimationPlayer()
             {
                 InitAnimatedList();
                 InitClipList();
+            }
+
+            public void TogglePlay()
+            {
+                isPlaying = !isPlaying;
+                if (isPlaying) Play();
             }
 
             private void InitAnimatedList()
@@ -2601,11 +2608,8 @@ namespace See1
                 //draw callback
                 reorderableObjectList.drawHeaderCallback = (position) =>
                 {
-                    //var btn20 = position.width * 0.2f;
-                    //var btn25 = position.width * 0.25f;
-                    //var btn30 = position.width * 0.3f;
-                    var btn50 = position.width * 0.5f;
-                    position.width = btn50;
+                    var btn30 = position.width * 0.3333f;
+                    position.width = btn30;
                     using (new EditorGUI.DisabledScope(Selection.activeGameObject == null))
                     {
                         if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
@@ -2614,12 +2618,21 @@ namespace See1
                         }
                     }
                     position.x += position.width;
-                    position.width = btn50;
+                    position.width = btn30;
                     using (new EditorGUI.DisabledScope(reorderableObjectList.index < 0))
                     {
-                        if (GUI.Button(position, "Remove", EditorStyles.miniButtonRight))
+                        if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
                         {
                             reorderableObjectList.onRemoveCallback(reorderableObjectList);
+                        }
+                    }
+                    position.x += position.width;
+                    position.width = btn30;
+                    using (new EditorGUI.DisabledScope(animatedList.Count == 0))
+                    {
+                        if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                        {
+                            animatedList.Clear();
                         }
                     }
                 };
@@ -2730,26 +2743,31 @@ namespace See1
                 reorderableClipList.drawHeaderCallback = (position) =>
                 {
                     Event evt = Event.current;
-                    //var btn20 = position.width * 0.2f;
-                    //var btn25 = position.width * 0.25f;
-                    //var btn30 = position.width * 0.3f;
-                    var btn50 = position.width * 0.5f;
-                    position.width = btn50;
-                    if (GUI.Button(position, "Add Clip", EditorStyles.miniButtonLeft))
+                    var btn30 = position.width * 0.3333f;
+                    position.width = btn30;
+                    if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
                     {
                         reorderableClipList.onAddDropdownCallback.Invoke(position, reorderableClipList);
                     }
 
                     position.x += position.width;
-                    position.width = btn50;
+                    position.width = btn30;
                     using (new EditorGUI.DisabledScope(reorderableClipList.index < 0))
                     {
-                        if (GUI.Button(position, "Remove Clip", EditorStyles.miniButtonRight))
+                        if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
                         {
                             reorderableClipList.onRemoveCallback(reorderableClipList);
                         }
                     }
-
+                    position.x += position.width;
+                    position.width = btn30;
+                    using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
+                    {
+                        if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                        {
+                            clipInfoList.Clear();
+                        }
+                    }
                     string commandName = Event.current.commandName;
                     if (commandName == "ObjectSelectorUpdated")
                     {
@@ -2825,13 +2843,12 @@ namespace See1
                 };
                 reorderableClipList.drawFooterCallback = position =>
                 {
-                    //var btn20 = position.width * 0.2f;
-                    //var btn25 = position.width * 0.25f;
-                    //var btn30 = position.width * 0.3f;
+                    var btn20 = position.width * 0.2f;
+                    var btn25 = position.width * 0.25f;
+                    var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
-
                     position.width = btn50;
-                    if (GUI.Button(position, "Add all to playlist", EditorStyles.miniButtonLeft))
+                    if (GUI.Button(position, "Check all", EditorStyles.miniButtonLeft))
                     {
                         foreach (var info in clipInfoList)
                         {
@@ -2843,7 +2860,7 @@ namespace See1
 
                     position.x += position.width;
                     position.width = btn50;
-                    if (GUI.Button(position, "Remove all from playlist", EditorStyles.miniButtonRight))
+                    if (GUI.Button(position, "Unckeck all", EditorStyles.miniButtonRight))
                     {
                         foreach (var info in clipInfoList)
                         {
@@ -2874,7 +2891,7 @@ namespace See1
                 reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
             }
 
-            private void InitAnimatorAndClips(Animator animator)
+            public void InitAnimatorAndClips(Animator animator)
             {
                 foreach (var animated in animatedList.ToArray())
                 {
@@ -2891,11 +2908,6 @@ namespace See1
                         }
                     }
                 }
-            }
-
-            public void AddAnimated(GameObject animated)
-            {
-                animatedList.Add(new Animated(animated));
             }
 
             public void AddClip(AnimationClip clip)
@@ -2986,7 +2998,7 @@ namespace See1
 
                     using (var hr = new EditorGUILayout.HorizontalScope())
                     {
-                        EditorGUI.DropShadowLabel(hr.rect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
+                        EditorGUI.DropShadowLabel(hr.rect, string.Format("{0}", currentClipInfo.ToString()), EditorStyles.miniLabel);
                         GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
                         style.alignment = TextAnchor.MiddleRight;
                         EditorGUI.DropShadowLabel(hr.rect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
@@ -3123,7 +3135,7 @@ namespace See1
                 }
             }
 
-            private void ReflectionRestoreToBindPose(UnityEngine.Object _target)
+            private void ReflectionRestoreToBindPose(Object _target)
             {
                 if (_target == null)
                     return;
@@ -3297,6 +3309,7 @@ namespace See1
             }
         }
 
+        [InitializeOnLoad]
         class Styles
         {
             public static GUIStyle centeredBoldLabel;
@@ -3520,6 +3533,7 @@ namespace See1
         float _deltaTime;
         double _lastTimeSinceStartup = 0f;
         int _labelWidth = 95;
+        int _toolbarHeight = 18;
         Dictionary<string,SmoothAnimBool> _fadeDic = new Dictionary<string, SmoothAnimBool>();
         //SmoothAnimBool _fade = new SmoothAnimBool();
         TransformTreeView _treeView;
@@ -3718,8 +3732,8 @@ namespace See1
         void SetEditorWindow()
         {
             _rs = new RectSlicer(this);
-            _rs.topTargetHeight = Styles.GetToolbarHeight();
-            _rs.bottomTargetHeight = Styles.GetToolbarHeight();
+            _rs.topTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
+            _rs.bottomTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
             _rs.leftTargetWidth = 200;
             _rs.rightTargetWidth = 250;
             _rs.openTop.target = true;
@@ -4065,18 +4079,17 @@ namespace See1
                     {
                         for (int j = 0; j < smr.sharedMesh.subMeshCount; j++)
                         {
-                            int idx = j;
-                            buffer.DrawRenderer(renderer, mat, idx, -1);
+                            int submeshIndex = j;
+                            buffer.DrawRenderer(renderer, mat, submeshIndex, -1); //-1 renders all passes
                         }
                     }
-
                     else if (mr)
                     {
                         var mf = mr.GetComponent<MeshFilter>();
                         for (int j = 0; j < mf.sharedMesh.subMeshCount; j++)
                         {
-                            int idx = j;
-                            buffer.DrawRenderer(renderer, mat, idx, -1);
+                            int submeshIndex = j;
+                            buffer.DrawRenderer(renderer, mat, submeshIndex, -1);
                         }
                     }
                 }
@@ -4271,7 +4284,14 @@ namespace See1
                 {
                     Animator animator = animators[i];
                     AnimationPlayer player = new AnimationPlayer();
-                    player.AddAnimated(animator.gameObject);
+                    player.animatedList.Add(new AnimationPlayer.Animated(animator.gameObject));
+                    if (animator.runtimeAnimatorController != null)
+                    {
+                        foreach (var clip in animator.runtimeAnimatorController.animationClips)
+                        {
+                            player.AddClip(clip);
+                        }
+                    }
                     player.onStopPlaying = onStopPlaying;
                     _playerList.Add(player);
                     _isShowingABList.Add(new AnimBool((i == 0) ? true : false));
@@ -4643,6 +4663,7 @@ namespace See1
                     currentData.zoomSpeed = EditorGUILayout.IntSlider("Zoom Speed", currentData.zoomSpeed, 1, 5);
                     currentData.panSpeed = EditorGUILayout.IntSlider("Pan Speed", currentData.panSpeed, 1, 5);
                     currentData.smoothFactor = EditorGUILayout.IntSlider("Smoothness", currentData.smoothFactor, 1, 5);
+                    _destPivotPos = EditorGUILayout.Vector3Field("Focus", _destPivotPos);
                     _targetOffset = EditorGUILayout.Vector3Field("Offset", _targetOffset);
                     using (new EditorGUILayout.HorizontalScope())
                     {
@@ -5253,6 +5274,30 @@ namespace See1
                     }
                     EditorGUILayout.Space();
                 }
+            }                
+            ////Drag and Drop
+            Event evt = Event.current;
+            Rect drop_area = _viewPortRect; //? 왜 뷰포트가 되고 right 는 안되는가?
+            switch (evt.type)
+            {
+                case EventType.DragUpdated:
+                case EventType.DragPerform:
+                    if (!drop_area.Contains(evt.mousePosition))
+                        return;
+                    DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                    if (evt.type == EventType.DragPerform)
+                    {
+                        DragAndDrop.AcceptDrag();
+                        foreach (Object dragged_object in DragAndDrop.objectReferences)
+                        {
+                            if (dragged_object is AnimationClip)
+                            {
+                                var clip = dragged_object as AnimationClip;
+                                _playerList.FirstOrDefault().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
+                            }
+                        }
+                    }
+                    break;
             }
         }
 
@@ -6331,6 +6376,9 @@ namespace See1
                         break;
                     case KeyCode.Escape:
                         _gizmoMode = ~_gizmoMode;
+                        break;
+                    case KeyCode.Space:
+                        _playerList.FirstOrDefault().TogglePlay();
                         break;
                 }
                 GUIUtility.ExitGUI();
