@@ -2526,7 +2526,7 @@ namespace See1
             {
                 public AnimationClip clip;
                 public bool enabled;
-                public int loopTimes;
+                //public int loopTimes;
                 StringBuilder sb = new StringBuilder();
 
                 public ClipInfo(AnimationClip clip)
@@ -2557,7 +2557,7 @@ namespace See1
                     //sb.AppendFormat("Average Speed : {0}", clip.averageSpeed.ToString());
                 }
 
-                public string ToString()
+                public string Print()
                 {
                     return sb.ToString();
                 }
@@ -2565,7 +2565,6 @@ namespace See1
 
             internal UnityEditorInternal.ReorderableList reorderableObjectList;
             internal UnityEditorInternal.ReorderableList reorderableClipList;
-            internal UnityEditorInternal.ReorderableList reorderablePlayList;
             internal List<Animated> animatedList = new List<Animated>();
             internal List<AnimationClip> playList = new List<AnimationClip>();
             internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
@@ -2576,13 +2575,14 @@ namespace See1
             internal bool isPlayable { get { return animatedList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
             internal bool isPlaying { get; set; }
             internal bool isLooping { get; set; }
+            private bool _showEvent { get; set; }
             internal AnimationClip _currentClip { get { return playList[0]; } }
             internal UnityEvent onStopPlaying = new UnityEvent();
             internal ClipInfo currentClipInfo
             {
                 get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
             }
-            Texture aniIcon = EditorGUIUtility.IconContent("Animator Icon").image;
+            //Texture aniIcon = EditorGUIUtility.IconContent("Animator Icon").image;
 
             public AnimationPlayer()
             {
@@ -2848,9 +2848,9 @@ namespace See1
                 };
                 reorderableClipList.drawFooterCallback = position =>
                 {
-                    var btn20 = position.width * 0.2f;
-                    var btn25 = position.width * 0.25f;
-                    var btn30 = position.width * 0.3f;
+                    //var btn20 = position.width * 0.2f;
+                    //var btn25 = position.width * 0.25f;
+                    //var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
 
                     position.width = btn50;
@@ -3015,45 +3015,35 @@ namespace See1
                     EditorGUI.ProgressBar(progressRect, progress,
                         string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
 
-                    foreach (var animEvent in _currentClip.events)
+                    if (_showEvent)
                     {
-                        var timePos = progressRect.x + (progressRect.width * animEvent.time / _currentClip.length);
-
-                        //marker
-                        GUIContent marker = EditorGUIUtility.IconContent("Icon.Event");
-                        var markerPos = new Vector2(timePos, progressRect.y);
-                        Rect markerRect = new Rect(markerPos, GUIStyle.none.CalcSize(marker));
-                        if (GUI.Button(markerRect, "", "Icon.Event"))
+                        foreach (var animEvent in _currentClip.events)
                         {
+                            var timePos = progressRect.x + (progressRect.width * animEvent.time / _currentClip.length);
+                            //marker
+                            GUIContent marker = GUIContent.none;
+                            var markerPos = new Vector2(timePos, progressRect.y);
+                            Rect markerRect = new Rect(markerPos, GUIStyle.none.CalcSize(marker));
+                            if (GUI.Button(markerRect, "", "Icon.Event"))
+                            {
+
+                            }
+                            //button
+                            GUIContent btn = new GUIContent(animEvent.functionName);
+                            var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
+                            Rect btnRect = new Rect(btnPos, GUIStyle.none.CalcSize(btn));
+                            if (GUI.Button(btnRect, btn, EditorStyles.miniButton))
+                            {
+
+                            }
 
                         }
-                        //button
-                        GUIContent btn = EditorGUIUtility.IconContent("Icon.Event");
-                        var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
-                        Rect btnRect = new Rect(btnPos, GUIStyle.none.CalcSize(btn));
-                        if (GUI.Button(btnRect, btn, "AnimationEventTooltip"))
-                        {
-
-                        }
-                        //var x = progressRect.width * animEvent.time / _currentClip.length;
-                        //var y = progressRect.y;// - progressRect.height;
-                        //var style = new GUIStyle("AnimationEventTooltip");
-                        //var label = TimeToFrame(animEvent.time).ToString() + animEvent.functionName;
-                        //var icon = EditorGUIUtility.IconContent("Icon.Event");
-                        //var labelRect = style.CalcSize(new GUIContent(label));
-                        //var btnRect = style.CalcSize(EditorGUIUtility.IconContent("Icon.Event"));
-                        //var height = progressRect.height;
-                        //var buttonRect = new Rect(x, y, btnRect.x, height);
-                        //if (GUI.Button(buttonRect, icon, "Icon.Event"))
-                        //{
-
-                        //}
                     }
 
                     using (var hr = new EditorGUILayout.HorizontalScope())
                     {
                         var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
-                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.ToString()), EditorStyles.miniLabel);
+                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
                         GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
                         style.alignment = TextAnchor.MiddleRight;
                         EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
@@ -3119,6 +3109,8 @@ namespace See1
                             timeSpeed = Mathf.Min(2, (timeSpeed * 10 + 1f) * 0.1f);
 
                         }
+
+                        _showEvent = GUILayout.Toggle(_showEvent, "Event", "Button", GUILayout.Height(30));
 
                         GUILayout.FlexibleSpace();
                     }
@@ -3370,7 +3362,6 @@ namespace See1
             }
         }
 
-        [InitializeOnLoad]
         class Styles
         {
             public static GUIStyle centeredBoldLabel;
@@ -3384,17 +3375,17 @@ namespace See1
             //public static GUIStyle miniHeaderCheckbox;
             //public static GUIStyle miniHeaderFoldout;
 
-            public static Texture2D playIcon;
-            public static Texture2D checkerIcon;
+            //public static Texture2D playIcon;
+            //public static Texture2D checkerIcon;
 
             public static GUIStyle centeredMiniLabel;
 
             public static GUIStyle miniButton;
             public static GUIStyle transButton;
-            public static GUIStyle miniTransButton;
-            public static GUIStyle transFoldout;
+            //public static GUIStyle miniTransButton;
+            //public static GUIStyle transFoldout;
 
-            public static GUIStyle tabToolBar;
+            //public static GUIStyle tabToolBar;
 
             public static GUIStyle centeredMinilabel;
             public static GUIStyle centeredMiniBoldLabel;
@@ -3441,47 +3432,47 @@ namespace See1
                     contentOffset = new Vector2(8f, -2f)
                 };
 
-                playIcon = (Texture2D)EditorGUIUtility.LoadRequired(
-                    "Builtin Skins/DarkSkin/Images/IN foldout act.png");
-                checkerIcon = (Texture2D)EditorGUIUtility.LoadRequired("Icons/CheckerFloor.png");
+                //playIcon = (Texture2D)EditorGUIUtility.LoadRequired(
+                //    "Builtin Skins/DarkSkin/Images/IN foldout act.png");
+                //checkerIcon = (Texture2D)EditorGUIUtility.LoadRequired("Icons/CheckerFloor.png");
 
                 miniButton = new GUIStyle("miniButton");
                 transButton = new GUIStyle("Button");
-                transButton.active.background = Texture2D.blackTexture;
-                transButton.hover.background = Texture2D.blackTexture;
-                transButton.focused.background = Texture2D.blackTexture;
-                transButton.normal.background = Texture2D.blackTexture;
-                transButton.active.textColor = Color.white;
-                transButton.normal.textColor = Color.gray;
-                transButton.onActive.background = Texture2D.blackTexture;
-                transButton.onFocused.background = Texture2D.blackTexture;
-                transButton.onNormal.background = Texture2D.blackTexture;
-                transButton.onHover.background = Texture2D.blackTexture;
-                transButton.fontStyle = FontStyle.Bold;
+                //transButton.active.background = Texture2D.blackTexture;
+                //transButton.hover.background = Texture2D.blackTexture;
+                //transButton.focused.background = Texture2D.blackTexture;
+                //transButton.normal.background = Texture2D.blackTexture;
+                //transButton.active.textColor = Color.white;
+                //transButton.normal.textColor = Color.gray;
+                //transButton.onActive.background = Texture2D.blackTexture;
+                //transButton.onFocused.background = Texture2D.blackTexture;
+                //transButton.onNormal.background = Texture2D.blackTexture;
+                //transButton.onHover.background = Texture2D.blackTexture;
+                //transButton.fontStyle = FontStyle.Bold;
 
-                miniTransButton = new GUIStyle("miniButton");
-                miniTransButton.active.background = Texture2D.blackTexture;
-                miniTransButton.hover.background = Texture2D.blackTexture;
-                miniTransButton.focused.background = Texture2D.blackTexture;
-                miniTransButton.normal.background = Texture2D.blackTexture;
-                miniTransButton.onActive.background = Texture2D.blackTexture;
-                miniTransButton.onFocused.background = Texture2D.blackTexture;
-                miniTransButton.onNormal.background = Texture2D.blackTexture;
-                miniTransButton.onHover.background = Texture2D.blackTexture;
-                miniTransButton.active.textColor = Color.white;
-                miniTransButton.normal.textColor = Color.gray;
-                miniTransButton.normal.background = null;
-                miniTransButton.fontStyle = FontStyle.Normal;
-                miniTransButton.alignment = TextAnchor.MiddleLeft;
+                //miniTransButton = new GUIStyle("miniButton");
+                //miniTransButton.active.background = Texture2D.blackTexture;
+                //miniTransButton.hover.background = Texture2D.blackTexture;
+                //miniTransButton.focused.background = Texture2D.blackTexture;
+                //miniTransButton.normal.background = Texture2D.blackTexture;
+                //miniTransButton.onActive.background = Texture2D.blackTexture;
+                //miniTransButton.onFocused.background = Texture2D.blackTexture;
+                //miniTransButton.onNormal.background = Texture2D.blackTexture;
+                //miniTransButton.onHover.background = Texture2D.blackTexture;
+                //miniTransButton.active.textColor = Color.white;
+                //miniTransButton.normal.textColor = Color.gray;
+                //miniTransButton.normal.background = null;
+                //miniTransButton.fontStyle = FontStyle.Normal;
+                //miniTransButton.alignment = TextAnchor.MiddleLeft;
 
-                transFoldout = new GUIStyle("Foldout");
-                transFoldout.alignment = TextAnchor.MiddleCenter;
-                transFoldout.contentOffset = Vector2.zero;
+                //transFoldout = new GUIStyle("Foldout");
+                //transFoldout.alignment = TextAnchor.MiddleCenter;
+                //transFoldout.contentOffset = Vector2.zero;
 
-                tabToolBar = new GUIStyle("dragtab");
-                //tabToolBar.onNormal.textColor = Color.white;
-                tabToolBar.fontSize = 9;
-                tabToolBar.alignment = TextAnchor.MiddleCenter;
+                //tabToolBar = new GUIStyle("dragtab");
+                ////tabToolBar.onNormal.textColor = Color.white;
+                //tabToolBar.fontSize = 9;
+                //tabToolBar.alignment = TextAnchor.MiddleCenter;
                 centeredMinilabel = new GUIStyle();
                 centeredMinilabel.alignment = TextAnchor.MiddleCenter;
                 centeredMiniBoldLabel = new GUIStyle();
