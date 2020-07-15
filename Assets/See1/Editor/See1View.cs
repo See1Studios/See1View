@@ -2638,6 +2638,10 @@ namespace See1
                 };
                 reorderableObjectList.drawElementCallback = (position, index, isActive, isFocused) =>
                 {
+                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
+                    {
+                        Selection.activeGameObject = animatedList[index].gameObject;
+                    }
                     float rectWidth = position.width;
                     float rectHeight = position.height;
                     float tglWidth = 15;
@@ -2670,6 +2674,7 @@ namespace See1
                         }
                     }
                 };
+
                 reorderableObjectList.drawFooterCallback = position =>
                 {
                     //    var btn20 = position.width * 0.2f;
@@ -2847,8 +2852,9 @@ namespace See1
                     var btn25 = position.width * 0.25f;
                     var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
+
                     position.width = btn50;
-                    if (GUI.Button(position, "Check all", EditorStyles.miniButtonLeft))
+                    if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
                     {
                         foreach (var info in clipInfoList)
                         {
@@ -2860,7 +2866,7 @@ namespace See1
 
                     position.x += position.width;
                     position.width = btn50;
-                    if (GUI.Button(position, "Unckeck all", EditorStyles.miniButtonRight))
+                    if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
                     {
                         foreach (var info in clipInfoList)
                         {
@@ -2891,7 +2897,7 @@ namespace See1
                 reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
             }
 
-            public void InitAnimatorAndClips(Animator animator)
+            void InitAnimatorAndClips(Animator animator)
             {
                 foreach (var animated in animatedList.ToArray())
                 {
@@ -2908,10 +2914,23 @@ namespace See1
                         }
                     }
                 }
+                RefreshPlayList();
+            }
+
+            public void AddAnimated(GameObject go, bool collectClip = true)
+            {
+                var animated = new Animated(go);
+                animatedList.Add(animated);
+                if (collectClip)
+                {
+                    InitAnimatorAndClips(animated.animator);
+                }
             }
 
             public void AddClip(AnimationClip clip)
             {
+                var clips = clipInfoList.Select(x => x.clip).ToList();
+                if (clips.Contains(clip)) return;
                 clipInfoList.Add(new ClipInfo(clip));
                 RefreshPlayList();
             }
@@ -2985,10 +3004,10 @@ namespace See1
                     //    GUILayout.Label(string.Format("Play Speed : {0}", timeSpeed.ToString("0.0")),
                     //        "LODSliderTextSelected");
                     //}
-                    EditorGUILayout.Space();
+                    GUILayout.Space(20);
                     var progressRect =
                         EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
-                    progressRect = new RectOffset(4, 4, 0, 0).Remove(progressRect);
+                    progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
                     time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none,
                         GUIStyle.none);
                     float length = GetCurrentClipLength();
@@ -2996,12 +3015,48 @@ namespace See1
                     EditorGUI.ProgressBar(progressRect, progress,
                         string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
 
+                    foreach (var animEvent in _currentClip.events)
+                    {
+                        var timePos = progressRect.x + (progressRect.width * animEvent.time / _currentClip.length);
+
+                        //marker
+                        GUIContent marker = EditorGUIUtility.IconContent("Icon.Event");
+                        var markerPos = new Vector2(timePos, progressRect.y);
+                        Rect markerRect = new Rect(markerPos, GUIStyle.none.CalcSize(marker));
+                        if (GUI.Button(markerRect, "", "Icon.Event"))
+                        {
+
+                        }
+                        //button
+                        GUIContent btn = EditorGUIUtility.IconContent("Icon.Event");
+                        var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
+                        Rect btnRect = new Rect(btnPos, GUIStyle.none.CalcSize(btn));
+                        if (GUI.Button(btnRect, btn, "AnimationEventTooltip"))
+                        {
+
+                        }
+                        //var x = progressRect.width * animEvent.time / _currentClip.length;
+                        //var y = progressRect.y;// - progressRect.height;
+                        //var style = new GUIStyle("AnimationEventTooltip");
+                        //var label = TimeToFrame(animEvent.time).ToString() + animEvent.functionName;
+                        //var icon = EditorGUIUtility.IconContent("Icon.Event");
+                        //var labelRect = style.CalcSize(new GUIContent(label));
+                        //var btnRect = style.CalcSize(EditorGUIUtility.IconContent("Icon.Event"));
+                        //var height = progressRect.height;
+                        //var buttonRect = new Rect(x, y, btnRect.x, height);
+                        //if (GUI.Button(buttonRect, icon, "Icon.Event"))
+                        //{
+
+                        //}
+                    }
+
                     using (var hr = new EditorGUILayout.HorizontalScope())
                     {
-                        EditorGUI.DropShadowLabel(hr.rect, string.Format("{0}", currentClipInfo.ToString()), EditorStyles.miniLabel);
+                        var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
+                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.ToString()), EditorStyles.miniLabel);
                         GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
                         style.alignment = TextAnchor.MiddleRight;
-                        EditorGUI.DropShadowLabel(hr.rect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
+                        EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
                         GUILayout.FlexibleSpace();
 
                         //if (GUILayout.Button(isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50),
@@ -3035,23 +3090,29 @@ namespace See1
 
                         }
 
+                        if (Mathf.Approximately(timeSpeed, 0.5f)) GUI.backgroundColor = Color.cyan;
                         if (GUILayout.Button("0.5x", "ButtonMid", GUILayout.Height(30)))
                         {
                             timeSpeed = 0.5f;
 
                         }
+                        GUI.backgroundColor = Color.white;
 
+                        if (Mathf.Approximately(timeSpeed, 1.0f)) GUI.backgroundColor = Color.cyan;
                         if (GUILayout.Button("1.0x", "ButtonMid", GUILayout.Height(30)))
                         {
                             timeSpeed = 1.0f;
 
                         }
+                        GUI.backgroundColor = Color.white;
 
+                        if (Mathf.Approximately(timeSpeed, 2.0f)) GUI.backgroundColor = Color.cyan;
                         if (GUILayout.Button("2.0x", "ButtonMid", GUILayout.Height(30)))
                         {
                             timeSpeed = 2.0f;
 
                         }
+                        GUI.backgroundColor = Color.white;
 
                         if (GUILayout.Button("+", "ButtonRight", GUILayout.Height(30)))
                         {
@@ -4284,14 +4345,7 @@ namespace See1
                 {
                     Animator animator = animators[i];
                     AnimationPlayer player = new AnimationPlayer();
-                    player.animatedList.Add(new AnimationPlayer.Animated(animator.gameObject));
-                    if (animator.runtimeAnimatorController != null)
-                    {
-                        foreach (var clip in animator.runtimeAnimatorController.animationClips)
-                        {
-                            player.AddClip(clip);
-                        }
-                    }
+                    player.AddAnimated(animator.gameObject);
                     player.onStopPlaying = onStopPlaying;
                     _playerList.Add(player);
                     _isShowingABList.Add(new AnimBool((i == 0) ? true : false));
@@ -5304,7 +5358,7 @@ namespace See1
         void OnGUI_AnimationControl(Rect r)
         {
             if (!_overlayEnabled) return;
-            Rect area = new RectOffset(4, 4, 4, 4).Remove(r);
+            Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
             using (new GUILayout.AreaScope(area))
             {
                 if (_playerList.Count == 0) return;
