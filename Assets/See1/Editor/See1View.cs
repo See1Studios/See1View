@@ -64,7 +64,7 @@ namespace See1
             View,
             Model,
             Animation,
-            Tools
+            Misc
         }
 
         public enum ClearFlags
@@ -4391,10 +4391,10 @@ namespace See1
 
             Shortcuts.AddBlank(new GUIContent("L Mouse Drag - Rotate Camera"));
             Shortcuts.AddBlank(new GUIContent("R Mouse Drag - Rotate Light"));
-            Shortcuts.AddBlank(new GUIContent("L Mouse Double Click - Reset Distance"));
+            Shortcuts.AddBlank(new GUIContent("L Mouse Double Click - Refarame"));
             Shortcuts.AddBlank(new GUIContent("R Mouse Double Click - Reset Light"));
 
-            Shortcuts.AddBlank(new GUIContent("---------------------------------------"));
+            Shortcuts.AddBlank(new GUIContent("-------------------------------------"));
 
             Shortcuts.Add(KeyCode.Alpha0, new GUIContent("ApplyView 0"), () => ApplyView(0));
             Shortcuts.Add(KeyCode.Alpha1, new GUIContent("ApplyView 1"), () => ApplyView(1));
@@ -4407,7 +4407,7 @@ namespace See1
             Shortcuts.Add(KeyCode.Alpha8, new GUIContent("ApplyView 8"), () => ApplyView(8));
             Shortcuts.Add(KeyCode.Alpha9, new GUIContent("ApplyView 9"), () => ApplyView(9));
 
-            Shortcuts.AddBlank(new GUIContent("---------------------------------------"));
+            Shortcuts.AddBlank(new GUIContent("-------------------------------------"));
 
             Shortcuts.Add(KeyCode.F, new GUIContent("Front View"), () => _destRot = new Vector2(180, 0));
             Shortcuts.Add(KeyCode.K, new GUIContent("Back View"), () => _destRot = Vector2.zero);
@@ -4420,7 +4420,7 @@ namespace See1
             Shortcuts.Add(KeyCode.A, new GUIContent("Move Left"), () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(-0.01f, 0));
             Shortcuts.Add(KeyCode.D, new GUIContent("Move Right"), () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(0.01f, 0));
 
-            Shortcuts.AddBlank(new GUIContent("---------------------------------------"));
+            Shortcuts.AddBlank(new GUIContent("-------------------------------------"));
 
             Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () => { _gridEnabled = !_gridEnabled; ApplyCommandBuffers();});
             Shortcuts.Add(KeyCode.P, new GUIContent("Toggle Perspective"), () => _preview.camera.orthographic = !_preview.camera.orthographic);
@@ -5342,7 +5342,7 @@ namespace See1
                             case SidePanelMode.Animation:
                                 OnGUI_Animation();
                                 break;
-                            case SidePanelMode.Tools:
+                            case SidePanelMode.Misc:
                                 OnGUI_Tools();
                                 break;
                         }
@@ -6050,7 +6050,7 @@ namespace See1
 
         void OnGUI_Tools()
         {
-            EditorHelper.Foldout(true, "Settings");
+            EditorHelper.Foldout(true, "Manage Data");
             //settings.autoLoad = GUILayout.Toggle(settings.autoLoad, "Auto Load Selection", "Button", GUILayout.Height(32));
 
             using (new EditorGUI.DisabledScope(!EditorPrefs.HasKey(See1ViewSettings.key)))
@@ -6093,7 +6093,7 @@ namespace See1
                 }
             });
 
-            EditorHelper.Foldout(true, "View");
+            EditorHelper.Foldout(true, "Manage View");
             EditorHelper.GridLayout(settings.current.viewList.Count, 2, (i) =>
             {
                 using (EditorHelper.Horizontal.Do())
@@ -6107,7 +6107,7 @@ namespace See1
                 }
             });
 
-            EditorHelper.Foldout(true, "Lighting");
+            EditorHelper.Foldout(true, "Manage Lighting");
             EditorHelper.GridLayout(settings.current.lightingList.Count, 2, (i) =>
             {
                 using (EditorHelper.Horizontal.Do())
@@ -6121,11 +6121,14 @@ namespace See1
                 }
             });
 
-            EditorHelper.Foldout(true, "Camera Target");
+            EditorHelper.Foldout(true, "Resources");
             EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
             EditorGUILayout.ObjectField(_wireMaterial, typeof(Material), false);
             EditorGUILayout.ObjectField(_shadowMaterial, typeof(Material), false);
             EditorGUILayout.ObjectField(_depthNormalMaterial, typeof(Material), false);
+
+
+            EditorHelper.Foldout(true, "Updater");
             if (Updater.outOfDate)
             {
                 EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Error);
@@ -6138,8 +6141,10 @@ namespace See1
             {
                 EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Info);
             }
+            EditorHelper.Foldout(true, "Shortcuts");
             EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.Info);
             EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.",EditorStyles.centeredGreyMiniLabel);
+            EditorGUILayout.LabelField("Jongwoo Park", EditorStyles.centeredGreyMiniLabel);
             //GUILayout.Label("© 2020 See1 Studios All right reserved.", EditorStyles.miniLabel);
             //settings.mouseAccelerationEnabled = GUILayout.Toggle(settings.mouseAccelerationEnabled, "Mouse Acceleration Enabled", "Button", GUILayout.Height(32));
             //            using (EditorHelper.Horizontal.Do())
@@ -7427,7 +7432,7 @@ namespace See1
 
         #endregion
 
-        [MenuItem("Tools/See1/See1View", false, 0)]
+        [MenuItem("Tools/See1Studios/Open See1View", false, 0)]
         private static void Init()
         {
             See1View window = EditorWindow.GetWindow<See1View>(Description.title.text);
