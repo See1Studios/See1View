@@ -2074,7 +2074,11 @@ namespace See1
         {
             static StringBuilder sb = new StringBuilder();
             static Dictionary<KeyCode,UnityAction> shortcutDic = new Dictionary<KeyCode, UnityAction>();
-
+            public static void AddBlank(GUIContent desc)
+            {
+                sb.AppendFormat("{0}", desc.text);
+                sb.AppendLine();
+            }
             public static void Add(KeyCode input,GUIContent desc, UnityAction action)
             {
                 shortcutDic.Add(input,action);
@@ -2088,7 +2092,7 @@ namespace See1
                 sb.Length = 0;
             }
 
-            public static void WaitInput(KeyCode input)
+            public static void ProcessInput(KeyCode input)
             {
                 if (shortcutDic.ContainsKey(input))
                 {
@@ -4384,6 +4388,14 @@ namespace See1
         void RegisterShortcut()
         {
             Shortcuts.Clear();
+
+            Shortcuts.AddBlank(new GUIContent("L Mouse Drag - Rotate Camera"));
+            Shortcuts.AddBlank(new GUIContent("R Mouse Drag - Rotate Light"));
+            Shortcuts.AddBlank(new GUIContent("L Mouse Double Click - Reset Distance"));
+            Shortcuts.AddBlank(new GUIContent("R Mouse Double Click - Reset Light"));
+
+            Shortcuts.AddBlank(new GUIContent("---------------------------------------"));
+
             Shortcuts.Add(KeyCode.Alpha0, new GUIContent("ApplyView 0"), () => ApplyView(0));
             Shortcuts.Add(KeyCode.Alpha1, new GUIContent("ApplyView 1"), () => ApplyView(1));
             Shortcuts.Add(KeyCode.Alpha2, new GUIContent("ApplyView 2"), () => ApplyView(2));
@@ -4394,18 +4406,24 @@ namespace See1
             Shortcuts.Add(KeyCode.Alpha7, new GUIContent("ApplyView 7"), () => ApplyView(7));
             Shortcuts.Add(KeyCode.Alpha8, new GUIContent("ApplyView 8"), () => ApplyView(8));
             Shortcuts.Add(KeyCode.Alpha9, new GUIContent("ApplyView 9"), () => ApplyView(9));
+
+            Shortcuts.AddBlank(new GUIContent("---------------------------------------"));
+
             Shortcuts.Add(KeyCode.F, new GUIContent("Front View"), () => _destRot = new Vector2(180, 0));
             Shortcuts.Add(KeyCode.K, new GUIContent("Back View"), () => _destRot = Vector2.zero);
             Shortcuts.Add(KeyCode.L, new GUIContent("Left View"), () => _destRot = new Vector2(90, 0));
             Shortcuts.Add(KeyCode.R, new GUIContent("Right View"), () => _destRot = new Vector2(-90, 0));
             Shortcuts.Add(KeyCode.T, new GUIContent("Top View"), () => _destRot = new Vector2(180, 90));
             Shortcuts.Add(KeyCode.B, new GUIContent("Bottom View"), () => _destRot = new Vector2(180, -90));
-            Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () => { _gridEnabled = !_gridEnabled; ApplyCommandBuffers();});
-            Shortcuts.Add(KeyCode.P, new GUIContent("Toggle Perspective"), () => _preview.camera.orthographic = !_preview.camera.orthographic);
             Shortcuts.Add(KeyCode.W, new GUIContent("Move Toward"), () => _destDistance -= 0.01f);
             Shortcuts.Add(KeyCode.S, new GUIContent("Move Backward"), () => _destDistance += 0.01f);
             Shortcuts.Add(KeyCode.A, new GUIContent("Move Left"), () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(-0.01f, 0));
             Shortcuts.Add(KeyCode.D, new GUIContent("Move Right"), () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(0.01f, 0));
+
+            Shortcuts.AddBlank(new GUIContent("---------------------------------------"));
+
+            Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () => { _gridEnabled = !_gridEnabled; ApplyCommandBuffers();});
+            Shortcuts.Add(KeyCode.P, new GUIContent("Toggle Perspective"), () => _preview.camera.orthographic = !_preview.camera.orthographic);
             Shortcuts.Add(KeyCode.F1, new GUIContent("Render"), () => RenderAndSaveFile());
             Shortcuts.Add(KeyCode.F2, new GUIContent("Toggle Color"), () => { _colorEnabled = !_colorEnabled; ApplyCommandBuffers(); });
             Shortcuts.Add(KeyCode.F3, new GUIContent("Toggle Wireframe"), () => { _wireFrameEnabled = !_wireFrameEnabled; ApplyCommandBuffers(); });
@@ -6120,7 +6138,6 @@ namespace See1
             {
                 EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Info);
             }
-
             EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.Info);
             EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.",EditorStyles.centeredGreyMiniLabel);
             //GUILayout.Label("© 2020 See1 Studios All right reserved.", EditorStyles.miniLabel);
@@ -6955,7 +6972,7 @@ namespace See1
             //Keybord Shortcut
             if (_shortcutEnabled && evt.isKey && evt.type == EventType.KeyDown && !EditorGUIUtility.editingTextField)
             {
-                Shortcuts.WaitInput(evt.keyCode);
+                Shortcuts.ProcessInput(evt.keyCode);
 
                 GUIUtility.ExitGUI();
             }
