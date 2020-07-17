@@ -118,6 +118,7 @@ Shader "See1View/DepthNormal"
 	Properties
 	{
 		_MainTex ("Texture", 2D) = "white" {}
+        _Seperate ("Seperate", range(0, 1)) = 0.5
 	}
 	SubShader
 	{
@@ -135,6 +136,7 @@ Shader "See1View/DepthNormal"
 			sampler2D _MainTex;
 			sampler2D _CameraDepthNormalsTexture;
 			float4 _CameraDepthNormalsTexture_TexelSize;
+            half _Seperate;
 
 			struct appdata
 			{
@@ -158,14 +160,23 @@ Shader "See1View/DepthNormal"
 
 			fixed4 frag (v2f i) : SV_Target
 			{
-				fixed3 tex = tex2D(_MainTex, i.uv).rgb;
-				fixed4 col = tex2D(_CameraDepthNormalsTexture, i.uv);
-				float depth;
-				float3 normal;
-				DecodeDepthNormal(col, depth, normal);
-				//fixed grayscale = Luminance(tex.rgb);
-				//return float4(grayscale,grayscale,grayscale, 1);
-				return float4(normal, 1);
+                float4 col = float4(1, 0, 0, 1);
+				if (i.vertex.x > _CameraDepthNormalsTexture_TexelSize.z / (1 / _Seperate))
+                {
+					fixed3 tex = tex2D(_MainTex, i.uv).rgb;
+					fixed4 dn = tex2D(_CameraDepthNormalsTexture, i.uv);
+					float depth;
+					float3 normal;
+					DecodeDepthNormal(dn, depth, normal);
+					//fixed grayscale = Luminance(tex.rgb);
+					//return float4(grayscale,grayscale,grayscale, 1);
+					col = float4(normal, 1);
+				}                
+				else
+                {
+                    col = tex2D(_MainTex, i.uv);
+                }
+                return col;
 			}
 			ENDCG
 		}

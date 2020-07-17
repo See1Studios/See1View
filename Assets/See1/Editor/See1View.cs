@@ -79,6 +79,13 @@ namespace See1
             Rename
         }
 
+        public enum DebugViewMode
+        {
+            None,
+            Depth,
+            Normal
+        }
+
         #endregion
 
         #region Inner Classes
@@ -311,8 +318,21 @@ namespace See1
 
         public class Shaders
         {
-            private static Shader _planarShadow;
+            private static Shader _heightFog;
+            public static Shader heightFog
+            {
+                get
+                {
+                    if (_heightFog == null)
+                    {
+                        _heightFog = ShaderUtil.CreateShaderAsset(
+                            "Shader \"See1View/HeightFog\"\n{\nProperties\n{\n_Height (\"Height\", Float) = 2\n_Ground (\"Ground\", Float) = 0\n_Color (\"Color\", Color) = (0, 0, 0, 0)\n}\n\nSubShader\n{\nTags { \"RenderType\" = \"Opaque\" }\nLOD 100\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n//Blend Zero SrcColor\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n\nstruct appdata_t\n{\nfloat4 vertex: POSITION;\n};\n\nstruct v2f\n{\nfloat4 vertex: SV_POSITION;\nfloat3 worldPos: TEXCOORD0;\n};\n\nfixed _Height;\nfixed _Ground;\nfixed4 _Color;\n\n// remap value to 0-1 range\nfloat remap(float value, float minSource, float maxSource)\n{\nreturn(value - minSource) / (maxSource - minSource);\n}\n\nv2f vert(appdata_t v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;\nreturn o;\n}\n\nfixed4 frag(v2f i): COLOR\n{\nfixed4 c = fixed4(0, 0, 0, 0);\nfloat bottom = _Ground;\nfloat top = _Ground + _Height;\nfloat v = remap(clamp(i.worldPos.y, bottom, top), bottom, top);\nfixed4 t = fixed4(0,0,0,0);\nc = lerp(_Color, t, v);\nreturn c;\n}\nENDCG\n\n}\n}\n}");
+                    }
+                    return _heightFog;
+                }
+            }
 
+            private static Shader _planarShadow;
             public static Shader planarShadow
             {
                 get
@@ -325,6 +345,7 @@ namespace See1
                     return _planarShadow;
                 }
             }
+
             private static Shader _wireFrame;
             public static Shader wireFrame
             {
@@ -338,6 +359,21 @@ namespace See1
                     return _wireFrame;
                 }
             }
+
+            private static Shader _depth;
+            public static Shader depth
+            {
+                get
+                {
+                    if (_depth == null)
+                    {
+                        _depth = ShaderUtil.CreateShaderAsset(
+                            "Shader \"See1View/Depth\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n			\nsampler2D _MainTex;\nsampler2D _CameraDepthTexture;\nfloat4 _CameraDepthTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthTexture_TexelSize.z / (1 / _Seperate))\n{\nfloat depth = tex2D(_CameraDepthTexture, i.uv).r;\ncol = float4(depth, depth, depth, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}\n");
+                    }
+                    return _depth;
+                }
+            }
+
             private static Shader _depthNormal;
             public static Shader depthNormal
             {
@@ -346,7 +382,7 @@ namespace See1
                     if (_depthNormal == null)
                     {
                         _depthNormal = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/DepthNormal\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" {}\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n\nsampler2D _MainTex;\nsampler2D _CameraDepthNormalsTexture;\nfloat4 _CameraDepthNormalsTexture_TexelSize;\n\nstruct appdata\n{\nfloat4 vertex : POSITION;\nfloat2 uv : TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv : TEXCOORD0;\nfloat4 vertex : SV_POSITION;\n};\n\nv2f vert (appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\nfixed4 frag (v2f i) : SV_Target\n{\nfixed3 tex = tex2D(_MainTex, i.uv).rgb;\nfixed4 col = tex2D(_CameraDepthNormalsTexture, i.uv);\nfloat depth;\nfloat3 normal;\nDecodeDepthNormal(col, depth, normal);\n//fixed grayscale = Luminance(tex.rgb);\n//return float4(grayscale,grayscale,grayscale, 1);\nreturn float4(normal, 1);\n}\nENDCG\n}\n}\n}");
+                            "Shader \"See1View/DepthNormal\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n\nsampler2D _MainTex;\nsampler2D _CameraDepthNormalsTexture;\nfloat4 _CameraDepthNormalsTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthNormalsTexture_TexelSize.z / (1 / _Seperate))\n{\nfixed3 tex = tex2D(_MainTex, i.uv).rgb;\nfixed4 dn = tex2D(_CameraDepthNormalsTexture, i.uv);\nfloat depth;\nfloat3 normal;\nDecodeDepthNormal(dn, depth, normal);\ncol = float4(normal, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}");
                     }
                     return _depthNormal;
                 }
@@ -596,6 +632,9 @@ namespace See1
             public int viewportMultiplier = 2;
             public Color planeShadowColor = Color.gray;
             public bool enablePlaneShadows = true;
+            public Color heightFogColor = new Color(0,0,0,0.5f);
+            public bool enableHeightFog = true;
+            public float heightFogHeight = 1;
             public bool enableShadows = true;
             public float shadowBias = 0.01f;
             public bool enableSRP = false;
@@ -1644,8 +1683,12 @@ namespace See1
                     {
                         return DragAndDropVisualMode.None;
                     }
+                    if (!AssetDatabase.Contains(go)) continue; //Project View Asset
                     //프로젝트 뷰에서 드래그하면 인스턴스를 만들어 Add 하도록 해봄
-                    if(onDragObject!=null) onDragObject(go);
+                    if (onDragObject != null)
+                    {
+                       onDragObject(go);
+                    }
                     //transforms.Add(go.transform);
                 }
 
@@ -4219,9 +4262,18 @@ namespace See1
         CommandBuffer _shadowCommandBuffer;
         bool _shadowEnabled;
 
-        Material _depthNormalMaterial;
+        Material _heightFogMaterial;
+        CommandBuffer _heightFogCommandBuffer;
+
+        Material _depthMaterial;
+        CommandBuffer _depthCommandBuffer;
+        bool _depthEnabled;
+
+         Material _depthNormalMaterial;
         CommandBuffer _depthNormalCommandBuffer;
         bool _depthNormalEnabled;
+
+        float _screenSeparate;
 
         Material _gridMaterial;
         CommandBuffer _gridCommandBuffer;
@@ -4230,10 +4282,12 @@ namespace See1
         int _gridSize = 100;
         Color _gridColor = new Color(.5f, .5f, .5f, .5f);
 
+        DebugViewMode _debugViewMode = DebugViewMode.None;
         GizmoMode _gizmoMode = 0;
         int _previewLayer;
         bool _updateFOV;
 
+        private float _destFOV;
         Vector2 _destRot = new Vector2(180, 0);
         //Vector2 _destLightRot = new Vector2(180, 0);
         Vector3 _destPivotPos;
@@ -4332,9 +4386,9 @@ namespace See1
                 UpdateLight(rot);
             }
 
-            FPS.Calculate(_deltaTime);
             SetMaterial();
             UpdateAnimation(_deltaTime);
+            FPS.Calculate(_deltaTime);
             Repaint();
         }
 
@@ -4422,12 +4476,12 @@ namespace See1
 
             Shortcuts.AddBlank(new GUIContent("-------------------------------------"));
 
-            Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () => { _gridEnabled = !_gridEnabled; ApplyCommandBuffers();});
+            Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () => { _gridEnabled = !_gridEnabled; ApplyModelCommandBuffers();});
             Shortcuts.Add(KeyCode.P, new GUIContent("Toggle Perspective"), () => _preview.camera.orthographic = !_preview.camera.orthographic);
             Shortcuts.Add(KeyCode.F1, new GUIContent("Render"), () => RenderAndSaveFile());
-            Shortcuts.Add(KeyCode.F2, new GUIContent("Toggle Color"), () => { _colorEnabled = !_colorEnabled; ApplyCommandBuffers(); });
-            Shortcuts.Add(KeyCode.F3, new GUIContent("Toggle Wireframe"), () => { _wireFrameEnabled = !_wireFrameEnabled; ApplyCommandBuffers(); });
-            Shortcuts.Add(KeyCode.F4, new GUIContent("Toggle Shadow"), () => { settings.current.enablePlaneShadows = !settings.current.enablePlaneShadows; ApplyCommandBuffers(); });
+            Shortcuts.Add(KeyCode.F2, new GUIContent("Toggle Color"), () => { _colorEnabled = !_colorEnabled; ApplyModelCommandBuffers(); });
+            Shortcuts.Add(KeyCode.F3, new GUIContent("Toggle Wireframe"), () => { _wireFrameEnabled = !_wireFrameEnabled; ApplyModelCommandBuffers(); });
+            Shortcuts.Add(KeyCode.F4, new GUIContent("Toggle Shadow"), () => { settings.current.enablePlaneShadows = !settings.current.enablePlaneShadows; ApplyModelCommandBuffers(); });
             Shortcuts.Add(KeyCode.Escape, new GUIContent("Toggle Gizmo"), () => _gizmoMode = ~_gizmoMode);
             Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"), () => _playerList.FirstOrDefault().TogglePlay());
             Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"), () => _overlayEnabled = !_overlayEnabled);
@@ -4512,7 +4566,7 @@ namespace See1
 
                 Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
                 SetAnimation(_targetGo, true);
-                ApplyCommandBuffers();
+                ApplyModelCommandBuffers();
                 Repaint();
                 //_fade.target = true;
                 //_fade.target = false;
@@ -4580,6 +4634,16 @@ namespace See1
             //_shadowMaterial = new Material(FindShader("See1View/PlanarShadow")); //PreviewCamera RT has no stencil buffer. OTL
             _shadowMaterial = new Material(Shaders.planarShadow);
 
+            _heightFogCommandBuffer = new CommandBuffer();
+            _heightFogCommandBuffer.name = string.Format("{0} {1}", this.name, "HeightFog");
+            //_heightFogMaterial = new Material(FindShader("See1View/HeightFog")); //PreviewCamera RT has no stencil buffer. OTL
+            _heightFogMaterial = new Material(Shaders.heightFog);
+
+            _depthCommandBuffer = new CommandBuffer();
+            _depthCommandBuffer.name = string.Format("{0} {1}", this.name, "Depth");
+            _depthMaterial = new Material(Shaders.depth);
+            //_depthMaterial = new Material(FindShader("See1View/Depth"));
+
             _depthNormalCommandBuffer = new CommandBuffer();
             _depthNormalCommandBuffer.name = string.Format("{0} {1}", this.name, "DepthNormal");
             _depthNormalMaterial = new Material(Shaders.depthNormal);
@@ -4629,6 +4693,21 @@ namespace See1
                 _shadowCommandBuffer = null;
             }
             if (_shadowMaterial) DestroyImmediate(_shadowMaterial);
+
+            if (_heightFogCommandBuffer != null)
+            {
+                _heightFogCommandBuffer.Dispose();
+                _heightFogCommandBuffer = null;
+            }
+            if (_heightFogMaterial) DestroyImmediate(_heightFogMaterial);
+
+
+            if (_depthCommandBuffer != null)
+            {
+                _depthCommandBuffer.Dispose();
+                _depthCommandBuffer = null;
+            }
+            if (_depthMaterial) DestroyImmediate(_depthMaterial);
 
             if (_depthNormalCommandBuffer != null)
             {
@@ -4696,6 +4775,21 @@ namespace See1
             {
                 _shadowMaterial.SetColor("_ShadowColor", currentData.planeShadowColor);
                 _shadowMaterial.SetFloat("_PlaneHeight", _targetInfo.bounds.min.y);
+            }
+            if (_heightFogMaterial)
+            {
+                _heightFogMaterial.SetColor("_Color", currentData.heightFogColor);
+                _heightFogMaterial.SetFloat("_Ground", _targetInfo.bounds.min.y);
+                _heightFogMaterial.SetFloat("_Height", currentData.heightFogHeight);
+            }
+
+            if (_depthMaterial)
+            {
+                _depthMaterial.SetFloat("_Seperate",_screenSeparate);
+            }
+            if (_depthNormalMaterial)
+            {
+                _depthNormalMaterial.SetFloat("_Seperate", _screenSeparate);
             }
         }
 
@@ -5487,11 +5581,11 @@ namespace See1
 
             using (EditorHelper.Horizontal.Do())
             {
-                _preview.camera.fieldOfView =
-                    EditorGUILayout.IntSlider("Field Of View", (int)_preview.camera.fieldOfView, 1, 179);
-                _preview.camera.orthographic =
-                    GUILayout.Toggle(_preview.camera.orthographic, _preview.camera.orthographic ? "O" : "P",
-                        EditorStyles.miniButton, GUILayout.Width(20));
+                using (EditorHelper.LabelWidth.Do(80))
+                {
+                    _destFOV = EditorGUILayout.IntSlider("Field Of View", (int)_destFOV, 1, 179);
+                    _preview.camera.orthographic = GUILayout.Toggle(_preview.camera.orthographic, _preview.camera.orthographic ? "O" : "P", EditorStyles.miniButton, GUILayout.Width(20));
+                }
             }
 
             using (EditorHelper.Horizontal.Do())
@@ -5691,65 +5785,53 @@ namespace See1
                 });
             }
 
-
-
-
             EditorHelper.Foldout(true, "Render");
 
             currentData.viewportMultiplier = GUILayout.Toggle((currentData.viewportMultiplier == 2), "Enable Viewport Supersampling", EditorStyles.miniButton) ? 2 : 1;
 
-            bool gridEnabled = _gridEnabled;
             bool wireFrameEnabled = _wireFrameEnabled;
             bool colorEnabled = _colorEnabled;
+            bool heightFogEnabled = currentData.enableHeightFog;
             bool shadowEnabled = currentData.enablePlaneShadows;
-            bool depthNormalEnabled = _depthNormalEnabled;
 
             using (EditorHelper.Horizontal.Do())
             {
-                _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton, GUILayout.Width(_labelWidth));
-                //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
-                SetGridBuffer(_gridEnabled);
-                _gridColor = EditorGUILayout.ColorField(_gridColor);
-            }
-
-            using (EditorHelper.Horizontal.Do())
-            {
-                _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton, GUILayout.Width(_labelWidth));
-                SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
+                _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton, GUILayout.Width(80));
+                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
                 _color = EditorGUILayout.ColorField(_color);
             }
 
             using (EditorHelper.Horizontal.Do())
             {
-                _wireFrameEnabled = GUILayout.Toggle(_wireFrameEnabled, "WireFrame", EditorStyles.miniButton, GUILayout.Width(_labelWidth));
-                SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
+                _wireFrameEnabled = GUILayout.Toggle(_wireFrameEnabled, "WireFrame", EditorStyles.miniButton, GUILayout.Width(80));
+                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
                 currentData.wireLineColor = EditorGUILayout.ColorField(currentData.wireLineColor);
             }
 
             using (EditorHelper.Horizontal.Do())
             {
-                currentData.enablePlaneShadows = GUILayout.Toggle(currentData.enablePlaneShadows, "PlaneShadow", EditorStyles.miniButton, GUILayout.Width(_labelWidth));
-                SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
+                currentData.enablePlaneShadows = GUILayout.Toggle(currentData.enablePlaneShadows, "PlaneShadow", EditorStyles.miniButton, GUILayout.Width(80));
+                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
                 currentData.planeShadowColor = EditorGUILayout.ColorField(currentData.planeShadowColor);
             }
 
             using (EditorHelper.Horizontal.Do())
             {
-                _depthNormalEnabled = GUILayout.Toggle(_depthNormalEnabled, "Normal Visualize", EditorStyles.miniButton);
-                _preview.camera.depthTextureMode = _depthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
-                SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, _depthNormalEnabled);
+                currentData.enableHeightFog = GUILayout.Toggle(currentData.enableHeightFog, "Height Fog", EditorStyles.miniButton, GUILayout.Width(80));
+                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
+                currentData.heightFogHeight = GUILayout.HorizontalSlider(currentData.heightFogHeight,_targetInfo.bounds.min.y + 0.0001f,_targetInfo.bounds.size.y);
+                currentData.heightFogColor = EditorGUILayout.ColorField(currentData.heightFogColor, GUILayout.Width(60));
             }
 
-            if (gridEnabled != _gridEnabled ||
-                wireFrameEnabled != _wireFrameEnabled ||
+            if (wireFrameEnabled != _wireFrameEnabled ||
                 colorEnabled != _colorEnabled ||
                 shadowEnabled != currentData.enablePlaneShadows ||
-                depthNormalEnabled != _depthNormalEnabled)
-            {
-                ApplyCommandBuffers();
-            }
+                heightFogEnabled != currentData.enableHeightFog)
+                {
+                    ApplyModelCommandBuffers();
+                }
 
-            EditorHelper.Foldout(true, "Post Process");
+                EditorHelper.Foldout(true, "Post Process");
 #if UNITY_POST_PROCESSING_STACK_V2
 
             using (var check = new EditorGUI.ChangeCheckScope())
@@ -5770,6 +5852,33 @@ namespace See1
 #else
                     EditorGUILayout.HelpBox("To use Post Process, add the Post Process Stack V2 package to your project.", MessageType.Info);
 #endif
+
+            EditorHelper.Foldout(true, "Debug View");
+            using (EditorHelper.Horizontal.Do())
+            {
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton, GUILayout.Width(80));
+                    if (check.changed)
+                    {
+                        //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
+                        SetGridBuffer(_gridEnabled);
+                    }
+                }
+                _gridColor = EditorGUILayout.ColorField(_gridColor);
+            }
+            using (EditorHelper.Horizontal.Do())
+            {
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    _debugViewMode = (DebugViewMode) GUILayout.Toolbar((int) _debugViewMode, Enum.GetNames(typeof(DebugViewMode)), EditorStyles.miniButton);
+                    if (check.changed)
+                    {
+                        ApplyCameraCommandBuffers();
+                    }
+                }
+            }
+            _screenSeparate = EditorGUILayout.Slider("Separate", _screenSeparate, 0, 1);
 
             EditorHelper.Foldout(true, "Gizmos");
             using (EditorHelper.Horizontal.Do())
@@ -6125,6 +6234,8 @@ namespace See1
             EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
             EditorGUILayout.ObjectField(_wireMaterial, typeof(Material), false);
             EditorGUILayout.ObjectField(_shadowMaterial, typeof(Material), false);
+            EditorGUILayout.ObjectField(_heightFogMaterial, typeof(Material), false);
+            EditorGUILayout.ObjectField(_depthMaterial, typeof(Material), false);
             EditorGUILayout.ObjectField(_depthNormalMaterial, typeof(Material), false);
 
 
@@ -7012,7 +7123,6 @@ namespace See1
 
             //Final
             _camTr.position = pivotPos - (rotation * Vector3.forward * _dist + _targetOffset);
-
             SetClipPlane();
 
             //Ortho
@@ -7020,6 +7130,7 @@ namespace See1
             {
                 _preview.camera.orthographicSize = _destDistance * _preview.cameraFieldOfView * 0.01f;
             }
+            _preview.cameraFieldOfView = Mathf.Lerp(_preview.cameraFieldOfView, _destFOV, _deltaTime * smoothFactor);
         }
 
         void UpdateLight(Vector2 axis)
@@ -7041,10 +7152,10 @@ namespace See1
         void ResetLight()
         {
             _preview.lights[0].transform.rotation = Quaternion.identity;
-            _preview.lights[0].color = new Color(0.769f, 0.769f, 0.769f, 0.0f);
+            _preview.lights[0].color = new Color(0.769f, 0.769f, 0.769f, 1.0f);
             _preview.lights[0].intensity = 1;
             _preview.lights[1].transform.rotation = Quaternion.Euler(340f, 218f, 177f);
-            _preview.lights[1].color = new Color(0.4f, 0.4f, 0.45f, 0.0f) * 0.7f;
+            _preview.lights[1].color = new Color(0.28f, 0.28f, 0.315f, 1.0f);
             _preview.lights[1].intensity = 1;
 
             var angle = new Vector3(0, -180, 0);
@@ -7110,7 +7221,7 @@ namespace See1
             _destRot = view.rotation;
             _destDistance = view.distance;
             _destPivotPos = view.pivot;
-            _preview.cameraFieldOfView = view.fieldOfView;
+            _destFOV = view.fieldOfView;
             Notice.Log(message, false);
         }
 
@@ -7138,14 +7249,32 @@ namespace See1
             Notice.Log(message, false);
         }
 
-        void ApplyCommandBuffers()
+        void ApplyModelCommandBuffers()
         {
-            SetGridBuffer(_gridEnabled);
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
-            _preview.camera.depthTextureMode = _depthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
-            SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, _depthNormalEnabled);
+        }
+
+        void ApplyCameraCommandBuffers()
+        {
+            RemoveBufferFromAllEvent(_preview.camera,_depthCommandBuffer);
+            RemoveBufferFromAllEvent(_preview.camera, _depthNormalCommandBuffer);
+            switch (_debugViewMode)
+            {
+                case DebugViewMode.None:
+                    _preview.camera.depthTextureMode = DepthTextureMode.None;
+                    break;
+                case DebugViewMode.Depth:
+                    _preview.camera.depthTextureMode = DepthTextureMode.Depth;
+                    SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthCommandBuffer, _depthMaterial, true);
+                    break;
+                case DebugViewMode.Normal:
+                    _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
+                    SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, true);
+                    break;
+            }
         }
 
         IEnumerator Interpolate(float value, float startValue, float endValue, float time)
@@ -7160,11 +7289,11 @@ namespace See1
             }
         }
 
-        #endregion
+    #endregion
 
-        #region Utils
+    #region Utils
 
-        public static List<GameObject> FindAllObjectsInScene()
+    public static List<GameObject> FindAllObjectsInScene()
         {
             UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
 
@@ -7218,7 +7347,7 @@ namespace See1
             {
                 string fallBackName = "Unlit/Color";
                 shader = Shader.Find(fallBackName);
-                Debug.LogWarning(string.Format("{0} Shader not found. Fallback to {1}", shaderName, fallBackName));
+                Debug.Log(string.Format("{0} Shader not found. Fallback to {1}", shaderName, fallBackName));
             }
             return shader;
         }
