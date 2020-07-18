@@ -28,6 +28,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using UnityEditor;
 using UnityEditor.AnimatedValues;
@@ -79,7 +80,7 @@ namespace See1
             Rename
         }
 
-        public enum DebugViewMode
+        public enum ViewMode
         {
             None,
             Depth,
@@ -91,7 +92,7 @@ namespace See1
         #region Inner Classes
 
         public class EditorCoroutine
-        {        
+        {
             public class EditorWaitForSeconds
             {
                 public double WaitTime { get; set; }
@@ -111,6 +112,7 @@ namespace See1
                     EditorCoroutine = 2,
                     AsyncOP = 3,
                 }
+
                 struct ProcessorData
                 {
                     public DataType type;
@@ -142,7 +144,7 @@ namespace See1
                         dataType = DataType.AsyncOP;
                     }
 
-                    data = new ProcessorData { current = yield, targetTime = targetTime, type = dataType };
+                    data = new ProcessorData {current = yield, targetTime = targetTime, type = dataType};
                 }
 
                 public bool MoveNext(IEnumerator enumerator)
@@ -160,7 +162,9 @@ namespace See1
                             advance = (data.current as AsyncOperation).isDone;
                             break;
                         default:
-                            advance = data.current == enumerator.Current; //a IEnumerator or a plain object was passed to the implementation
+                            advance = data.current ==
+                                      enumerator
+                                          .Current; //a IEnumerator or a plain object was passed to the implementation
                             break;
                     }
 
@@ -169,6 +173,7 @@ namespace See1
                         data = default(ProcessorData);
                         return enumerator.MoveNext();
                     }
+
                     return true;
                 }
             }
@@ -210,6 +215,7 @@ namespace See1
             }
 
             static Stack<IEnumerator> kIEnumeratorProcessingStack = new Stack<IEnumerator>(32);
+
             private bool ProcessIEnumeratorRecursive(IEnumerator enumerator)
             {
                 var root = enumerator;
@@ -268,6 +274,7 @@ namespace See1
                     Debug.LogAssertion("EditorCoroutine handle is null.");
                     return;
                 }
+
                 coroutine.Stop();
             }
         }
@@ -319,6 +326,7 @@ namespace See1
         public class Shaders
         {
             private static Shader _heightFog;
+
             public static Shader heightFog
             {
                 get
@@ -328,11 +336,13 @@ namespace See1
                         _heightFog = ShaderUtil.CreateShaderAsset(
                             "Shader \"See1View/HeightFog\"\n{\nProperties\n{\n_Height (\"Height\", Float) = 2\n_Ground (\"Ground\", Float) = 0\n_Color (\"Color\", Color) = (0, 0, 0, 0)\n}\n\nSubShader\n{\nTags { \"RenderType\" = \"Opaque\" }\nLOD 100\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n//Blend Zero SrcColor\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n\nstruct appdata_t\n{\nfloat4 vertex: POSITION;\n};\n\nstruct v2f\n{\nfloat4 vertex: SV_POSITION;\nfloat3 worldPos: TEXCOORD0;\n};\n\nfixed _Height;\nfixed _Ground;\nfixed4 _Color;\n\n// remap value to 0-1 range\nfloat remap(float value, float minSource, float maxSource)\n{\nreturn(value - minSource) / (maxSource - minSource);\n}\n\nv2f vert(appdata_t v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;\nreturn o;\n}\n\nfixed4 frag(v2f i): COLOR\n{\nfixed4 c = fixed4(0, 0, 0, 0);\nfloat bottom = _Ground;\nfloat top = _Ground + _Height;\nfloat v = remap(clamp(i.worldPos.y, bottom, top), bottom, top);\nfixed4 t = fixed4(0,0,0,0);\nc = lerp(_Color, t, v);\nreturn c;\n}\nENDCG\n\n}\n}\n}");
                     }
+
                     return _heightFog;
                 }
             }
 
             private static Shader _planarShadow;
+
             public static Shader planarShadow
             {
                 get
@@ -342,11 +352,13 @@ namespace See1
                         _planarShadow = ShaderUtil.CreateShaderAsset(
                             "Shader \"See1View/PlanarShadow\" \n{\n\nProperties {\n_ShadowColor (\"Shadow Color\", Color) = (0,0,0,1)\n_PlaneHeight (\"Plane Height\", Float) = 0\n}\n\nSubShader {\nTags {\"Queue\"=\"Transparent\" \"IgnoreProjector\"=\"True\" \"RenderType\"=\"Transparent\"}\n\n// shadow color\nPass {   \n\nZWrite On\nZTest LEqual \nBlend SrcAlpha  OneMinusSrcAlpha\n\nStencil {\nRef 0\nComp Equal\nPass IncrWrap\nZFail Keep\n}\n\nCGPROGRAM\n#include \"UnityCG.cginc\"\n\n// User-specified uniforms\nuniform float4 _ShadowColor;\nuniform float _PlaneHeight = 0;\n\nstruct vsOut\n{\nfloat4 pos: SV_POSITION;\n};\n\nvsOut vertPlanarShadow( appdata_base v)\n{\nvsOut o;\n                     \nfloat4 vPosWorld = mul( unity_ObjectToWorld, v.vertex);\nfloat4 lightDirection = -normalize(_WorldSpaceLightPos0); \n\nfloat opposite = vPosWorld.y - _PlaneHeight;\nfloat cosTheta = -lightDirection.y;// = lightDirection dot (0,-1,0)\nfloat hypotenuse = opposite / cosTheta;\nfloat3 vPos = vPosWorld.xyz + ( lightDirection * hypotenuse );\n\no.pos = mul (UNITY_MATRIX_VP, float4(vPos.x, _PlaneHeight, vPos.z ,1));  \n\nreturn o;\n}\n\nfloat4 fragPlanarShadow( vsOut i)\n{\nreturn _ShadowColor;\n}\n#pragma vertex vert\n#pragma fragment frag\n\nvsOut vert( appdata_base v)\n{\nreturn vertPlanarShadow(v);\n}\n\n\nfixed4 frag( vsOut i) : COLOR\n{\nreturn fragPlanarShadow(i);\n}\n\nENDCG\n\n}\n}\n}\n");
                     }
+
                     return _planarShadow;
                 }
             }
 
             private static Shader _wireFrame;
+
             public static Shader wireFrame
             {
                 get
@@ -356,11 +368,13 @@ namespace See1
                         _wireFrame = ShaderUtil.CreateShaderAsset(
                             "Shader \"See1View/Wireframe\"\n{\nProperties\n{\n_LineColor (\"LineColor\", Color) = (1,1,1,1)\n_FillColor (\"FillColor\", Color) = (0,0,0,0)\n_WireThickness (\"Wire Thickness\", RANGE(0, 800)) = 100\n[MaterialToggle] UseDiscard(\"Discard Fill\", Float) = 1\n[MaterialToggle] UVMode(\"UV Mode\", Float) = 0\n }\n\nSubShader\n{\nTags { \"RenderType\"=\"Opaque\" }\n\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n\nCGPROGRAM\n#pragma vertex vert\n#pragma geometry geom\n#pragma fragment frag\n#pragma multi_compile _ USEDISCARD_ON\n#pragma multi_compile _ UVMODE_ON\n#include \"UnityCG.cginc\"\n\nfloat _WireThickness;\n\nstruct appdata\n{\nfloat4 vertex : POSITION;\n};\n\nstruct v2g\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD1;\n};\n\nstruct g2f\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD0;\nfloat4 dist : TEXCOORD1;\n};\n\n\nv2g vert (appdata v)\n{\nv2g o;\n//UNITY_SETUP_INSTANCE_ID(v);\n//UNITY_INITIALIZE_OUTPUT(v2g, o);\n#ifdef UV_ON\nv.vertex = float4(v.uv.xy, 0.0, 1.0);\no.projectionSpaceVertex = mul(UNITY_MATRIX_P, v.vertex);\no.worldSpacePosition = mul(UNITY_MATRIX_P, v.vertex);\n//o.vertex = UnityObjectToClipPos(v.vertex);\n#else\no.projectionSpaceVertex = UnityObjectToClipPos(v.vertex);\no.worldSpacePosition = mul(unity_ObjectToWorld, v.vertex);\n#endif\nreturn o;\n}\n\n[maxvertexcount(3)]\nvoid geom(triangle v2g i[3], inout TriangleStream<g2f> triangleStream)\n{\nfloat2 p0 = i[0].projectionSpaceVertex.xy / i[0].projectionSpaceVertex.w;\nfloat2 p1 = i[1].projectionSpaceVertex.xy / i[1].projectionSpaceVertex.w;\nfloat2 p2 = i[2].projectionSpaceVertex.xy / i[2].projectionSpaceVertex.w;\n\nfloat2 edge0 = p2 - p1;\nfloat2 edge1 = p2 - p0;\nfloat2 edge2 = p1 - p0;\n\n// To find the distance to the opposite edge, we take the\n// formula for finding the area of a triangle Area = Base/2 * Height, \n// and solve for the Height = (Area * 2)/Base.\n// We can get the area of a triangle by taking its cross product\n// divided by 2.  However we can avoid dividing our area/base by 2\n// since our cross product will already be double our area.\nfloat area = abs(edge1.x * edge2.y - edge1.y * edge2.x);\nfloat wireThickness = 800 - _WireThickness;\n\ng2f o;\no.worldSpacePosition = i[0].worldSpacePosition;\no.projectionSpaceVertex = i[0].projectionSpaceVertex;\no.dist.xyz = float3( (area / length(edge0)), 0.0, 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[1].worldSpacePosition;\no.projectionSpaceVertex = i[1].projectionSpaceVertex;\no.dist.xyz = float3(0.0, (area / length(edge1)), 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[2].worldSpacePosition;\no.projectionSpaceVertex = i[2].projectionSpaceVertex;\no.dist.xyz = float3(0.0, 0.0, (area / length(edge2))) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n}\n\nuniform fixed4 _LineColor;\nuniform fixed4 _FillColor;\n\nfixed4 frag (g2f i) : SV_Target\n{\nfloat minDistanceToEdge = min(i.dist[0], min(i.dist[1], i.dist[2])) * i.dist[3];\n\n// Early out if we know we are not on a line segment.\nif(minDistanceToEdge > 0.9)\n{\n#ifdef USEDISCARD_ON\ndiscard;\n#else\nreturn _FillColor;\n#endif\n}\n\nreturn _LineColor;\n}\nENDCG\n}\n}\n}");
                     }
+
                     return _wireFrame;
                 }
             }
 
             private static Shader _depth;
+
             public static Shader depth
             {
                 get
@@ -370,11 +384,13 @@ namespace See1
                         _depth = ShaderUtil.CreateShaderAsset(
                             "Shader \"See1View/Depth\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n			\nsampler2D _MainTex;\nsampler2D _CameraDepthTexture;\nfloat4 _CameraDepthTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthTexture_TexelSize.z / (1 / _Seperate))\n{\nfloat depth = tex2D(_CameraDepthTexture, i.uv).r;\ncol = float4(depth, depth, depth, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}\n");
                     }
+
                     return _depth;
                 }
             }
 
             private static Shader _depthNormal;
+
             public static Shader depthNormal
             {
                 get
@@ -384,6 +400,7 @@ namespace See1
                         _depthNormal = ShaderUtil.CreateShaderAsset(
                             "Shader \"See1View/DepthNormal\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n\nsampler2D _MainTex;\nsampler2D _CameraDepthNormalsTexture;\nfloat4 _CameraDepthNormalsTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthNormalsTexture_TexelSize.z / (1 / _Seperate))\n{\nfixed3 tex = tex2D(_MainTex, i.uv).rgb;\nfixed4 dn = tex2D(_CameraDepthNormalsTexture, i.uv);\nfloat depth;\nfloat3 normal;\nDecodeDepthNormal(dn, depth, normal);\ncol = float4(normal, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}");
                     }
+
                     return _depthNormal;
                 }
             }
@@ -429,7 +446,7 @@ namespace See1
                 float a = !this.target ? 1f : 0.0f;
                 float b = 1f - a;
                 this.m_Value = Mathf.SmoothStep(a, b, this.lerpPosition);
-                return (double)this.m_Value > 0.5;
+                return (double) this.m_Value > 0.5;
             }
 
             public float Fade(float from, float to)
@@ -442,11 +459,13 @@ namespace See1
         {
             private EditorWindow window;
             private Rect _rect;
+
             public Rect rect
             {
                 get { return window ? window.position : _rect; }
                 set { _rect = value; }
             }
+
             //EditiorWindow GUI
             public SmoothAnimBool openTop;
             public SmoothAnimBool openLeft;
@@ -456,22 +475,27 @@ namespace See1
             public float bottomTargetHeight = 100;
             public float leftTargetWidth = 200;
             public float rightTargetWidth = 200;
+
             public float topHeight
             {
                 get { return openTop.faded * topTargetHeight; }
             }
+
             public float bottomHeight
             {
                 get { return openBottom.faded * bottomTargetHeight; }
             }
+
             public float leftWidth
             {
                 get { return openLeft.faded * leftTargetWidth; }
             }
+
             public float rightWidth
             {
                 get { return openRight.faded * rightTargetWidth; }
             }
+
             public Rect center
             {
                 get
@@ -485,10 +509,12 @@ namespace See1
             {
                 get { return new Rect(leftWidth, 0, rect.width - leftWidth - rightWidth, topHeight); }
             } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
+
             public Rect stretchedTop
             {
                 get { return new Rect(0, 0, rect.width, topHeight); }
             } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
+
             public Rect bottom
             {
                 get
@@ -497,26 +523,32 @@ namespace See1
                         bottomHeight);
                 }
             }
+
             public Rect stretchedBottom
             {
                 get { return new Rect(0, topHeight + center.height, rect.width, bottomHeight); }
             } // { width = rect.width, height = bottomHeight, x = 0, y = topHeight + center.height }; } }
+
             public Rect left
             {
                 get { return new Rect(0, topHeight, leftWidth, center.height); }
             } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
+
             public Rect stretchedLeft
             {
                 get { return new Rect(0, 0, leftWidth, rect.height); }
             } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
+
             public Rect right
             {
                 get { return new Rect(leftWidth + center.width, topHeight, rightWidth, center.height); }
             } // { width = rightWidth, height = center.height, x = leftWidth + center.width, y = topHeight }; } }
+
             public Rect stretchedRight
             {
                 get { return new Rect(leftWidth + center.width, 0, rightWidth, rect.height); }
             }
+
             public Rect full
             {
                 get { return new Rect(0, 0, rect.width, rect.height); }
@@ -613,6 +645,7 @@ namespace See1
         internal class Data : ICloneable
         {
             public string name;
+
             //private static bool _willBeDeleted = false;
             public Color wireLineColor = Color.white;
             public Color wireFillColor = Color.black;
@@ -632,14 +665,16 @@ namespace See1
             public int viewportMultiplier = 2;
             public Color planeShadowColor = Color.gray;
             public bool enablePlaneShadows = true;
-            public Color heightFogColor = new Color(0,0,0,0.5f);
+            public Color heightFogColor = new Color(0, 0, 0, 0.5f);
             public bool enableHeightFog = true;
             public float heightFogHeight = 1;
             public bool enableShadows = true;
             public float shadowBias = 0.01f;
             public bool enableSRP = false;
             public bool enablePostProcess = true;
+
             public string lastTargetPath = string.Empty;
+
             //public string skyMatPath = string.Empty;
             public string cubemapPath = string.Empty;
             public string profilePath = string.Empty;
@@ -653,6 +688,7 @@ namespace See1
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
             public GameObject _lastTarget;
+
             public GameObject lastTarget
 
             {
@@ -670,6 +706,7 @@ namespace See1
             }
 
             private Texture _cubeMap;
+
             public Texture cubeMap
             {
                 get { return _cubeMap ? _cubeMap : _cubeMap = AssetDatabase.LoadAssetAtPath<Cubemap>(cubemapPath); }
@@ -723,6 +760,7 @@ namespace See1
         class See1ViewSettings
         {
             private static See1ViewSettings _instance;
+
             public static See1ViewSettings instance
             {
                 get { return (_instance != null) ? _instance : Load(); }
@@ -731,24 +769,30 @@ namespace See1
 
             public List<Data> dataList = new List<Data>();
             public static TextAsset dataAsset;
+
             public Data current
             {
                 get { return dataList[dataIndex]; }
             }
 
             private int _dataIndex;
+
             public int dataIndex
             {
                 get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
                 set { _dataIndex = value; }
             }
+
             public static string[] dataNames
             {
                 get { return instance.dataList.Select((x) => x.name).ToArray(); }
             }
+
             public static string path = "Assets/Editor/See1ViewSettings.json";
+
             public static readonly string key = string.Format("{0}.{1}", "com.see1.See1View.settings",
                 GetProjectName().ToLower());
+
             public static bool _isDirty;
 
             public bool Add(string name)
@@ -759,11 +803,13 @@ namespace See1
                     name += "_1";
                     canAdd = CheckName(name);
                 }
+
                 Data data = new Data(name);
                 dataList.Add(data);
-                dataIndex = dataList.Count-1;
+                dataIndex = dataList.Count - 1;
                 return canAdd;
             }
+
             public bool RemoveCurrent()
             {
                 dataList.Remove(dataList[dataIndex]);
@@ -786,6 +832,7 @@ namespace See1
                     Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
                     return true;
                 }
+
                 return false;
             }
 
@@ -819,9 +866,10 @@ namespace See1
 
             public static void Save()
             {
-                var json = JsonUtility.ToJson(instance,true);
-                DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets","") + Path.GetDirectoryName(path));
-                if(!di.Exists) di.Create();
+                var json = JsonUtility.ToJson(instance, true);
+                DirectoryInfo di =
+                    new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
+                if (!di.Exists) di.Create();
                 AssetDatabase.Refresh();
                 File.WriteAllText(path, json);
                 AssetDatabase.Refresh();
@@ -896,6 +944,7 @@ namespace See1
                         SetDirty();
                     }
                 }
+
                 return canDuplicate;
             }
         }
@@ -938,6 +987,7 @@ namespace See1
                 {
                     m_Sources = new List<GameObject>();
                 }
+
                 if (m_Options == null)
                 {
                     m_Options = new AssembleOptions();
@@ -966,9 +1016,12 @@ namespace See1
             public View(Camera camera)
             {
                 this.name = camera.name;
-                this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y, camera.transform.rotation.eulerAngles.x);
-                var distanceToZero = Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
-                this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f,0.5f,0)) + camera.transform.rotation * Vector3.forward * distanceToZero;
+                this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y,
+                    camera.transform.rotation.eulerAngles.x);
+                var distanceToZero =
+                    Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
+                this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f, 0.5f, 0)) +
+                             camera.transform.rotation * Vector3.forward * distanceToZero;
                 this.distance = Vector3.Distance(camera.transform.position, this.pivot);
                 this.fieldOfView = camera.fieldOfView;
             }
@@ -985,6 +1038,7 @@ namespace See1
                 public Color lightColor;
                 public float intensity;
             }
+
             public string name;
             public List<LightInfo> lightList = new List<LightInfo>();
             public Color ambientSkyColor = Color.gray;
@@ -1003,6 +1057,7 @@ namespace See1
             public MeshRenderer[] meshRenderers;
             public SkinnedMeshRenderer[] skinnedMeshRenderers;
             public ParticleSystem[] particleSystems;
+
             public ParticleSystemRenderer[] particleSystemRenderers;
             //public Mesh[] meshes;
 
@@ -1253,8 +1308,10 @@ namespace See1
             }
 
             private List<Blitter> blitterList = new List<Blitter>();
+
             //private DepthTextureMode _mode = DepthTextureMode.None;
             private Camera _camera;
+
             public void Add(Camera camera, DepthTextureMode mode, Material mat)
             {
                 this._camera = camera;
@@ -1262,7 +1319,8 @@ namespace See1
                 _camera.depthTextureMode = mode;
                 foreach (var blitter in blitterList)
                 {
-                    blitter.rt = RenderTexture.GetTemporary(camera.targetTexture.width, _camera.targetTexture.height, 24);
+                    blitter.rt =
+                        RenderTexture.GetTemporary(camera.targetTexture.width, _camera.targetTexture.height, 24);
                     _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
                     blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
                     blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
@@ -1273,10 +1331,12 @@ namespace See1
         class FPS
         {
             static string formatedString = "{0} FPS ({1}ms)";
+
             static float ms
             {
-                get { return (float)System.Math.Round(1000f / fps, 1); }
+                get { return (float) System.Math.Round(1000f / fps, 1); }
             }
+
             public static float updateInterval = 0.25f;
             static float elapsedTime = 0;
             static float fps = 0.0F;
@@ -1290,7 +1350,7 @@ namespace See1
                     elapsedTime = 0;
                 }
 
-                fps = (float)System.Math.Round(fps, 1);
+                fps = (float) System.Math.Round(fps, 1);
             }
 
             public static string GetString()
@@ -1319,14 +1379,14 @@ namespace See1
                 Vector2 vSourceSize = new Vector2(pSource.width, pSource.height);
 
                 //*** Calculate New Size
-                float xWidth = Mathf.RoundToInt((float)size.x);
-                float xHeight = Mathf.RoundToInt((float)size.y);
+                float xWidth = Mathf.RoundToInt((float) size.x);
+                float xHeight = Mathf.RoundToInt((float) size.y);
 
                 //*** Make New
-                Texture2D oNewTex = new Texture2D((int)xWidth, (int)xHeight, TextureFormat.RGBA32, false);
+                Texture2D oNewTex = new Texture2D((int) xWidth, (int) xHeight, TextureFormat.RGBA32, false);
 
                 //*** Make destination array
-                int xLength = (int)xWidth * (int)xHeight;
+                int xLength = (int) xWidth * (int) xHeight;
                 Color[] aColor = new Color[xLength];
 
                 Vector2 vPixelSize = new Vector2(vSourceSize.x / xWidth, vSourceSize.y / xHeight);
@@ -1337,8 +1397,8 @@ namespace See1
                 {
 
                     //*** Figure out x&y
-                    float xX = (float)i % xWidth;
-                    float xY = Mathf.Floor((float)i / xWidth);
+                    float xX = (float) i % xWidth;
+                    float xY = Mathf.Floor((float) i / xWidth);
 
                     //*** Calculate Center
                     vCenter.x = (xX / xWidth) * vSourceSize.x;
@@ -1354,7 +1414,7 @@ namespace See1
                         vCenter.y = Mathf.Round(vCenter.y);
 
                         //*** Calculate source index
-                        int xSourceIndex = (int)((vCenter.y * vSourceSize.x) + vCenter.x);
+                        int xSourceIndex = (int) ((vCenter.y * vSourceSize.x) + vCenter.x);
 
                         //*** Copy Pixel
                         aColor[i] = aSourceColor[xSourceIndex];
@@ -1369,10 +1429,10 @@ namespace See1
                         float xRatioY = vCenter.y - Mathf.Floor(vCenter.y);
 
                         //*** Get Pixel index's
-                        int xIndexTL = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
-                        int xIndexTR = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
-                        int xIndexBL = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
-                        int xIndexBR = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
+                        int xIndexTL = (int) ((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
+                        int xIndexTR = (int) ((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
+                        int xIndexBL = (int) ((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
+                        int xIndexBR = (int) ((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
 
                         //*** Calculate Color
                         aColor[i] = Color.Lerp(
@@ -1387,10 +1447,10 @@ namespace See1
                     {
 
                         //*** Calculate grid around point
-                        int xXFrom = (int)Mathf.Max(Mathf.Floor(vCenter.x - (vPixelSize.x * 0.5f)), 0);
-                        int xXTo = (int)Mathf.Min(Mathf.Ceil(vCenter.x + (vPixelSize.x * 0.5f)), vSourceSize.x);
-                        int xYFrom = (int)Mathf.Max(Mathf.Floor(vCenter.y - (vPixelSize.y * 0.5f)), 0);
-                        int xYTo = (int)Mathf.Min(Mathf.Ceil(vCenter.y + (vPixelSize.y * 0.5f)), vSourceSize.y);
+                        int xXFrom = (int) Mathf.Max(Mathf.Floor(vCenter.x - (vPixelSize.x * 0.5f)), 0);
+                        int xXTo = (int) Mathf.Min(Mathf.Ceil(vCenter.x + (vPixelSize.x * 0.5f)), vSourceSize.x);
+                        int xYFrom = (int) Mathf.Max(Mathf.Floor(vCenter.y - (vPixelSize.y * 0.5f)), 0);
+                        int xYTo = (int) Mathf.Min(Mathf.Ceil(vCenter.y + (vPixelSize.y * 0.5f)), vSourceSize.y);
 
                         //*** Loop and accumulate
                         //Vector4 oColorTotal = new Vector4();
@@ -1402,7 +1462,7 @@ namespace See1
                             {
 
                                 //*** Get Color
-                                oColorTemp += aSourceColor[(int)(((float)iy * vSourceSize.x) + ix)];
+                                oColorTemp += aSourceColor[(int) (((float) iy * vSourceSize.x) + ix)];
 
                                 //*** Sum
                                 xGridCount++;
@@ -1410,7 +1470,7 @@ namespace See1
                         }
 
                         //*** Average Color
-                        aColor[i] = oColorTemp / (float)xGridCount;
+                        aColor[i] = oColorTemp / (float) xGridCount;
                     }
                 }
 
@@ -1425,8 +1485,8 @@ namespace See1
             public static Texture2D ApplyGammaCorrection(Texture2D src)
             {
                 Color[] srcColors = src.GetPixels(0);
-                Texture2D newTex = new Texture2D((int)src.width, (int)src.height, TextureFormat.RGBA32, false);
-                int pixelCount = (int)src.width * (int)src.height;
+                Texture2D newTex = new Texture2D((int) src.width, (int) src.height, TextureFormat.RGBA32, false);
+                int pixelCount = (int) src.width * (int) src.height;
                 Color[] newColors = new Color[pixelCount];
                 for (int i = 0; i < pixelCount; i++)
                 {
@@ -1490,7 +1550,7 @@ namespace See1
 
             protected override TreeViewItem BuildRoot()
             {
-                return new TreeViewItem { id = 0, depth = -1 };
+                return new TreeViewItem {id = 0, depth = -1};
             }
 
 
@@ -1521,6 +1581,7 @@ namespace See1
                         }
                     }
                 }
+
                 SetupDepthsFromParentsAndChildren(root);
                 return rows;
             }
@@ -1602,7 +1663,7 @@ namespace See1
 
             GameObject GetGameObject(int instanceID)
             {
-                return (GameObject)EditorUtility.InstanceIDToObject(instanceID);
+                return (GameObject) EditorUtility.InstanceIDToObject(instanceID);
             }
 
             // Custom GUI
@@ -1683,12 +1744,14 @@ namespace See1
                     {
                         return DragAndDropVisualMode.None;
                     }
+
                     if (!AssetDatabase.Contains(go)) continue; //Project View Asset
                     //프로젝트 뷰에서 드래그하면 인스턴스를 만들어 Add 하도록 해봄
                     if (onDragObject != null)
                     {
-                       onDragObject(go);
+                        onDragObject(go);
                     }
+
                     //transforms.Add(go.transform);
                 }
 
@@ -1818,7 +1881,7 @@ namespace See1
                 {
                     if (m_WhiteTexture == null)
                     {
-                        m_WhiteTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "White Texture" };
+                        m_WhiteTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) {name = "White Texture"};
                         m_WhiteTexture.SetPixel(0, 0, Color.white);
                         m_WhiteTexture.Apply();
                     }
@@ -1842,8 +1905,8 @@ namespace See1
                     if (m_WhiteTexture3D == null)
                     {
                         m_WhiteTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                        { name = "White Texture 3D" };
-                        m_WhiteTexture3D.SetPixels(new Color[] { Color.white });
+                            {name = "White Texture 3D"};
+                        m_WhiteTexture3D.SetPixels(new Color[] {Color.white});
                         m_WhiteTexture3D.Apply();
                     }
 
@@ -1865,7 +1928,7 @@ namespace See1
                 {
                     if (m_BlackTexture == null)
                     {
-                        m_BlackTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "Black Texture" };
+                        m_BlackTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) {name = "Black Texture"};
                         m_BlackTexture.SetPixel(0, 0, Color.black);
                         m_BlackTexture.Apply();
                     }
@@ -1889,8 +1952,8 @@ namespace See1
                     if (m_BlackTexture3D == null)
                     {
                         m_BlackTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                        { name = "Black Texture 3D" };
-                        m_BlackTexture3D.SetPixels(new Color[] { Color.black });
+                            {name = "Black Texture 3D"};
+                        m_BlackTexture3D.SetPixels(new Color[] {Color.black});
                         m_BlackTexture3D.Apply();
                     }
 
@@ -1913,7 +1976,7 @@ namespace See1
                     if (m_TransparentTexture == null)
                     {
                         m_TransparentTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false)
-                        { name = "Transparent Texture" };
+                            {name = "Transparent Texture"};
                         m_TransparentTexture.SetPixel(0, 0, Color.clear);
                         m_TransparentTexture.Apply();
                     }
@@ -1937,8 +2000,8 @@ namespace See1
                     if (m_TransparentTexture3D == null)
                     {
                         m_TransparentTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                        { name = "Transparent Texture 3D" };
-                        m_TransparentTexture3D.SetPixels(new Color[] { Color.clear });
+                            {name = "Transparent Texture 3D"};
+                        m_TransparentTexture3D.SetPixels(new Color[] {Color.clear});
                         m_TransparentTexture3D.Apply();
                     }
 
@@ -1953,6 +2016,7 @@ namespace See1
             private int y;
 
             public delegate void OnReceive(Vector2 v2);
+
             public delegate void OnClose();
 
             private EditorWindow parent;
@@ -2038,7 +2102,7 @@ namespace See1
                         y = EditorGUILayout.IntSlider("Height", y, 128, 4096);
                     }
 
-                    if (GUILayout.Button("Add", GUILayout.Width(80),GUILayout.ExpandHeight(true)))
+                    if (GUILayout.Button("Add", GUILayout.Width(80), GUILayout.ExpandHeight(true)))
                         if (onReceive != null)
                             onReceive.Invoke(new Vector2(x, y));
                 }
@@ -2116,15 +2180,17 @@ namespace See1
         class Shortcuts
         {
             static StringBuilder sb = new StringBuilder();
-            static Dictionary<KeyCode,UnityAction> shortcutDic = new Dictionary<KeyCode, UnityAction>();
+            static Dictionary<KeyCode, UnityAction> shortcutDic = new Dictionary<KeyCode, UnityAction>();
+
             public static void AddBlank(GUIContent desc)
             {
                 sb.AppendFormat("{0}", desc.text);
                 sb.AppendLine();
             }
-            public static void Add(KeyCode input,GUIContent desc, UnityAction action)
+
+            public static void Add(KeyCode input, GUIContent desc, UnityAction action)
             {
-                shortcutDic.Add(input,action);
+                shortcutDic.Add(input, action);
                 sb.AppendFormat("{0} - {1}", input.ToString(), desc.text);
                 sb.AppendLine();
             }
@@ -2158,6 +2224,7 @@ namespace See1
             //internal List<ModelGroup> modelGroupList;
 
             private static string _nameBuffer = string.Empty;
+
             //static GUIContent plusIcon = EditorGUIUtility.IconContent("ShurikenPlus");
             //static GUIContent minusIcon = EditorGUIUtility.IconContent("ShurikenMinus");
             //static GUIContent settingsIcon = EditorGUIUtility.IconContent("Inlined TextField Focus");
@@ -2168,7 +2235,8 @@ namespace See1
 
             }
 
-            public void Init(List<ModelGroup> modelGroupList, GenericMenu.MenuFunction dataChangeHandler, GenericMenu.MenuFunction2 targetItemHandler, GenericMenu.MenuFunction2 menuItemHandler)
+            public void Init(List<ModelGroup> modelGroupList, GenericMenu.MenuFunction dataChangeHandler,
+                GenericMenu.MenuFunction2 targetItemHandler, GenericMenu.MenuFunction2 menuItemHandler)
             {
                 rol = new UnityEditorInternal.ReorderableList(modelGroupList, typeof(ModelGroup));
                 rol.showDefaultBackground = false;
@@ -2185,6 +2253,7 @@ namespace See1
                     {
                         SetBuiltinNames();
                     }
+
                     //position.x += position.width;
                     //position.width = btn30;
                     //if (GUI.Button(position, "Remove All", EditorStyles.miniButton))
@@ -2197,16 +2266,14 @@ namespace See1
                     {
                         rol.onAddDropdownCallback.Invoke(position, rol);
                     }
+
                     position.x += position.width;
                     if (GUI.Button(position, "Remove", EditorStyles.miniButtonRight))
                     {
                         rol.onRemoveCallback(rol);
                     }
                 };
-                rol.drawFooterCallback = (position) =>
-                {
-
-                };
+                rol.drawFooterCallback = (position) => { };
                 //Element
                 //reorderableList.elementHeight = EditorGUIUtility.singleLineHeight * 3f;
                 rol.elementHeightCallback = (index) =>
@@ -2234,13 +2301,14 @@ namespace See1
 
                     Rect color_area = new Rect(position.x - 15, position.y + 20, 10, 70);
                     //float hue = (1.0f / (float)((float)index + 1.0f));
-                    Color color = isActive ? Color.white : Color.black;// Color.HSVToRGB(hue, 1.0f, 1.0f);
+                    Color color = isActive ? Color.white : Color.black; // Color.HSVToRGB(hue, 1.0f, 1.0f);
                     if (pData.enabled.target)
                         EditorGUI.DrawRect(color_area, color * (isActive ? 0.5f : 0.25f));
                     ////1st Row
                     EditorGUI.BeginChangeCheck();
                     ////Draw Header
-                    var headerRect = new Rect() { x = listRect.x, y = listRect.y, width = listRect.width, height = lineHeight };
+                    var headerRect = new Rect()
+                        {x = listRect.x, y = listRect.y, width = listRect.width, height = lineHeight};
                     GUI.backgroundColor = pData.enabled.target ? Color.black * 0.5f : Color.white;
                     GUI.Box(headerRect, "", "ShurikenModuleTitle");
                     GUI.backgroundColor = Color.white;
@@ -2264,10 +2332,12 @@ namespace See1
                             {
                                 pData.IsEditingName = false;
                             }
+
                             if (Event.current.isMouse && !position.Contains(Event.current.mousePosition))
                             {
                                 pData.IsEditingName = false;
                             }
+
                             using (var inputCheck = new EditorGUI.ChangeCheckScope())
                             {
                                 _nameBuffer = EditorGUI.DelayedTextField(position, _nameBuffer);
@@ -2281,8 +2351,11 @@ namespace See1
                         }
                         else
                         {
-                            GUI.Label(position, string.Format("{0}   {1}/{2}", pData.m_Name, pData.SelectedIndex + 1, pData.m_Sources.Count), Styles.centeredMiniLabel);
+                            GUI.Label(position,
+                                string.Format("{0}   {1}/{2}", pData.m_Name, pData.SelectedIndex + 1,
+                                    pData.m_Sources.Count), Styles.centeredMiniLabel);
                         }
+
                         position.x += position.width;
                         position.width = miniBtnWidth;
                         if (GUI.Button(position, "Settings", Styles.transButton))
@@ -2290,6 +2363,7 @@ namespace See1
                             pData.IsEditingName = true;
                             _nameBuffer = pData.m_Name.ToString();
                         }
+
                         position.x += position.width;
                         position.width = miniBtnWidth;
                         int id = EditorGUIUtility.GetControlID(FocusType.Passive, position);
@@ -2307,12 +2381,15 @@ namespace See1
                                     dataChangeHandler();
                                 }
                             }
+
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
                         }
+
                         if (GUI.Button(position, "+", Styles.transButton))
                         {
                             EditorGUIUtility.ShowObjectPicker<GameObject>(null, false, "", id);
                         }
+
                         position.x += position.width;
                         position.width = miniBtnWidth;
                         if (GUI.Button(position, "-", Styles.transButton))
@@ -2327,7 +2404,9 @@ namespace See1
                         }
 
                         ////위에서 인덱스가 바뀔 수 있으므로 여기서 판단함.
-                        bool isSourceExist = (pData.m_Sources.Count > 0) ? (pData.m_Sources[pData.SelectedIndex]) != null : false;
+                        bool isSourceExist = (pData.m_Sources.Count > 0)
+                            ? (pData.m_Sources[pData.SelectedIndex]) != null
+                            : false;
 
                         //2nd Row
                         //position.y += space;
@@ -2367,20 +2446,25 @@ namespace See1
                                             pData.m_Sources.Add(dragged_object as GameObject);
                                         }
                                     }
+
                                     //Refresh Index T_T
                                     pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
                                     dataChangeHandler();
                                 }
+
                                 break;
                         }
 
                         string pName = (isSourceExist) ? pData.m_Sources[pData.SelectedIndex].name : "None";
-                        var style = new GUIStyle(GUI.skin.label) { fontSize = 10, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+                        var style = new GUIStyle(GUI.skin.label)
+                            {fontSize = 10, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter};
                         if (GUI.Button(position, pName, style))
                         {
                             if (isSourceExist)
                             {
-                                Selection.activeObject = EditorUtility.InstanceIDToObject(pData.m_Sources[pData.SelectedIndex].GetInstanceID());
+                                Selection.activeObject =
+                                    EditorUtility.InstanceIDToObject(pData.m_Sources[pData.SelectedIndex]
+                                        .GetInstanceID());
                             }
                         }
 
@@ -2392,11 +2476,14 @@ namespace See1
                             pData.SelectedIndex += 1;
                             pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
                         }
+
                         position.x = listRect.x;
                         position.width = listRect.width;
                         position.y += space * 4;
                         position.y += miniButtonheight;
-                        pData.SelectedIndex = EditorGUI.IntSlider(position, pData.SelectedIndex + 1, 1, pData.m_Sources.Count) - 1;// EditorGUI.Vector3Field(position, "", pData.Position);
+                        pData.SelectedIndex =
+                            EditorGUI.IntSlider(position, pData.SelectedIndex + 1, 1, pData.m_Sources.Count) -
+                            1; // EditorGUI.Vector3Field(position, "", pData.Position);
 
                         ////Default Option
                         using (new EditorGUI.DisabledScope(!isSourceExist))
@@ -2406,7 +2493,10 @@ namespace See1
                             position.y += lineHeight;
                             position.width = listRect.width;
                             position.height = miniButtonheight;
-                            if (GUI.Button(position, (string.Format("{0}{1}", "Parent - ", string.IsNullOrEmpty(pData.m_TargetPath) ? MODEL_ROOT_NAME : pData.m_TargetPath)), "MiniPopup"))
+                            if (GUI.Button(position,
+                                (string.Format("{0}{1}", "Parent - ",
+                                    string.IsNullOrEmpty(pData.m_TargetPath) ? MODEL_ROOT_NAME : pData.m_TargetPath)),
+                                "MiniPopup"))
                             {
                                 targetItemHandler(pData);
                             }
@@ -2422,9 +2512,11 @@ namespace See1
                             position.y += space;
                             position.y += miniButtonheight;
                             position.width = listRect.width / 2;
-                            pData.m_Options.ResetTransform = GUI.Toggle(position, pData.m_Options.ResetTransform, "Reset Transform", "MiniButton");
+                            pData.m_Options.ResetTransform = GUI.Toggle(position, pData.m_Options.ResetTransform,
+                                "Reset Transform", "MiniButton");
                             position.x += position.width;
-                            pData.m_Options.m_RenderersOnly = GUI.Toggle(position, pData.m_Options.m_RenderersOnly, "Renderers Only", "MiniButton");
+                            pData.m_Options.m_RenderersOnly = GUI.Toggle(position, pData.m_Options.m_RenderersOnly,
+                                "Renderers Only", "MiniButton");
 
                             //position.x = listRect.x;
                             //position.width = listRect.width;
@@ -2439,6 +2531,7 @@ namespace See1
                             //pData.m_Options.Scale = EditorGUI.Vector3Field(position, "", pData.m_Options.Scale);
                             //}
                         }
+
                         if (evt.type == EventType.Repaint)
                         {
                             if (DragAndDrop.visualMode == DragAndDropVisualMode.Copy && (r.Contains(evt.mousePosition)))
@@ -2447,6 +2540,7 @@ namespace See1
                                 EditorGUI.DrawRect(r, new Color(0.5f, 1.0f, 1.0f) * 0.5f);
                             }
                         }
+
                         if (EditorGUI.EndChangeCheck())
                         {
                             dataChangeHandler();
@@ -2582,7 +2676,9 @@ namespace See1
             internal class ClipInfo
             {
                 public AnimationClip clip;
+
                 public bool enabled;
+
                 //public int loopTimes;
                 StringBuilder sb = new StringBuilder();
 
@@ -2620,6 +2716,7 @@ namespace See1
                 }
             }
 
+            internal string name = string.Empty;
             internal UnityEditorInternal.ReorderableList reorderableObjectList;
             internal UnityEditorInternal.ReorderableList reorderableClipList;
             internal List<Animated> animatedList = new List<Animated>();
@@ -2629,12 +2726,23 @@ namespace See1
             internal double time = 0.0f;
             internal float timeSpeed = 1.0f;
             private bool _isOptimized { get; set; }
-            internal bool isPlayable { get { return animatedList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
+
+            internal bool isPlayable
+            {
+                get { return animatedList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; }
+            }
+
             internal bool isPlaying { get; set; }
             internal bool isLooping { get; set; }
             private bool _showEvent { get; set; }
-            internal AnimationClip _currentClip { get { return playList[0]; } }
+
+            internal AnimationClip _currentClip
+            {
+                get { return playList[0]; }
+            }
+
             internal UnityEvent onStopPlaying = new UnityEvent();
+
             internal ClipInfo currentClipInfo
             {
                 get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
@@ -2656,7 +2764,8 @@ namespace See1
             private void InitAnimatedList()
             {
                 animatedList = new List<Animated>();
-                reorderableObjectList = new UnityEditorInternal.ReorderableList(animatedList, typeof(GameObject), true, true, false, false);
+                reorderableObjectList =
+                    new UnityEditorInternal.ReorderableList(animatedList, typeof(GameObject), true, true, false, false);
                 //fields
                 reorderableObjectList.showDefaultBackground = false;
                 reorderableObjectList.headerHeight = 20;
@@ -2674,6 +2783,7 @@ namespace See1
                             reorderableObjectList.onAddDropdownCallback.Invoke(position, reorderableObjectList);
                         }
                     }
+
                     position.x += position.width;
                     position.width = btn30;
                     using (new EditorGUI.DisabledScope(reorderableObjectList.index < 0))
@@ -2683,6 +2793,7 @@ namespace See1
                             reorderableObjectList.onRemoveCallback(reorderableObjectList);
                         }
                     }
+
                     position.x += position.width;
                     position.width = btn30;
                     using (new EditorGUI.DisabledScope(animatedList.Count == 0))
@@ -2695,10 +2806,12 @@ namespace See1
                 };
                 reorderableObjectList.drawElementCallback = (position, index, isActive, isFocused) =>
                 {
-                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
+                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 &&
+                        position.Contains(Event.current.mousePosition))
                     {
                         Selection.activeGameObject = animatedList[index].gameObject;
                     }
+
                     float rectWidth = position.width;
                     float rectHeight = position.height;
                     float tglWidth = 15;
@@ -2711,6 +2824,7 @@ namespace See1
                         {
                         }
                     }
+
                     position.x += position.width;
                     position.width = rectWidth - btnWidth - tglWidth;
                     EditorGUI.LabelField(position, animatedList[index].gameObject.name, EditorStyles.miniBoldLabel);
@@ -2719,7 +2833,8 @@ namespace See1
                     style.normal.textColor = Color.gray;
                     bool animatorExist = animatedList[index].animator != null;
                     if (animatorExist)
-                        EditorGUI.LabelField(position, animatedList[index].animator.isHuman ? "Humanoid" : "Generic", style);
+                        EditorGUI.LabelField(position, animatedList[index].animator.isHuman ? "Humanoid" : "Generic",
+                            style);
                     position.x += position.width;
                     position.width = btnWidth;
                     position.height = 16;
@@ -2773,7 +2888,8 @@ namespace See1
                         var root = go.transform.root;
                         if (root)
                         {
-                            if (!AssetDatabase.Contains(root.gameObject) && !(Enumerable.Any(animatedList, x => x.gameObject == root.gameObject)))
+                            if (!AssetDatabase.Contains(root.gameObject) &&
+                                !(Enumerable.Any(animatedList, x => x.gameObject == root.gameObject)))
                             {
                                 this.animatedList.Add(new Animated(root.gameObject));
                             }
@@ -2782,12 +2898,15 @@ namespace See1
                 };
                 reorderableObjectList.onRemoveCallback = (list) =>
                 {
-                    reorderableObjectList.index = Mathf.Clamp(reorderableObjectList.index, 0, reorderableObjectList.count - 1);
+                    reorderableObjectList.index =
+                        Mathf.Clamp(reorderableObjectList.index, 0, reorderableObjectList.count - 1);
                     if (animatedList.Count > 0)
                     {
                         animatedList.RemoveAt(reorderableObjectList.index);
                     }
-                    reorderableObjectList.index = Mathf.Clamp(reorderableObjectList.index, 0, reorderableObjectList.count - 1);
+
+                    reorderableObjectList.index =
+                        Mathf.Clamp(reorderableObjectList.index, 0, reorderableObjectList.count - 1);
                 };
                 reorderableObjectList.onChangedCallback = list => { };
             }
@@ -2795,7 +2914,8 @@ namespace See1
             private void InitClipList()
             {
                 clipInfoList = new List<ClipInfo>();
-                reorderableClipList = new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
+                reorderableClipList =
+                    new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
                 //fields
                 reorderableClipList.showDefaultBackground = false;
                 reorderableClipList.headerHeight = 20;
@@ -2821,6 +2941,7 @@ namespace See1
                             reorderableClipList.onRemoveCallback(reorderableClipList);
                         }
                     }
+
                     position.x += position.width;
                     position.width = btn30;
                     using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
@@ -2830,6 +2951,7 @@ namespace See1
                             clipInfoList.Clear();
                         }
                     }
+
                     string commandName = Event.current.commandName;
                     if (commandName == "ObjectSelectorUpdated")
                     {
@@ -2861,7 +2983,8 @@ namespace See1
                 };
                 reorderableClipList.drawElementCallback = (position, index, isActive, isFocused) =>
                 {
-                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
+                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 &&
+                        position.Contains(Event.current.mousePosition))
                     {
                         foreach (var info in clipInfoList)
                         {
@@ -2872,6 +2995,7 @@ namespace See1
                         RefreshPlayList();
                         Play();
                     }
+
                     float rectWidth = position.width;
                     float rectHeight = position.height;
                     float tglWidth = 15;
@@ -2885,6 +3009,7 @@ namespace See1
                             RefreshPlayList();
                         }
                     }
+
                     position.x += position.width;
                     position.width = rectWidth - btnWidth - tglWidth;
                     bool playing = isPlayable && playList[0] == clipInfoList[index].clip;
@@ -2894,7 +3019,8 @@ namespace See1
                     var style1 = new GUIStyle(EditorStyles.miniLabel);
                     style1.alignment = TextAnchor.MiddleRight;
                     style1.normal.textColor = Color.gray;
-                    EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic", style1);
+                    EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic",
+                        style1);
                     position.x += position.width;
                     position.width = btnWidth;
                     position.height = 16;
@@ -2943,13 +3069,16 @@ namespace See1
                 };
                 reorderableClipList.onRemoveCallback = (list) =>
                 {
-                    reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
+                    reorderableClipList.index =
+                        Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
                     if (clipInfoList.Count > 0)
                     {
                         clipInfoList.RemoveAt(reorderableClipList.index);
                         RefreshPlayList();
                     }
-                    reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
+
+                    reorderableClipList.index =
+                        Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
                 };
                 reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
             }
@@ -2960,6 +3089,7 @@ namespace See1
                 {
                     if (animator)
                     {
+                        name = animator.runtimeAnimatorController ? animator.runtimeAnimatorController.name : animatedList[0].gameObject.name;
                         _isOptimized = !animator.hasTransformHierarchy;
                         //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
                         //DeOptimizeObject();
@@ -2971,6 +3101,7 @@ namespace See1
                         }
                     }
                 }
+
                 RefreshPlayList();
             }
 
@@ -3018,9 +3149,10 @@ namespace See1
                             var animated = animatedList[i];
                             if (animated.enabled)
                             {
-                                AnimationMode.SampleAnimationClip(animated.gameObject, _currentClip, (float)time);
+                                AnimationMode.SampleAnimationClip(animated.gameObject, _currentClip, (float) time);
                             }
                         }
+
                         AnimationMode.EndSampling();
 
                         //_currentClip.SampleAnimation(animatedObject, (float) time);
@@ -3065,10 +3197,10 @@ namespace See1
                     var progressRect =
                         EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
                     progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
-                    time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none,
+                    time = GUI.HorizontalSlider(progressRect, (float) time, 0, GetCurrentClipLength(), GUIStyle.none,
                         GUIStyle.none);
                     float length = GetCurrentClipLength();
-                    float progress = (float)time / length;
+                    float progress = (float) time / length;
                     EditorGUI.ProgressBar(progressRect, progress,
                         string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
 
@@ -3085,6 +3217,7 @@ namespace See1
                             {
 
                             }
+
                             //button
                             GUIContent btn = new GUIContent(animEvent.functionName);
                             var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
@@ -3100,10 +3233,13 @@ namespace See1
                     using (var hr = EditorHelper.Horizontal.Do())
                     {
                         var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
-                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
+                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()),
+                            EditorStyles.miniLabel);
                         GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
                         style.alignment = TextAnchor.MiddleRight;
-                        EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
+                        EditorGUI.DropShadowLabel(infoRect,
+                            string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"),
+                                (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
                         GUILayout.FlexibleSpace();
 
                         //if (GUILayout.Button(isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50),
@@ -3116,11 +3252,13 @@ namespace See1
                         using (var check = new EditorGUI.ChangeCheckScope())
                         {
                             if (AnimationMode.InAnimationMode()) GUI.backgroundColor = Color.red;
-                            isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30));
+                            isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft",
+                                GUILayout.Width(50), GUILayout.Height(30));
                             if (check.changed)
                             {
                                 if (isPlaying) Play();
                             }
+
                             GUI.backgroundColor = Color.white;
                         }
 
@@ -3129,7 +3267,8 @@ namespace See1
                             Stop();
                         }
 
-                        isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
+                        isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50),
+                            GUILayout.Height(30));
 
                         if (GUILayout.Button("-", "ButtonLeft", GUILayout.Height(30)))
                         {
@@ -3143,6 +3282,7 @@ namespace See1
                             timeSpeed = 0.5f;
 
                         }
+
                         GUI.backgroundColor = Color.white;
 
                         if (Mathf.Approximately(timeSpeed, 1.0f)) GUI.backgroundColor = Color.cyan;
@@ -3151,6 +3291,7 @@ namespace See1
                             timeSpeed = 1.0f;
 
                         }
+
                         GUI.backgroundColor = Color.white;
 
                         if (Mathf.Approximately(timeSpeed, 2.0f)) GUI.backgroundColor = Color.cyan;
@@ -3159,6 +3300,7 @@ namespace See1
                             timeSpeed = 2.0f;
 
                         }
+
                         GUI.backgroundColor = Color.white;
 
                         if (GUILayout.Button("+", "ButtonRight", GUILayout.Height(30)))
@@ -3255,7 +3397,7 @@ namespace See1
                     MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
                     if (info != null)
                     {
-                        info.Invoke(null, new object[] { _target });
+                        info.Invoke(null, new object[] {_target});
                     }
                 }
             }
@@ -3269,8 +3411,9 @@ namespace See1
                 {
                     MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
                     if (info != null)
-                        info.Invoke(null, new object[] { asset });
+                        info.Invoke(null, new object[] {asset});
                 }
+
                 if (!reimportModel) return;
 
                 var modelImporter = AssetImporter.GetAtPath(path) as ModelImporter;
@@ -3323,10 +3466,15 @@ namespace See1
             public static Update update;
             public static string updateCheck = "";
             public static bool outOfDate = false;
+
             public static int versionNumPrimary = 0;
+
             //public static string version;
             public static int versionNumSecondary = 9;
-            public static string url = "https://gist.githubusercontent.com/See1Studios/58d573487d07e11e221a7a499545c1f4/raw/23c3a5ebac03b894fd307c86eedec00b5be05e19/AssetStudioVersion.txt";
+
+            public static string url =
+                "https://gist.githubusercontent.com/See1Studios/58d573487d07e11e221a7a499545c1f4/raw/23c3a5ebac03b894fd307c86eedec00b5be05e19/AssetStudioVersion.txt";
+
             public static string downloadUrl = string.Empty;
 
             public static void CheckForUpdates()
@@ -3343,8 +3491,11 @@ namespace See1
                     string[] split = update.version.Split('.');
                     int latestMajor = int.Parse(split[0]);
                     int latestMinor = int.Parse(split[1]);
-                    outOfDate = (latestMajor > versionNumPrimary || latestMajor == versionNumPrimary && latestMinor > versionNumSecondary);
-                    updateCheck = outOfDate ? "See1View is out of date!\nThe latest version is " + update.version : "See1View is up to date!";
+                    outOfDate = (latestMajor > versionNumPrimary ||
+                                 latestMajor == versionNumPrimary && latestMinor > versionNumSecondary);
+                    updateCheck = outOfDate
+                        ? "See1View is out of date!\nThe latest version is " + update.version
+                        : "See1View is up to date!";
                     downloadUrl = update.url;
                 }
             }
@@ -3358,6 +3509,7 @@ namespace See1
                     {
                         yield return null;
                     }
+
                     if (!www.isNetworkError)
                     {
                         actionWithText(www.downloadHandler.text);
@@ -3372,7 +3524,8 @@ namespace See1
 
         class Description
         {
-            internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
+            internal static GUIContent title = new GUIContent("See1View",
+                EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
         }
 
         //Base on EditorHelper from Bitstrap (https://assetstore.unity.com/packages/tools/utilities/bitstrap-51416)
@@ -3695,7 +3848,8 @@ namespace See1
                             continue;
 
                         if (string.IsNullOrEmpty(searchField) ||
-                            texture.name.ToLower(System.Globalization.CultureInfo.InvariantCulture).Contains(searchLower))
+                            texture.name.ToLower(System.Globalization.CultureInfo.InvariantCulture)
+                                .Contains(searchLower))
                         {
                             using (Horizontal.Do())
                             {
@@ -3881,27 +4035,35 @@ namespace See1
                     return new ScrollView();
                 }
 
-                public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal, bool alwaysShowVertical, params GUILayoutOption[] options)
+                public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal,
+                    bool alwaysShowVertical, params GUILayoutOption[] options)
                 {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal, alwaysShowVertical, options);
+                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal,
+                        alwaysShowVertical, options);
                     return new ScrollView();
                 }
 
-                public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle horizontalScrollbar, GUIStyle verticalScrollbar, params GUILayoutOption[] options)
+                public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle horizontalScrollbar,
+                    GUIStyle verticalScrollbar, params GUILayoutOption[] options)
                 {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, horizontalScrollbar, verticalScrollbar, options);
+                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, horizontalScrollbar,
+                        verticalScrollbar, options);
                     return new ScrollView();
                 }
 
-                public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle style, params GUILayoutOption[] options)
+                public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle style,
+                    params GUILayoutOption[] options)
                 {
                     scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, style, options);
                     return new ScrollView();
                 }
 
-                public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal, bool alwaysShowVertical, GUIStyle horizontalScrollbar, GUIStyle verticalScrollbar, GUIStyle background, params GUILayoutOption[] options)
+                public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal,
+                    bool alwaysShowVertical, GUIStyle horizontalScrollbar, GUIStyle verticalScrollbar,
+                    GUIStyle background, params GUILayoutOption[] options)
                 {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal, alwaysShowVertical, horizontalScrollbar, verticalScrollbar, background, options);
+                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal,
+                        alwaysShowVertical, horizontalScrollbar, verticalScrollbar, background, options);
                     return new ScrollView();
                 }
 
@@ -3951,7 +4113,7 @@ namespace See1
                 {
                     EditorGUI.DrawRect(r, backgroundColor * faded);
                     GUI.color = Color.white * faded;
-                    GUI.backgroundColor = Color.white* faded;
+                    GUI.backgroundColor = Color.white * faded;
                     return new Fade();
                 }
 
@@ -3964,7 +4126,7 @@ namespace See1
 
             public struct Colorize : System.IDisposable
             {
-                public static Colorize Do(Color color,Color bgColor)
+                public static Colorize Do(Color color, Color bgColor)
                 {
                     GUI.color = color;
                     GUI.backgroundColor = bgColor;
@@ -3993,7 +4155,7 @@ namespace See1
                     for (int x = 0; x < column; x++)
                     {
                         int temp = x;
-                        using (new EditorGUILayout.VerticalScope())
+                        using (EditorHelper.Vertical.Do())
                         {
                             for (int y = temp; y < count; y += column)
                             {
@@ -4038,16 +4200,34 @@ namespace See1
                 return display;
             }
 
+            public class FoldGroup
+            {
+                static Dictionary<string, SmoothAnimBool> dict = new Dictionary<string, SmoothAnimBool>();
+
+                public static void Do(string label, bool initValue, UnityAction action)
+                {
+                    if (!dict.ContainsKey(label)) dict.Add(label, new SmoothAnimBool(initValue));
+                    dict[label].target = EditorHelper.Foldout(dict[label].target, label);
+                    using (var fade = new EditorGUILayout.FadeGroupScope(dict[label].faded))
+                    {
+                        if (fade.visible)
+                        {
+                            action.Invoke();
+                        }
+                    }
+                }
+            }
+
             static Texture2D staticTex;
 
             public static GUIStyle GetStyle(GUIStyle baseStyle, Color bgColor, int fontSize, FontStyle fontStyle,
                 TextAnchor alignment)
             {
                 var dragOKstyle = new GUIStyle(GUI.skin.box)
-                    { fontSize = 10, fontStyle = fontStyle, alignment = alignment };
+                    {fontSize = 10, fontStyle = fontStyle, alignment = alignment};
                 staticTex = new Texture2D(1, 1);
                 staticTex.hideFlags = HideFlags.HideAndDontSave;
-                Color[] colors = new Color[1] { bgColor };
+                Color[] colors = new Color[1] {bgColor};
                 staticTex.SetPixels(colors);
                 staticTex.Apply();
                 dragOKstyle.normal.background = staticTex;
@@ -4086,6 +4266,7 @@ namespace See1
             public static GUIStyle centeredMiniLabel;
 
             public static GUIStyle miniButton;
+
             public static GUIStyle transButton;
             //public static GUIStyle miniTransButton;
             //public static GUIStyle transFoldout;
@@ -4094,6 +4275,7 @@ namespace See1
 
             public static GUIStyle centeredMinilabel;
             public static GUIStyle centeredMiniBoldLabel;
+
             public static GUIStyle rightAlignedMinilabel;
             //public static GUIStyle tabToolBar;
 
@@ -4196,16 +4378,24 @@ namespace See1
 
         #region Properties & Fields
 
-        private See1ViewSettings settings { get { return  See1ViewSettings.instance;} }
+        private See1ViewSettings settings
+        {
+            get { return See1ViewSettings.instance; }
+        }
 
-        private Data currentData { get { return settings.current; } }
+        private Data currentData
+        {
+            get { return settings.current; }
+        }
 
         //Objects
         PreviewRenderUtility _preview;
         GameObject _prefab;
         GameObject _tempPickedObject;
         GameObject _targetGo;
+
         List<GameObject> _additionalObjectList = new List<GameObject>(); //멀티오브젝트 검사용
+
         //GameObject _shadowGo; //Hacky ShadowCaster
         ReflectionProbe _probe;
         Transform _lightPivot;
@@ -4213,7 +4403,6 @@ namespace See1
 
         //Animation
         List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
-        List<AnimBool> _isShowingABList = new List<AnimBool>();
         public UnityEvent onStopPlaying = new UnityEvent();
 
         public bool isPlaying
@@ -4230,10 +4419,8 @@ namespace See1
         bool _isStartDragValid = false;
         float _deltaTime;
         double _lastTimeSinceStartup = 0f;
-        int _labelWidth = 95;
-        int _toolbarHeight = 18;
-        Dictionary<string,SmoothAnimBool> _fadeDic = new Dictionary<string, SmoothAnimBool>();
-        //SmoothAnimBool _fade = new SmoothAnimBool();
+        const int _labelWidth = 95;
+        const int _toolbarHeight = 18;
         TransformTreeView _treeView;
         TreeViewState _treeViewState;
         TargetInfo _targetInfo = new TargetInfo();
@@ -4242,6 +4429,7 @@ namespace See1
         Popup _popup;
         bool _guiEnabled = true;
         bool _overlayEnabled = true;
+
         //Camera & Render
         Transform _camTr;
         Transform _camPivot;
@@ -4252,7 +4440,7 @@ namespace See1
         Material _colorMaterial;
         CommandBuffer _colorCommandBuffer;
         bool _colorEnabled;
-        private Color _color= Color.white;
+        private Color _color = Color.white;
 
         Material _wireMaterial;
         CommandBuffer _wireCommandBuffer;
@@ -4269,7 +4457,7 @@ namespace See1
         CommandBuffer _depthCommandBuffer;
         bool _depthEnabled;
 
-         Material _depthNormalMaterial;
+        Material _depthNormalMaterial;
         CommandBuffer _depthNormalCommandBuffer;
         bool _depthNormalEnabled;
 
@@ -4282,13 +4470,15 @@ namespace See1
         int _gridSize = 100;
         Color _gridColor = new Color(.5f, .5f, .5f, .5f);
 
-        DebugViewMode _debugViewMode = DebugViewMode.None;
+        ViewMode _viewMode = ViewMode.None;
         GizmoMode _gizmoMode = 0;
         int _previewLayer;
-        bool _updateFOV;
+        const bool _updateFOV = false;
 
         private float _destFOV;
+
         Vector2 _destRot = new Vector2(180, 0);
+
         //Vector2 _destLightRot = new Vector2(180, 0);
         Vector3 _destPivotPos;
         float _destDistance = 1.0f;
@@ -4349,24 +4539,28 @@ namespace See1
 
         void OnEnable()
         {
-            _updateFOV = false;
-            SetEditorWindow();
-            CreatePreview();
+            //기본 초기화
+            Create();
+            RegisterShortcut();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
-            Updater.CheckForUpdates();
+            //기타 작업
             ApplyView(settings.current.lastView);
             ApplyLighting(settings.current.lastLighting);
-            RegisterShortcut();
+            Updater.CheckForUpdates();
         }
 
         void OnDisable()
         {
+            //기타 작업
+            if (_popup) _popup.Close();
             settings.current.lastLighting = GetCurrentLighting();
             settings.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
-            CleanupPreview();
-            EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
             See1ViewSettings.Save();
-            if (_popup) _popup.Close();
+            //기본 해제
+            EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
+            Shortcuts.Clear();
+            Cleanup();
+            //마무으리
             GC.Collect();
             Resources.UnloadUnusedAssets();
         }
@@ -4399,7 +4593,8 @@ namespace See1
             GUI.enabled = _guiEnabled;
             EditorGUIUtility.labelWidth = _labelWidth;
             _viewPortRect = IsDocked() ? _rs.full : _rs.center;
-            _controlRect = new Rect(_rs.center.position.x, _rs.center.position.y + _rs.center.size.y - 120, _rs.center.size.x, 120);
+            _controlRect = new Rect(_rs.center.position.x, _rs.center.position.y + _rs.center.size.y - 120,
+                _rs.center.size.x, 120);
 
             ProcessInput();
 
@@ -4431,8 +4626,7 @@ namespace See1
 
         void OnOpenNewScene(Scene scene, NewSceneSetup setup, NewSceneMode mode)
         {
-            CleanupPreview();
-            CreatePreview();
+            Create();
         }
 
         #endregion
@@ -4471,68 +4665,41 @@ namespace See1
             Shortcuts.Add(KeyCode.B, new GUIContent("Bottom View"), () => _destRot = new Vector2(180, -90));
             Shortcuts.Add(KeyCode.W, new GUIContent("Move Toward"), () => _destDistance -= 0.01f);
             Shortcuts.Add(KeyCode.S, new GUIContent("Move Backward"), () => _destDistance += 0.01f);
-            Shortcuts.Add(KeyCode.A, new GUIContent("Move Left"), () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(-0.01f, 0));
-            Shortcuts.Add(KeyCode.D, new GUIContent("Move Right"), () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(0.01f, 0));
+            Shortcuts.Add(KeyCode.A, new GUIContent("Move Left"),
+                () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(-0.01f, 0));
+            Shortcuts.Add(KeyCode.D, new GUIContent("Move Right"),
+                () => _destPivotPos += _preview.camera.transform.rotation * new Vector3(0.01f, 0));
 
             Shortcuts.AddBlank(new GUIContent("-------------------------------------"));
 
-            Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () => { _gridEnabled = !_gridEnabled; ApplyModelCommandBuffers();});
-            Shortcuts.Add(KeyCode.P, new GUIContent("Toggle Perspective"), () => _preview.camera.orthographic = !_preview.camera.orthographic);
+            Shortcuts.Add(KeyCode.G, new GUIContent("Toggle Grid"), () =>
+            {
+                _gridEnabled = !_gridEnabled;
+                ApplyModelCommandBuffers();
+            });
+            Shortcuts.Add(KeyCode.P, new GUIContent("Toggle Perspective"),
+                () => _preview.camera.orthographic = !_preview.camera.orthographic);
             Shortcuts.Add(KeyCode.F1, new GUIContent("Render"), () => RenderAndSaveFile());
-            Shortcuts.Add(KeyCode.F2, new GUIContent("Toggle Color"), () => { _colorEnabled = !_colorEnabled; ApplyModelCommandBuffers(); });
-            Shortcuts.Add(KeyCode.F3, new GUIContent("Toggle Wireframe"), () => { _wireFrameEnabled = !_wireFrameEnabled; ApplyModelCommandBuffers(); });
-            Shortcuts.Add(KeyCode.F4, new GUIContent("Toggle Shadow"), () => { settings.current.enablePlaneShadows = !settings.current.enablePlaneShadows; ApplyModelCommandBuffers(); });
+            Shortcuts.Add(KeyCode.F2, new GUIContent("Toggle Color"), () =>
+            {
+                _colorEnabled = !_colorEnabled;
+                ApplyModelCommandBuffers();
+            });
+            Shortcuts.Add(KeyCode.F3, new GUIContent("Toggle Wireframe"), () =>
+            {
+                _wireFrameEnabled = !_wireFrameEnabled;
+                ApplyModelCommandBuffers();
+            });
+            Shortcuts.Add(KeyCode.F4, new GUIContent("Toggle Shadow"), () =>
+            {
+                settings.current.enablePlaneShadows = !settings.current.enablePlaneShadows;
+                ApplyModelCommandBuffers();
+            });
             Shortcuts.Add(KeyCode.Escape, new GUIContent("Toggle Gizmo"), () => _gizmoMode = ~_gizmoMode);
-            Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"), () => _playerList.FirstOrDefault().TogglePlay());
-            Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"), () => _overlayEnabled = !_overlayEnabled);
-        }
-
-        void SetEditorWindow()
-        {
-            _rs = new RectSlicer(this);
-            _rs.topTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
-            _rs.bottomTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
-            _rs.leftTargetWidth = 200;
-            _rs.rightTargetWidth = 250;
-            _rs.openTop.target = true;
-            _rs.openBottom.target = false;
-            _rs.openLeft.target = false;
-            _rs.openRight.target = true;
-
-            var modelFade = new SmoothAnimBool(true);
-            modelFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Model", modelFade);
-
-            var controlFade = new SmoothAnimBool(true);
-            controlFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Control", controlFade);
-
-            var exportFade = new SmoothAnimBool(true);
-            exportFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Export", exportFade);
-
-            var viewFade = new SmoothAnimBool(true);
-            viewFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("View", modelFade);
-
-            var envFade = new SmoothAnimBool(true);
-            envFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Environment", envFade);
-
-            var lightFade = new SmoothAnimBool(true);
-            lightFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Light", lightFade);
-
-            var renderFade = new SmoothAnimBool(true);
-            renderFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Render", renderFade);
-            var postFade = new SmoothAnimBool(true);
-            postFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Post Process", postFade);
-
-            var debugFade = new SmoothAnimBool(true);
-            debugFade.valueChanged.AddListener(Repaint);
-            _fadeDic.Add("Debug", debugFade);
+            Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"),
+                () => _playerList.FirstOrDefault().TogglePlay());
+            Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"),
+                () => _overlayEnabled = !_overlayEnabled);
         }
 
         void SetModel(GameObject prefab)
@@ -4542,7 +4709,7 @@ namespace See1
             //if (_shadowGo) DestroyImmediate(_shadowGo);
             _targetGo = PrefabUtility.InstantiateAttachedAsset(prefab) as GameObject;
             //_shadowGo = Instantiate(prefab);
-            if (_targetGo!=null)
+            if (_targetGo != null)
             {
                 _targetGo.name = prefab.name;
                 //_shadowGo.name = prefab.name + "_Shadow";
@@ -4572,6 +4739,7 @@ namespace See1
                 //_fade.target = false;
             }
         }
+
         //메인오브젝트 이외에 하이어라키를 열어 강제로 오브젝트를 추가할 용도.
         void AddModel(GameObject prefab)
         {
@@ -4590,14 +4758,27 @@ namespace See1
                 {
                     _treeView.Reload();
                 }
+
                 Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
                 Repaint();
             }
         }
 
-        void CreatePreview()
+        void Create()
         {
-            CleanupPreview();
+            Cleanup();
+
+            _rs = new RectSlicer(this);
+            _rs.topTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
+            _rs.bottomTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
+            _rs.leftTargetWidth = 200;
+            _rs.rightTargetWidth = 250;
+            _rs.openTop.target = true;
+            _rs.openBottom.target = false;
+            _rs.openLeft.target = false;
+            _rs.openRight.target = true;
+
+
             _preview = new PreviewRenderUtility(true, true);
             _camTr = _preview.camera.transform;
 
@@ -4668,67 +4849,66 @@ namespace See1
             SetModel(_prefab);
         }
 
-        void CleanupPreview()
+        void Cleanup()
         {
             if (_camPivot) DestroyImmediate(_camPivot.gameObject);
             if (_lightPivot) DestroyImmediate(_lightPivot.gameObject);
 
+            if (_skyMaterial) DestroyImmediate(_skyMaterial);
+            if (_preview != null)
+            {
+                RenderTexture.active = null;
+                _preview.Cleanup(); //Handle.SetCamera 에서 RenderTexure.active 관련 warning 발생
+            }
+
+            if (_gridMaterial) DestroyImmediate(_gridMaterial);
             if (_gridCommandBuffer != null)
             {
                 _gridCommandBuffer.Dispose();
                 _gridCommandBuffer = null;
             }
-            if (_gridMaterial) DestroyImmediate(_gridMaterial);
 
+            if (_wireMaterial) DestroyImmediate(_wireMaterial);
             if (_wireCommandBuffer != null)
             {
                 _wireCommandBuffer.Dispose();
                 _wireCommandBuffer = null;
             }
-            if (_wireMaterial) DestroyImmediate(_wireMaterial);
 
+            if (_shadowMaterial) DestroyImmediate(_shadowMaterial);
             if (_shadowCommandBuffer != null)
             {
                 _shadowCommandBuffer.Dispose();
                 _shadowCommandBuffer = null;
             }
-            if (_shadowMaterial) DestroyImmediate(_shadowMaterial);
 
+            if (_heightFogMaterial) DestroyImmediate(_heightFogMaterial);
             if (_heightFogCommandBuffer != null)
             {
                 _heightFogCommandBuffer.Dispose();
                 _heightFogCommandBuffer = null;
             }
-            if (_heightFogMaterial) DestroyImmediate(_heightFogMaterial);
 
-
+            if (_depthMaterial) DestroyImmediate(_depthMaterial);
             if (_depthCommandBuffer != null)
             {
                 _depthCommandBuffer.Dispose();
                 _depthCommandBuffer = null;
             }
-            if (_depthMaterial) DestroyImmediate(_depthMaterial);
 
+
+            if (_depthNormalMaterial) DestroyImmediate(_depthNormalMaterial);
             if (_depthNormalCommandBuffer != null)
             {
                 _depthNormalCommandBuffer.Dispose();
                 _depthNormalCommandBuffer = null;
             }
-            if (_depthNormalMaterial) DestroyImmediate(_depthNormalMaterial);
 
+            if (_colorMaterial) DestroyImmediate(_colorMaterial);
             if (_colorCommandBuffer != null)
             {
                 _colorCommandBuffer.Dispose();
                 _colorCommandBuffer = null;
-            }
-            if (_colorMaterial) DestroyImmediate(_colorMaterial);
-
-            if (_skyMaterial) DestroyImmediate(_skyMaterial);
-            //if (_shadowGo) DestroyImmediate(_shadowGo);
-            if (_preview != null)
-            {
-                RenderTexture.active = null;
-                _preview.Cleanup(); //Handle.SetCamera 에서 RenderTexure.active 관련 warning 발생
             }
         }
 
@@ -4754,10 +4934,12 @@ namespace See1
                 _skyMaterial.SetTexture("_Tex", currentData.cubeMap);
                 //_skyMaterial.SetFloat("_Rotation", _preview.lights[0].transform.rotation.eulerAngles.y);
             }
+
             if (_colorMaterial)
             {
                 _colorMaterial.SetColor("_Color", _color);
             }
+
             if (_gridMaterial)
             {
                 _gridMaterial.SetColor("_Color", _gridColor);
@@ -4776,6 +4958,7 @@ namespace See1
                 _shadowMaterial.SetColor("_ShadowColor", currentData.planeShadowColor);
                 _shadowMaterial.SetFloat("_PlaneHeight", _targetInfo.bounds.min.y);
             }
+
             if (_heightFogMaterial)
             {
                 _heightFogMaterial.SetColor("_Color", currentData.heightFogColor);
@@ -4785,8 +4968,9 @@ namespace See1
 
             if (_depthMaterial)
             {
-                _depthMaterial.SetFloat("_Seperate",_screenSeparate);
+                _depthMaterial.SetFloat("_Seperate", _screenSeparate);
             }
+
             if (_depthNormalMaterial)
             {
                 _depthNormalMaterial.SetFloat("_Seperate", _screenSeparate);
@@ -4816,7 +5000,7 @@ namespace See1
                 _lastTimeSinceStartup = EditorApplication.timeSinceStartup;
             }
 
-            _deltaTime = (float)(EditorApplication.timeSinceStartup - _lastTimeSinceStartup);
+            _deltaTime = (float) (EditorApplication.timeSinceStartup - _lastTimeSinceStartup);
             _lastTimeSinceStartup = EditorApplication.timeSinceStartup;
         }
 
@@ -4827,8 +5011,8 @@ namespace See1
             _preview.lights[1].gameObject.hideFlags = HideFlags.None;
             _camPivot.gameObject.hideFlags = HideFlags.None;
             _lightPivot.gameObject.hideFlags = HideFlags.None;
-            if(_targetGo) SetFlagsAll(_targetGo.gameObject, HideFlags.None);
-            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();        
+            if (_targetGo) SetFlagsAll(_targetGo.gameObject, HideFlags.None);
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
         }
 
         private void DataChanged()
@@ -4905,7 +5089,8 @@ namespace See1
                 _preview.camera.AddCommandBuffer(cameraEvent, buffer);
                 //camera.targetTexture 를 사용할 시 창 사이즈가 변경되면 렌더텍스쳐가 새로 할당되며 레퍼가 날아가므로 BuiltinRenderTextureType 이나 ID 를 통해 접근해야함. 
                 //Todo 포맷이 Default 라서 알파가 없음.
-                buffer.GetTemporaryRT(nameID, _preview.camera.targetTexture.width, _preview.camera.targetTexture.height, 32, FilterMode.Trilinear);
+                buffer.GetTemporaryRT(nameID, _preview.camera.targetTexture.width, _preview.camera.targetTexture.height,
+                    32, FilterMode.Trilinear);
                 //src 와 dst 가 같으면 안되니까 하나 만들어야함 얃얃
                 buffer.Blit(BuiltinRenderTextureType.CameraTarget, nameID, mat);
                 buffer.Blit(nameID, BuiltinRenderTextureType.CameraTarget);
@@ -4974,30 +5159,31 @@ namespace See1
 
         Texture2D RenderToTexture(int multiplyer = 1, bool alpha = false)
         {
-            int w = (int)_viewPortRect.size.x * multiplyer * currentData.viewportMultiplier;
-            int h = (int)_viewPortRect.size.y * multiplyer * currentData.viewportMultiplier;
+            int w = (int) _viewPortRect.size.x * multiplyer * currentData.viewportMultiplier;
+            int h = (int) _viewPortRect.size.y * multiplyer * currentData.viewportMultiplier;
             _preview.BeginPreview(new Rect(_viewPortRect.position, new Vector2(w, h)), GUIStyle.none);
             using (new QualitySettingsOverrider())
             {
                 //using (new ShowObjectScope(_shadowGo))
                 //{
-                    using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
+                using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
+                {
+                    if (alpha)
                     {
-                        if (alpha)
-                        {
-                            CameraClearFlags clearFlags = _preview.camera.clearFlags;
-                            Color backgroundColor = _preview.camera.backgroundColor;
-                            _preview.camera.clearFlags = CameraClearFlags.Color;
-                            _preview.camera.backgroundColor = Color.clear;
-                            _preview.Render(currentData.enableSRP, _updateFOV);
-                            _preview.camera.clearFlags = clearFlags;
-                            _preview.camera.backgroundColor = backgroundColor;
-                        }
-                        else
-                        {
-                            _preview.Render(currentData.enableSRP, _updateFOV);
-                        }
+                        CameraClearFlags clearFlags = _preview.camera.clearFlags;
+                        Color backgroundColor = _preview.camera.backgroundColor;
+                        _preview.camera.clearFlags = CameraClearFlags.Color;
+                        _preview.camera.backgroundColor = Color.clear;
+                        _preview.Render(currentData.enableSRP, _updateFOV);
+                        _preview.camera.clearFlags = clearFlags;
+                        _preview.camera.backgroundColor = backgroundColor;
                     }
+                    else
+                    {
+                        _preview.Render(currentData.enableSRP, _updateFOV);
+                    }
+                }
+
                 //}
             }
 
@@ -5008,7 +5194,8 @@ namespace See1
             Graphics.Blit(tex, temp);
             GL.sRGBWrite = false;
             RenderTexture.active = temp;
-            Texture2D tex2D = new Texture2D(temp.width, temp.height, alpha ? TextureFormat.ARGB32 : TextureFormat.RGB24, false, true);
+            Texture2D tex2D = new Texture2D(temp.width, temp.height, alpha ? TextureFormat.ARGB32 : TextureFormat.RGB24,
+                false, true);
             tex2D.ReadPixels(new Rect(0, 0, temp.width, temp.height), 0, 0);
             tex2D.Apply();
             RenderTexture.ReleaseTemporary(temp);
@@ -5028,9 +5215,10 @@ namespace See1
         //}
         void RenderAndSaveFile()
         {
-            Texture2D tex = RenderToTexture((int)currentData.captureMultiplier, currentData.screenShotAlpha);
+            Texture2D tex = RenderToTexture((int) currentData.captureMultiplier, currentData.screenShotAlpha);
             string baseName = _targetGo ? _targetGo.name : "Blank";
-            string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots", baseName, settings.current.fileExistsMode);
+            string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots",
+                baseName, settings.current.fileExistsMode);
             if (currentData.openSavedImage)
             {
                 EditorUtility.OpenWithDefaultApp(savedPath);
@@ -5059,7 +5247,7 @@ namespace See1
         public void SetAnimation(GameObject animatedRoot, bool reset)
         {
             //기존 수집된 애니메이터에 문제가 있는지 검사 (모델 옵션이 바뀜에 따라 있던 애니메이터가 없어지는 경우가 생김.
-            if (_playerList.Any(x => x.animatedList.Any( ani =>ani.gameObject == null)))
+            if (_playerList.Any(x => x.animatedList.Any(ani => ani.gameObject == null)))
             {
                 reset = true;
             }
@@ -5077,7 +5265,6 @@ namespace See1
             else
             {
                 _playerList.Clear();
-                _isShowingABList.Clear();
                 Animator[] animators = animatedRoot.GetComponentsInChildren<Animator>();
                 for (int i = 0; i < animators.Length; i++)
                 {
@@ -5086,7 +5273,6 @@ namespace See1
                     player.AddAnimated(animator.gameObject);
                     player.onStopPlaying = onStopPlaying;
                     _playerList.Add(player);
-                    _isShowingABList.Add(new AnimBool((i == 0) ? true : false));
                 }
             }
         }
@@ -5098,6 +5284,7 @@ namespace See1
                 _playerList[i].Update(delta);
             }
         }
+
         #endregion
 
         #region GUI
@@ -5133,40 +5320,53 @@ namespace See1
                     //    //    EditorUtility.SetDirty(settings);
                     //    //}
                     //}
-                    using (EditorHelper.Colorize.Do(Color.white,settings.current.autoLoad? Color.cyan : Color.white))
+                    using (EditorHelper.Colorize.Do(Color.white, settings.current.autoLoad ? Color.cyan : Color.white))
                     {
-                        settings.current.autoLoad = GUILayout.Toggle(settings.current.autoLoad, "Auto", EditorStyles.toolbarButton);
+                        settings.current.autoLoad = GUILayout.Toggle(settings.current.autoLoad, "Preview",
+                            EditorStyles.toolbarButton);
                     }
+
                     if (GUILayout.Button("Size", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("Add Current"), false, () => { AddViewportSize(_viewPortRect.size); });
+                        menu.AddItem(new GUIContent("Add Current"), false,
+                            () => { AddViewportSize(_viewPortRect.size); });
                         menu.AddSeparator("");
                         for (var i = 0; i < settings.current.viewportSizes.Count; i++)
                         {
                             var size = settings.current.viewportSizes[i];
                             menu.AddItem(new GUIContent(string.Format("{0}x{1}", size.x, size.y)), false,
-                                x => { ResizeWindow((Vector2)x); }, size);
+                                x => { ResizeWindow((Vector2) x); }, size);
                         }
+
                         menu.ShowAsContext();
                     }
+
                     if (GUILayout.Button("View", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("Add Current"), false, () => { currentData.viewList.Add(new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView)); });
+                        menu.AddItem(new GUIContent("Add Current"), false,
+                            () =>
+                            {
+                                currentData.viewList.Add(new View(_destRot, _destDistance, _destPivotPos,
+                                    _preview.cameraFieldOfView));
+                            });
                         menu.AddSeparator("");
                         for (var i = 0; i < settings.current.viewList.Count; i++)
                         {
                             var view = settings.current.viewList[i];
-                            menu.AddItem(new GUIContent(string.Format("{0}.{1}",i.ToString(), view.name)), false,
+                            menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), view.name)), false,
                                 x => { ApplyView(x as View); }, view);
                         }
+
                         menu.ShowAsContext();
                     }
+
                     if (GUILayout.Button("Lighting", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("Add Current"), false, () => { currentData.lightingList.Add(GetCurrentLighting()); });
+                        menu.AddItem(new GUIContent("Add Current"), false,
+                            () => { currentData.lightingList.Add(GetCurrentLighting()); });
                         menu.AddSeparator("");
                         for (var i = 0; i < settings.current.lightingList.Count; i++)
                         {
@@ -5174,6 +5374,7 @@ namespace See1
                             menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), lighting.name)), false,
                                 x => { ApplyLighting(x as Lighting); }, lighting);
                         }
+
                         menu.ShowAsContext();
                     }
 
@@ -5182,6 +5383,7 @@ namespace See1
                     {
                         RenderAndSaveFile();
                     }
+
                     GUI.backgroundColor = Color.white;
                     //viewPortSize.x = (int)EditorGUILayout.Slider(viewPortSize.x, this.minSize.x - rs.right.size.x, this.maxSize.x, GUILayout.Width(200));
                     //viewPortSize.y = (int)EditorGUILayout.Slider(viewPortSize.y, this.minSize.y - rs.stretchedTop.size.y - rs.stretchedBottom.size.y, this.maxSize.y, GUILayout.Width(200));
@@ -5194,22 +5396,26 @@ namespace See1
                     int idx = See1ViewSettings.instance.dataIndex;
                     using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        settings.dataIndex = (int)EditorGUILayout.Popup(settings.dataIndex, See1ViewSettings.dataNames, EditorStyles.toolbarPopup);
+                        settings.dataIndex = (int) EditorGUILayout.Popup(settings.dataIndex, See1ViewSettings.dataNames,
+                            EditorStyles.toolbarPopup);
                         if (GUILayout.Button("+", EditorStyles.toolbarButton, GUILayout.Width(20)))
                         {
                             string newName = typeof(Data).Name;
                             settings.Add(newName);
                         }
+
                         using (new EditorGUI.DisabledGroupScope(settings.dataList.Count == 1))
                         {
                             if (GUILayout.Button("-", EditorStyles.toolbarButton, GUILayout.Width(20)))
                             {
-                                if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", currentData.name, "?"), "Ok", "Cancel"))
+                                if (EditorUtility.DisplayDialog("Confirm",
+                                    string.Format("{0}{1}{2}", "Delete ", currentData.name, "?"), "Ok", "Cancel"))
                                 {
                                     settings.RemoveCurrent();
                                 }
                             }
                         }
+
                         if (check.changed)
                         {
                             if (idx != settings.dataIndex)
@@ -5317,23 +5523,26 @@ namespace See1
             {
                 //using (new ShowObjectScope(_shadowGo))
                 //{
-                    _preview.BeginPreview(renderRectScaled, style);
-                    using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
-                    {
-                        GL.wireframe = true;
-                        _preview.DrawMesh(Grid.Get(100), Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one), _gridMaterial, 0);
-                        GL.wireframe = false;
-                        _preview.Render(currentData.enableSRP, _updateFOV);
-                        //_preview.Render(settings.enableSRP, _updateFOV);
-                    }
-                    //Texture image = _preview.EndPreview();
-                    //GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                    //GUI.DrawTexture(r, image, ScaleMode.StretchToFill, true);
-                    //GL.sRGBWrite = false;
-                    //UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                    _preview.EndAndDrawPreview(_viewPortRect);
+                _preview.BeginPreview(renderRectScaled, style);
+                using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
+                {
+                    GL.wireframe = true;
+                    _preview.DrawMesh(Grid.Get(100), Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one),
+                        _gridMaterial, 0);
+                    GL.wireframe = false;
+                    _preview.Render(currentData.enableSRP, _updateFOV);
+                    //_preview.Render(settings.enableSRP, _updateFOV);
+                }
+
+                //Texture image = _preview.EndPreview();
+                //GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
+                //GUI.DrawTexture(r, image, ScaleMode.StretchToFill, true);
+                //GL.sRGBWrite = false;
+                //UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                _preview.EndAndDrawPreview(_viewPortRect);
                 //}
             }
+
             //Grid.Draw(_preview.camera, 100, Color.white);
         }
 
@@ -5342,7 +5551,7 @@ namespace See1
             if (IsDocked())
                 EditorGUI.DrawRect(r, GetGrayscaleInverted(_preview.camera.backgroundColor) * 0.5f);
             //Open Settings Button
-            GUIStyle style = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleCenter, fontSize = 16 };
+            GUIStyle style = new GUIStyle(EditorStyles.label) {alignment = TextAnchor.MiddleCenter, fontSize = 16};
             style.normal.textColor = GetGrayscaleInverted(_preview.camera.backgroundColor) * 0.5f;
             Rect btnRect = new Rect(r.width, r.y, 24, r.height);
             string btn = _rs.openLeft.target ? "◄" : "►";
@@ -5352,12 +5561,13 @@ namespace See1
             Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
             using (new GUILayout.AreaScope(area))
             {
-                Rect top = new Rect(area.x,area.y,area.width, EditorGUIUtility.singleLineHeight);
+                Rect top = new Rect(area.x, area.y, area.width, EditorGUIUtility.singleLineHeight);
                 //EditorGUI.LabelField(top, "Preview Hierachy", EditorStyles.toolbarButton);
                 if (GUI.Button(top, "Unlock Inspector", EditorStyles.toolbarButton))
                 {
                     UnlockInspector();
                 }
+
                 using (var svScope = new GUILayout.ScrollViewScope(_scrollPos1))
                 {
                     _scrollPos1 = svScope.scrollPosition;
@@ -5401,7 +5611,7 @@ namespace See1
             if (IsDocked())
                 EditorGUI.DrawRect(r, GetGrayscaleInverted(_preview.camera.backgroundColor) * 0.5f);
             //Open Settings Button
-            GUIStyle style = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleCenter, fontSize = 16 };
+            GUIStyle style = new GUIStyle(EditorStyles.label) {alignment = TextAnchor.MiddleCenter, fontSize = 16};
             style.normal.textColor = GetGrayscaleInverted(_preview.camera.backgroundColor) * 0.5f;
             Rect btnRect = new Rect(r.x - 24, r.y, 24, r.height);
             string btn = _rs.openRight.target ? "►" : "◄";
@@ -5415,7 +5625,7 @@ namespace See1
                 {
                     using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        panelMode = (SidePanelMode)GUILayout.Toolbar((int)panelMode,
+                        panelMode = (SidePanelMode) GUILayout.Toolbar((int) panelMode,
                             Enum.GetNames(typeof(SidePanelMode)), EditorStyles.toolbarButton);
                         if (check.changed)
                         {
@@ -5437,7 +5647,7 @@ namespace See1
                                 OnGUI_Animation();
                                 break;
                             case SidePanelMode.Misc:
-                                OnGUI_Tools();
+                                OnGUI_Misc();
                                 break;
                         }
                     }
@@ -5447,396 +5657,439 @@ namespace See1
 
         void OnGUI_View()
         {
-            _fadeDic["Control"].target = EditorHelper.Foldout(_fadeDic["Control"].target, "Control");
-            using (var fade = new EditorGUILayout.FadeGroupScope(_fadeDic["Control"].faded))
+            EditorHelper.FoldGroup.Do("Control", true, () =>
             {
-                if (fade.visible)
+                currentData.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", currentData.rotSpeed, 1, 5);
+                currentData.zoomSpeed = EditorGUILayout.IntSlider("Zoom Speed", currentData.zoomSpeed, 1, 5);
+                currentData.panSpeed = EditorGUILayout.IntSlider("Pan Speed", currentData.panSpeed, 1, 5);
+                currentData.smoothFactor = EditorGUILayout.IntSlider("Smoothness", currentData.smoothFactor, 1, 5);
+                _destPivotPos = EditorGUILayout.Vector3Field("Focus", _destPivotPos);
+                _targetOffset = EditorGUILayout.Vector3Field("Offset", _targetOffset);
+                using (EditorHelper.Horizontal.Do())
                 {
-                    currentData.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", currentData.rotSpeed, 1, 5);
-                    currentData.zoomSpeed = EditorGUILayout.IntSlider("Zoom Speed", currentData.zoomSpeed, 1, 5);
-                    currentData.panSpeed = EditorGUILayout.IntSlider("Pan Speed", currentData.panSpeed, 1, 5);
-                    currentData.smoothFactor = EditorGUILayout.IntSlider("Smoothness", currentData.smoothFactor, 1, 5);
-                    _destPivotPos = EditorGUILayout.Vector3Field("Focus", _destPivotPos);
-                    _targetOffset = EditorGUILayout.Vector3Field("Offset", _targetOffset);
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        _autoRotateCamera = GUILayout.Toggle(_autoRotateCamera, "Rotate Camera",
-                            EditorStyles.miniButton,
-                            GUILayout.Width(_labelWidth));
-                        _cameraAutoRotationSpeed = EditorGUILayout.IntSlider(_cameraAutoRotationSpeed, -10, 10);
-                    }
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        _autoRotateLight = GUILayout.Toggle(_autoRotateLight, "Rotate Light", EditorStyles.miniButton,
-                            GUILayout.Width(_labelWidth));
-                        _lightAutoRotationSpeed = EditorGUILayout.IntSlider(_lightAutoRotationSpeed, -10, 10);
-                    }
-                }
-            }
-
-            EditorHelper.Foldout(true, "Size");
-            using (EditorHelper.Horizontal.Do())
-            {
-                if (GUILayout.Button("New", EditorStyles.miniButtonLeft))
-                {
-                    ShowPopupWindow();
+                    _autoRotateCamera = GUILayout.Toggle(_autoRotateCamera, "Rotate Camera",
+                        EditorStyles.miniButton,
+                        GUILayout.Width(_labelWidth));
+                    _cameraAutoRotationSpeed = EditorGUILayout.IntSlider(_cameraAutoRotationSpeed, -10, 10);
                 }
 
-                if (GUILayout.Button("Add Current", EditorStyles.miniButtonRight))
+                using (EditorHelper.Horizontal.Do())
                 {
-                    AddViewportSize(_viewPortRect.size);
-                }
-            }
-
-            EditorHelper.GridLayout(currentData.viewportSizes.Count, 2, (i) =>
-            {
-                if (i < 0 || i > currentData.viewportSizes.Count - 1) return;
-                var size = currentData.viewportSizes[i];
-                if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
-                    EditorStyles.miniButtonLeft, GUILayout.MaxWidth(90)))
-                {
-                    ResizeWindow(size);
-                }
-
-                if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-                {
-                    currentData.viewportSizes.Remove(size);
+                    _autoRotateLight = GUILayout.Toggle(_autoRotateLight, "Rotate Light", EditorStyles.miniButton,
+                        GUILayout.Width(_labelWidth));
+                    _lightAutoRotationSpeed = EditorGUILayout.IntSlider(_lightAutoRotationSpeed, -10, 10);
                 }
             });
 
-            EditorHelper.Foldout(true, "Render");
-
-            //GUILayout.Label(string.Format("Name : {0}"), EditorStyles.miniLabel);
-            GUILayout.Label(string.Format("Size : {0} x {1}", _viewPortRect.width * currentData.captureMultiplier, _viewPortRect.height * currentData.captureMultiplier), EditorStyles.miniLabel);
-            using (EditorHelper.Horizontal.Do())
+            EditorHelper.FoldGroup.Do("Size", true, () =>
             {
-                currentData.captureMultiplier = EditorGUILayout.IntSlider(currentData.captureMultiplier, 1, 8);
-                currentData.screenShotAlpha = GUILayout.Toggle(currentData.screenShotAlpha, "Alpha", EditorStyles.miniButton);
-            }
-
-            using (EditorHelper.Horizontal.Do())
-            {
-                using (new EditorGUILayout.VerticalScope())
+                using (EditorHelper.Horizontal.Do())
                 {
-                    using (EditorHelper.Horizontal.Do())
+                    if (GUILayout.Button("New", EditorStyles.miniButtonLeft))
                     {
-                        currentData.fileExistsMode = (FileExistsMode)GUILayout.Toolbar((int)currentData.fileExistsMode, Enum.GetNames(typeof(FileExistsMode)), EditorStyles.miniButton);
+                        ShowPopupWindow();
                     }
 
-                    currentData.openSavedImage = GUILayout.Toggle(currentData.openSavedImage, "Open Saved Image",
-                        EditorStyles.miniButton);
-                    if (GUILayout.Button("Open Saved Folder", EditorStyles.miniButton))
+                    if (GUILayout.Button("Add Current", EditorStyles.miniButtonRight))
                     {
-                        EditorUtility.OpenWithDefaultApp(Directory.GetParent(Application.dataPath).ToString() +
-                                                         "/Screenshots");
+                        AddViewportSize(_viewPortRect.size);
                     }
                 }
-                GUI.backgroundColor = Color.red;
-                if (GUILayout.Button("Render", GUILayout.Width(80),GUILayout.Height(48)))
-                {
-                    RenderAndSaveFile();
-                }
-                GUI.backgroundColor = Color.white;
-            }
-            if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") && currentData.screenShotAlpha && currentData.enablePostProcess)
-            {
-                EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ", MessageType.Warning);
-            }
 
-            EditorHelper.Foldout(true, "View");
-            //_targetOffset = EditorGUILayout.Vector3Field("Target Offset", _targetOffset);
-            using (EditorHelper.Horizontal.Do())
-            {
-                if (GUILayout.Button("Front", EditorStyles.miniButtonLeft))
+                EditorHelper.GridLayout(currentData.viewportSizes.Count, 2, (i) =>
                 {
-                    _destRot = new Vector2(180, 0);
-                }
-
-                if (GUILayout.Button("Left", EditorStyles.miniButtonMid))
-                {
-                    _destRot = new Vector2(90, 0);
-                }
-
-                if (GUILayout.Button("Back", EditorStyles.miniButtonMid))
-                {
-                    _destRot = Vector2.zero;
-                }
-
-                if (GUILayout.Button("Right", EditorStyles.miniButtonMid))
-                {
-                    _destRot = new Vector2(-90, 0);
-                }
-
-                if (GUILayout.Button("Top", EditorStyles.miniButtonMid))
-                {
-                    _destRot = new Vector2(180, 90);
-                }
-
-                if (GUILayout.Button("Bottom", EditorStyles.miniButtonRight))
-                {
-                    _destRot = new Vector2(180, -90);
-                }
-            }
-
-            using (EditorHelper.Horizontal.Do())
-            {
-                using (EditorHelper.LabelWidth.Do(80))
-                {
-                    _destFOV = EditorGUILayout.IntSlider("Field Of View", (int)_destFOV, 1, 179);
-                    _preview.camera.orthographic = GUILayout.Toggle(_preview.camera.orthographic, _preview.camera.orthographic ? "O" : "P", EditorStyles.miniButton, GUILayout.Width(20));
-                }
-            }
-
-            using (EditorHelper.Horizontal.Do())
-            {
-                if (GUILayout.Button("Add Current", EditorStyles.miniButtonLeft))
-                {
-                    currentData.viewList.Add(new View(_destRot, _destDistance, _destPivotPos,
-                        _preview.cameraFieldOfView));
-                }
-                if (GUILayout.Button("From Scene", EditorStyles.miniButtonRight))
-                {
-                    var menu = new GenericMenu();
-                    var cameras = FindAllObjectsInScene().SelectMany(x=>x.GetComponentsInChildren<Camera>()).ToArray(); //Find Inactive
-                    for (var i = 0; i < cameras.Length; i++)
+                    if (i < 0 || i > currentData.viewportSizes.Count - 1) return;
+                    var size = currentData.viewportSizes[i];
+                    if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
+                        EditorStyles.miniButtonLeft, GUILayout.MaxWidth(90)))
                     {
-                        var cam = cameras[i];
-                        menu.AddItem(new GUIContent(string.Format("{0}", cam.name)), false,
-                            x =>
-                            {
-                                var view = new View((Camera) x);
-                                currentData.viewList.Add(view);
-                                ApplyView(view);
-                            }, cam);
+                        ResizeWindow(size);
                     }
-                    menu.ShowAsContext();
-                }
-            }
 
-            EditorHelper.GridLayout(currentData.viewList.Count, 2, (i) =>
-            {
-                if(i<0 || i>currentData.viewList.Count-1 ) return;
-                var view = currentData.viewList[i];
-                if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
-                {
-                    view.rotation = _destRot;
-                    view.distance = _destDistance;
-                    view.pivot = _destPivotPos;
-                    view.fieldOfView = _preview.cameraFieldOfView;
-                    Notice.Log(string.Format("Current view saved to slot {0}", i.ToString()), false);
-                }
+                    if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
+                    {
+                        currentData.viewportSizes.Remove(size);
+                    }
+                });
 
-                if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), view.name), EditorStyles.miniButtonMid, GUILayout.MaxWidth(70)))
-                {
-                    ApplyView(i);
-                }
-
-                if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
-                {
-                    currentData.viewList.Remove(view);
-                    Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
-                }
             });
 
-            EditorHelper.Foldout(true, "Environment");
-
-            using (EditorHelper.Horizontal.Do())
+            EditorHelper.FoldGroup.Do("Render", true, () =>
             {
-                EditorGUILayout.PrefixLabel("Background");
-                using (var check = new EditorGUI.ChangeCheckScope())
-                {
-                    bool isSky = (currentData.clearFlag == ClearFlags.Sky);
-                    isSky = !GUILayout.Toggle(!isSky, "Color", EditorStyles.miniButtonLeft);
-                    isSky = GUILayout.Toggle(isSky, "Environment", EditorStyles.miniButtonRight);
-                    if (check.changed)
-                    {
-                        currentData.clearFlag = isSky ? ClearFlags.Sky : ClearFlags.Color;
-
-                    }
-                }
-            }
-
-            ColorPickerHDRConfig config = new ColorPickerHDRConfig(0, 2, 0, 2);
-            if (currentData.clearFlag == ClearFlags.Sky)
-            {
-                using (new EditorGUI.DisabledGroupScope(true))
-                {
-                    EditorGUILayout.ObjectField("Material", _skyMaterial, typeof(Material), false);
-                }
-                _preview.camera.clearFlags = CameraClearFlags.Skybox;
-            }
-            else
-            {
+                //GUILayout.Label(string.Format("Name : {0}"), EditorStyles.miniLabel);
+                GUILayout.Label(
+                    string.Format("Size : {0} x {1}", _viewPortRect.width * currentData.captureMultiplier,
+                        _viewPortRect.height * currentData.captureMultiplier), EditorStyles.miniLabel);
                 using (EditorHelper.Horizontal.Do())
                 {
-                    currentData.bgColor = EditorGUILayout.ColorField(new GUIContent("Color"), currentData.bgColor,true,true,true, config);
-                    _preview.camera.backgroundColor = currentData.bgColor;
-                    _preview.camera.clearFlags = CameraClearFlags.SolidColor;
-                }
-            }
-
-            _probe.customBakedTexture = currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
-
-            currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
-
-            //settings.enableSRP = GUILayout.Toggle(settings.enableSRP, "Enable Scriptable Render Pipeline", EditorStyles.miniButton);
-
-            EditorHelper.Foldout(true, "Lighting");
-            using (var lightCheck = new EditorGUI.ChangeCheckScope())
-            {
-                using (EditorHelper.LabelWidth.Do(80))
-                {
-                    _preview.ambientColor = currentData.ambientSkyColor =
-                        EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, true, true,
-                            true,
-                            config);
+                    currentData.captureMultiplier = EditorGUILayout.IntSlider(currentData.captureMultiplier, 1, 8);
+                    currentData.screenShotAlpha =
+                        GUILayout.Toggle(currentData.screenShotAlpha, "Alpha", EditorStyles.miniButton);
                 }
 
-                for (var i = 0; i < _preview.lights.Length; i++)
-                {
-                    var previewLight = _preview.lights[i];
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (EditorHelper.LabelWidth.Do(40))
-                        {
-                            GUILayout.Label(string.Format("Light{0}", i.ToString()), EditorStyles.miniLabel);
-                            previewLight.color = EditorGUILayout.ColorField(new GUIContent(""), previewLight.color,
-                                true,
-                                true, true, config, GUILayout.Width(50));
-                            previewLight.intensity = EditorGUILayout.Slider("", previewLight.intensity, 0, 2);
-                            EditorGUIUtility.labelWidth = _labelWidth;
-                        }
-
-                        if (lightCheck.changed)
-                        {
-                            previewLight.shadows = currentData.enableShadows ? LightShadows.Soft : LightShadows.None;
-                            previewLight.shadowBias = currentData.shadowBias;
-                        }
-                    }
-                }
                 using (EditorHelper.Horizontal.Do())
                 {
-                    currentData.enableShadows =
-                        GUILayout.Toggle(currentData.enableShadows, "Shadow", EditorStyles.miniButton,
-                            GUILayout.Width(50));
+                    using (new EditorGUILayout.VerticalScope())
+                    {
+                        using (EditorHelper.Horizontal.Do())
+                        {
+                            currentData.fileExistsMode = (FileExistsMode) GUILayout.Toolbar(
+                                (int) currentData.fileExistsMode, Enum.GetNames(typeof(FileExistsMode)),
+                                EditorStyles.miniButton);
+                        }
 
-                    EditorGUIUtility.labelWidth = 40;
-                    currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0, 1);
-                    EditorGUIUtility.labelWidth = _labelWidth;
+                        currentData.openSavedImage = GUILayout.Toggle(currentData.openSavedImage, "Open Saved Image",
+                            EditorStyles.miniButton);
+                        if (GUILayout.Button("Open Saved Folder", EditorStyles.miniButton))
+                        {
+                            EditorUtility.OpenWithDefaultApp(Directory.GetParent(Application.dataPath).ToString() +
+                                                             "/Screenshots");
+                        }
+                    }
+
+                    GUI.backgroundColor = Color.red;
+                    if (GUILayout.Button("Render", GUILayout.Width(80), GUILayout.Height(48)))
+                    {
+                        RenderAndSaveFile();
+                    }
+
+                    GUI.backgroundColor = Color.white;
                 }
+
+                if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") &&
+                    currentData.screenShotAlpha && currentData.enablePostProcess)
+                {
+                    EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ",
+                        MessageType.Warning);
+                }
+
+            });
+
+            EditorHelper.FoldGroup.Do("View", true, () =>
+            {
+                //_targetOffset = EditorGUILayout.Vector3Field("Target Offset", _targetOffset);
+                using (EditorHelper.Horizontal.Do())
+                {
+                    if (GUILayout.Button("Front", EditorStyles.miniButtonLeft))
+                    {
+                        _destRot = new Vector2(180, 0);
+                    }
+
+                    if (GUILayout.Button("Left", EditorStyles.miniButtonMid))
+                    {
+                        _destRot = new Vector2(90, 0);
+                    }
+
+                    if (GUILayout.Button("Back", EditorStyles.miniButtonMid))
+                    {
+                        _destRot = Vector2.zero;
+                    }
+
+                    if (GUILayout.Button("Right", EditorStyles.miniButtonMid))
+                    {
+                        _destRot = new Vector2(-90, 0);
+                    }
+
+                    if (GUILayout.Button("Top", EditorStyles.miniButtonMid))
+                    {
+                        _destRot = new Vector2(180, 90);
+                    }
+
+                    if (GUILayout.Button("Bottom", EditorStyles.miniButtonRight))
+                    {
+                        _destRot = new Vector2(180, -90);
+                    }
+                }
+
+                using (EditorHelper.Horizontal.Do())
+                {
+                    using (EditorHelper.LabelWidth.Do(80))
+                    {
+                        _destFOV = EditorGUILayout.IntSlider("Field Of View", (int) _destFOV, 1, 179);
+                        _preview.camera.orthographic = GUILayout.Toggle(_preview.camera.orthographic,
+                            _preview.camera.orthographic ? "O" : "P", EditorStyles.miniButton, GUILayout.Width(20));
+                    }
+                }
+
                 using (EditorHelper.Horizontal.Do())
                 {
                     if (GUILayout.Button("Add Current", EditorStyles.miniButtonLeft))
                     {
-                        var lighting = GetCurrentLighting();
-                        currentData.lightingList.Add(lighting);
-                        ApplyLighting(lighting);
+                        currentData.viewList.Add(new View(_destRot, _destDistance, _destPivotPos,
+                            _preview.cameraFieldOfView));
                     }
 
                     if (GUILayout.Button("From Scene", EditorStyles.miniButtonRight))
                     {
-                        var lighting = new Lighting();
-                        lighting.ambientSkyColor = RenderSettings.ambientSkyColor;
-                        var lights = FindObjectsOfType<Light>(); //Not Find Inactive
-                        foreach (var light in lights)
+                        var menu = new GenericMenu();
+                        var cameras = FindAllObjectsInScene().SelectMany(x => x.GetComponentsInChildren<Camera>())
+                            .ToArray(); //Find Inactive
+                        for (var i = 0; i < cameras.Length; i++)
                         {
-                            var info = new Lighting.LightInfo();
-                            info.position = light.transform.position;
-                            info.rotation = light.transform.rotation;
-                            info.lightColor = light.color;
-                            info.intensity = light.intensity;
-                            lighting.lightList.Add(info);
+                            var cam = cameras[i];
+                            menu.AddItem(new GUIContent(string.Format("{0}", cam.name)), false,
+                                x =>
+                                {
+                                    var view = new View((Camera) x);
+                                    currentData.viewList.Add(view);
+                                    ApplyView(view);
+                                }, cam);
                         }
-                        currentData.lightingList.Add(lighting);
-                        ApplyLighting(lighting);
+
+                        menu.ShowAsContext();
                     }
                 }
-                EditorHelper.GridLayout(currentData.lightingList.Count, 2, (i) =>
+
+                EditorHelper.GridLayout(currentData.viewList.Count, 2, (i) =>
                 {
-                    if (i < 0 || i > currentData.lightingList.Count - 1) return;
-                    var lighting = currentData.lightingList[i];
+                    if (i < 0 || i > currentData.viewList.Count - 1) return;
+                    var view = currentData.viewList[i];
                     if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                     {
-                        lighting.ambientSkyColor = settings.current.ambientSkyColor;
-                        lighting.lightList.Clear();
-                        foreach (var light in _preview.lights)
-                        {
-                            var info = new Lighting.LightInfo();
-                            info.position = light.transform.position;
-                            info.rotation = light.transform.rotation;
-                            info.lightColor = light.color;
-                            info.intensity = light.intensity;
-                            lighting.lightList.Add(info);
-                        }
+                        view.rotation = _destRot;
+                        view.distance = _destDistance;
+                        view.pivot = _destPivotPos;
+                        view.fieldOfView = _preview.cameraFieldOfView;
                         Notice.Log(string.Format("Current view saved to slot {0}", i.ToString()), false);
                     }
 
-                    if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), lighting.name), EditorStyles.miniButtonMid, GUILayout.MaxWidth(70)))
+                    if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), view.name), EditorStyles.miniButtonMid,
+                        GUILayout.MaxWidth(70)))
                     {
-                        ApplyLighting(lighting);
+                        ApplyView(i);
                     }
 
                     if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
                     {
-                        currentData.lightingList.Remove(lighting);
+                        currentData.viewList.Remove(view);
                         Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
                     }
                 });
-            }
+            });
 
-            EditorHelper.Foldout(true, "Render");
-
-            currentData.viewportMultiplier = GUILayout.Toggle((currentData.viewportMultiplier == 2), "Enable Viewport Supersampling", EditorStyles.miniButton) ? 2 : 1;
-
-            bool wireFrameEnabled = _wireFrameEnabled;
-            bool colorEnabled = _colorEnabled;
-            bool heightFogEnabled = currentData.enableHeightFog;
-            bool shadowEnabled = currentData.enablePlaneShadows;
-
-            using (EditorHelper.Horizontal.Do())
+            EditorHelper.FoldGroup.Do("Environment", true, () =>
             {
-                _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton, GUILayout.Width(80));
-                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
-                _color = EditorGUILayout.ColorField(_color);
-            }
+                using (EditorHelper.Horizontal.Do())
+                {
+                    EditorGUILayout.PrefixLabel("Background");
+                    using (var check = new EditorGUI.ChangeCheckScope())
+                    {
+                        bool isSky = (currentData.clearFlag == ClearFlags.Sky);
+                        isSky = !GUILayout.Toggle(!isSky, "Color", EditorStyles.miniButtonLeft);
+                        isSky = GUILayout.Toggle(isSky, "Environment", EditorStyles.miniButtonRight);
+                        if (check.changed)
+                        {
+                            currentData.clearFlag = isSky ? ClearFlags.Sky : ClearFlags.Color;
 
-            using (EditorHelper.Horizontal.Do())
+                        }
+                    }
+                }
+
+                ColorPickerHDRConfig config = new ColorPickerHDRConfig(0, 2, 0, 2);
+                if (currentData.clearFlag == ClearFlags.Sky)
+                {
+                    using (new EditorGUI.DisabledGroupScope(true))
+                    {
+                        EditorGUILayout.ObjectField("Material", _skyMaterial, typeof(Material), false);
+                    }
+
+                    _preview.camera.clearFlags = CameraClearFlags.Skybox;
+                }
+                else
+                {
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        currentData.bgColor = EditorGUILayout.ColorField(new GUIContent("Color"), currentData.bgColor,
+                            true, true, true, config);
+                        _preview.camera.backgroundColor = currentData.bgColor;
+                        _preview.camera.clearFlags = CameraClearFlags.SolidColor;
+                    }
+                }
+
+                _probe.customBakedTexture = currentData.cubeMap =
+                    (Cubemap) EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
+
+                currentData.CubeMapMipMapBias =
+                    EditorGUILayout.IntSlider("Bias", (int) currentData.CubeMapMipMapBias, 0, 10);
+
+                //settings.enableSRP = GUILayout.Toggle(settings.enableSRP, "Enable Scriptable Render Pipeline", EditorStyles.miniButton);
+
+            });
+
+            EditorHelper.FoldGroup.Do("Lighting", true, () =>
             {
-                _wireFrameEnabled = GUILayout.Toggle(_wireFrameEnabled, "WireFrame", EditorStyles.miniButton, GUILayout.Width(80));
-                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
-                currentData.wireLineColor = EditorGUILayout.ColorField(currentData.wireLineColor);
-            }
+                using (var lightCheck = new EditorGUI.ChangeCheckScope())
+                {
+                    using (EditorHelper.LabelWidth.Do(80))
+                    {
+                        _preview.ambientColor = currentData.ambientSkyColor =
+                            EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor);
+                    }
 
-            using (EditorHelper.Horizontal.Do())
+                    for (var i = 0; i < _preview.lights.Length; i++)
+                    {
+                        var previewLight = _preview.lights[i];
+                        using (EditorHelper.Horizontal.Do())
+                        {
+                            using (EditorHelper.LabelWidth.Do(40))
+                            {
+                                GUILayout.Label(string.Format("Light{0}", i.ToString()), EditorStyles.miniLabel);
+                                previewLight.color = EditorGUILayout.ColorField(new GUIContent(""),
+                                    previewLight.color, GUILayout.Width(50));
+                                previewLight.intensity = EditorGUILayout.Slider("", previewLight.intensity, 0, 2);
+                                EditorGUIUtility.labelWidth = _labelWidth;
+                            }
+
+                            if (lightCheck.changed)
+                            {
+                                previewLight.shadows =
+                                    currentData.enableShadows ? LightShadows.Soft : LightShadows.None;
+                                previewLight.shadowBias = currentData.shadowBias;
+                            }
+                        }
+                    }
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        currentData.enableShadows =
+                            GUILayout.Toggle(currentData.enableShadows, "Shadow", EditorStyles.miniButton,
+                                GUILayout.Width(50));
+
+                        EditorGUIUtility.labelWidth = 40;
+                        currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0, 1);
+                        EditorGUIUtility.labelWidth = _labelWidth;
+                    }
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        if (GUILayout.Button("Add Current", EditorStyles.miniButtonLeft))
+                        {
+                            var lighting = GetCurrentLighting();
+                            currentData.lightingList.Add(lighting);
+                            ApplyLighting(lighting);
+                        }
+
+                        if (GUILayout.Button("From Scene", EditorStyles.miniButtonRight))
+                        {
+                            var lighting = new Lighting();
+                            lighting.ambientSkyColor = RenderSettings.ambientSkyColor;
+                            var lights = FindObjectsOfType<Light>(); //Not Find Inactive
+                            foreach (var light in lights)
+                            {
+                                var info = new Lighting.LightInfo();
+                                info.position = light.transform.position;
+                                info.rotation = light.transform.rotation;
+                                info.lightColor = light.color;
+                                info.intensity = light.intensity;
+                                lighting.lightList.Add(info);
+                            }
+
+                            currentData.lightingList.Add(lighting);
+                            ApplyLighting(lighting);
+                        }
+                    }
+
+                    EditorHelper.GridLayout(currentData.lightingList.Count, 2, (i) =>
+                    {
+                        if (i < 0 || i > currentData.lightingList.Count - 1) return;
+                        var lighting = currentData.lightingList[i];
+                        if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
+                        {
+                            lighting.ambientSkyColor = settings.current.ambientSkyColor;
+                            lighting.lightList.Clear();
+                            foreach (var light in _preview.lights)
+                            {
+                                var info = new Lighting.LightInfo();
+                                info.position = light.transform.position;
+                                info.rotation = light.transform.rotation;
+                                info.lightColor = light.color;
+                                info.intensity = light.intensity;
+                                lighting.lightList.Add(info);
+                            }
+
+                            Notice.Log(string.Format("Current view saved to slot {0}", i.ToString()), false);
+                        }
+
+                        if (GUILayout.Button(string.Format("{0}.{1}", i.ToString(), lighting.name),
+                            EditorStyles.miniButtonMid, GUILayout.MaxWidth(70)))
+                        {
+                            ApplyLighting(lighting);
+                        }
+
+                        if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
+                        {
+                            currentData.lightingList.Remove(lighting);
+                            Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
+                        }
+                    });
+                }
+            });
+
+            EditorHelper.FoldGroup.Do("Render Customize", true, () =>
             {
-                currentData.enablePlaneShadows = GUILayout.Toggle(currentData.enablePlaneShadows, "PlaneShadow", EditorStyles.miniButton, GUILayout.Width(80));
-                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
-                currentData.planeShadowColor = EditorGUILayout.ColorField(currentData.planeShadowColor);
-            }
 
-            using (EditorHelper.Horizontal.Do())
-            {
-                currentData.enableHeightFog = GUILayout.Toggle(currentData.enableHeightFog, "Height Fog", EditorStyles.miniButton, GUILayout.Width(80));
-                //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
-                currentData.heightFogHeight = GUILayout.HorizontalSlider(currentData.heightFogHeight,_targetInfo.bounds.min.y + 0.0001f,_targetInfo.bounds.size.y);
-                currentData.heightFogColor = EditorGUILayout.ColorField(currentData.heightFogColor, GUILayout.Width(60));
-            }
+                currentData.viewportMultiplier = GUILayout.Toggle((currentData.viewportMultiplier == 2),
+                    "Enable Viewport Supersampling", EditorStyles.miniButton)
+                    ? 2
+                    : 1;
 
-            if (wireFrameEnabled != _wireFrameEnabled ||
-                colorEnabled != _colorEnabled ||
-                shadowEnabled != currentData.enablePlaneShadows ||
-                heightFogEnabled != currentData.enableHeightFog)
+                bool wireFrameEnabled = _wireFrameEnabled;
+                bool colorEnabled = _colorEnabled;
+                bool heightFogEnabled = currentData.enableHeightFog;
+                bool shadowEnabled = currentData.enablePlaneShadows;
+
+                using (EditorHelper.Horizontal.Do())
+                {
+                    _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton,
+                        GUILayout.Width(80));
+                    //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
+                    _color = EditorGUILayout.ColorField(_color);
+                }
+
+                using (EditorHelper.Horizontal.Do())
+                {
+                    _wireFrameEnabled = GUILayout.Toggle(_wireFrameEnabled, "WireFrame", EditorStyles.miniButton,
+                        GUILayout.Width(80));
+                    //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
+                    currentData.wireLineColor = EditorGUILayout.ColorField(currentData.wireLineColor);
+                }
+
+                using (EditorHelper.Horizontal.Do())
+                {
+                    currentData.enablePlaneShadows = GUILayout.Toggle(currentData.enablePlaneShadows, "PlaneShadow",
+                        EditorStyles.miniButton, GUILayout.Width(80));
+                    //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
+                    currentData.planeShadowColor = EditorGUILayout.ColorField(currentData.planeShadowColor);
+                }
+
+                using (EditorHelper.Horizontal.Do())
+                {
+                    currentData.enableHeightFog = GUILayout.Toggle(currentData.enableHeightFog, "Height Fog",
+                        EditorStyles.miniButton, GUILayout.Width(80));
+                    //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
+                    currentData.heightFogHeight = GUILayout.HorizontalSlider(currentData.heightFogHeight,
+                        _targetInfo.bounds.min.y + 0.0001f, _targetInfo.bounds.size.y);
+                    currentData.heightFogColor =
+                        EditorGUILayout.ColorField(currentData.heightFogColor, GUILayout.Width(60));
+                }
+
+                if (wireFrameEnabled != _wireFrameEnabled ||
+                    colorEnabled != _colorEnabled ||
+                    shadowEnabled != currentData.enablePlaneShadows ||
+                    heightFogEnabled != currentData.enableHeightFog)
                 {
                     ApplyModelCommandBuffers();
                 }
+            });
 
-                EditorHelper.Foldout(true, "Post Process");
+            EditorHelper.FoldGroup.Do("Post Process", true, () =>
+            {
 #if UNITY_POST_PROCESSING_STACK_V2
 
             using (var check = new EditorGUI.ChangeCheckScope())
             {
-                currentData.enablePostProcess = GUILayout.Toggle(currentData.enablePostProcess, "Enable Post Processing",
+                currentData.enablePostProcess =
+ GUILayout.Toggle(currentData.enablePostProcess, "Enable Post Processing",
                     EditorStyles.miniButton);
                 if (currentData.enablePostProcess)
                     currentData.profile =
@@ -5850,72 +6103,80 @@ namespace See1
 
             //if (_ppsEditor) _ppsEditor.OnInspectorGUI();
 #else
-                    EditorGUILayout.HelpBox("To use Post Process, add the Post Process Stack V2 package to your project.", MessageType.Info);
+                EditorGUILayout.HelpBox("To use Post Process, add the Post Process Stack V2 package to your project.",
+                    MessageType.Info);
 #endif
+            });
 
-            EditorHelper.Foldout(true, "Debug View");
-            using (EditorHelper.Horizontal.Do())
+            EditorHelper.FoldGroup.Do("View Mode", true, () =>
             {
-                using (var check = new EditorGUI.ChangeCheckScope())
+                using (EditorHelper.Horizontal.Do())
                 {
-                    _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton, GUILayout.Width(80));
-                    if (check.changed)
+                    using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
-                        SetGridBuffer(_gridEnabled);
-                    }
-                }
-                _gridColor = EditorGUILayout.ColorField(_gridColor);
-            }
-            using (EditorHelper.Horizontal.Do())
-            {
-                using (var check = new EditorGUI.ChangeCheckScope())
-                {
-                    _debugViewMode = (DebugViewMode) GUILayout.Toolbar((int) _debugViewMode, Enum.GetNames(typeof(DebugViewMode)), EditorStyles.miniButton);
-                    if (check.changed)
-                    {
-                        ApplyCameraCommandBuffers();
-                    }
-                }
-            }
-            _screenSeparate = EditorGUILayout.Slider("Separate", _screenSeparate, 0, 1);
-
-            EditorHelper.Foldout(true, "Gizmos");
-            using (EditorHelper.Horizontal.Do())
-            {
-                string[] enumNames = Enum.GetNames(_gizmoMode.GetType());
-                bool[] buttons = new bool[enumNames.Length];
-                using (var check = new EditorGUI.ChangeCheckScope())
-                {
-                    _gizmoMode = GUILayout.Toggle((int)_gizmoMode == 0, "None", EditorStyles.miniButtonLeft)
-                        ? 0
-                        : _gizmoMode;
-                    int buttonsValue = 0;
-                    for (int i = 0; i < buttons.Length; i++)
-                    {
-                        buttons[i] = ((int)_gizmoMode & (1 << i + 1)) == (1 << i + 1);
-                        buttons[i] = GUILayout.Toggle(buttons[i], enumNames[i], EditorStyles.miniButtonMid);
-                        if (buttons[i])
+                        _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton,
+                            GUILayout.Width(80));
+                        if (check.changed)
                         {
-                            buttonsValue += 1 << i + 1;
+                            //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
+                            SetGridBuffer(_gridEnabled);
                         }
                     }
 
-                    if (check.changed)
-                    {
-                        _gizmoMode = (GizmoMode)buttonsValue;
-                    }
+                    _gridColor = EditorGUILayout.ColorField(_gridColor);
+                }
 
-                    //_gizmoMode = GUILayout.Toggle((int)_gizmoMode == ~0, "All", EditorStyles.miniButtonRight) ? (GizmoMode)~0 : _gizmoMode;
-                    if (GUILayout.Button("All", EditorStyles.miniButtonRight))
+                using (EditorHelper.Horizontal.Do())
+                {
+                    using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        _gizmoMode = (GizmoMode)~0;
+                        _viewMode = (ViewMode) GUILayout.Toolbar((int) _viewMode, Enum.GetNames(typeof(ViewMode)),
+                            EditorStyles.miniButton);
+                        if (check.changed)
+                        {
+                            ApplyCameraCommandBuffers();
+                        }
                     }
                 }
-            }
 
-            GUI.color = Color.white;
-            GUI.backgroundColor = Color.white;
+                _screenSeparate = EditorGUILayout.Slider("Separate", _screenSeparate, 0, 1);
+            });
+
+            EditorHelper.FoldGroup.Do("Gizmos", true, () =>
+            {
+                using (EditorHelper.Horizontal.Do())
+                {
+                    string[] enumNames = Enum.GetNames(_gizmoMode.GetType());
+                    bool[] buttons = new bool[enumNames.Length];
+                    using (var check = new EditorGUI.ChangeCheckScope())
+                    {
+                        _gizmoMode = GUILayout.Toggle((int) _gizmoMode == 0, "None", EditorStyles.miniButtonLeft)
+                            ? 0
+                            : _gizmoMode;
+                        int buttonsValue = 0;
+                        for (int i = 0; i < buttons.Length; i++)
+                        {
+                            buttons[i] = ((int) _gizmoMode & (1 << i + 1)) == (1 << i + 1);
+                            buttons[i] = GUILayout.Toggle(buttons[i], enumNames[i], EditorStyles.miniButtonMid);
+                            if (buttons[i])
+                            {
+                                buttonsValue += 1 << i + 1;
+                            }
+                        }
+
+                        if (check.changed)
+                        {
+                            _gizmoMode = (GizmoMode) buttonsValue;
+                        }
+
+                        //_gizmoMode = GUILayout.Toggle((int)_gizmoMode == ~0, "All", EditorStyles.miniButtonRight) ? (GizmoMode)~0 : _gizmoMode;
+                        if (GUILayout.Button("All", EditorStyles.miniButtonRight))
+                        {
+                            _gizmoMode = (GizmoMode) ~0;
+                        }
+                    }
+                }
+            });
         }
 
         private Lighting GetCurrentLighting()
@@ -5937,44 +6198,44 @@ namespace See1
 
         void OnGUI_Model()
         {
-            _fadeDic["Model"].target = EditorHelper.Foldout(_fadeDic["Model"].target, "Model");
-            using (var fade = EditorHelper.FadeGroup.Do(_fadeDic["Model"].faded))
+            EditorHelper.FoldGroup.Do("Create", true, () =>
             {
-                if (fade.visible)
+                using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                 {
-                    using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
+                    currentData.autoLoad = GUILayout.Toggle(currentData.autoLoad, "Preview Mode", "Button",
+                        GUILayout.Height(32));
+                }
+
+                using (EditorHelper.Horizontal.Do())
+                {
+                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, "Reframe Target",
+                        EditorStyles.miniButtonLeft);
+                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, "Recalculate Bound",
+                        EditorStyles.miniButtonRight);
+                }
+
+                _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
+
+                if (currentData.autoLoad && EditorGUIUtility.GetObjectPickerControlID() != 0
+                ) //어떤 object picker 가 안 열렸을 때 0
+                {
+                    _tempPickedObject = EditorGUIUtility.GetObjectPickerObject() as GameObject;
+                    if (_prefab != _tempPickedObject)
                     {
-                        currentData.autoLoad = GUILayout.Toggle(currentData.autoLoad, "Auto Load Selected", "Button", GUILayout.Height(32));
+                        _prefab = _tempPickedObject;
+                        SetModel(_prefab);
+                        _tempPickedObject = null;
                     }
+                }
 
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, "Reframe Target",
-                            EditorStyles.miniButtonLeft);
-                        currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, "Recalculate Bound",
-                            EditorStyles.miniButtonRight);
-                    }
-
-                    _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
-
-                    if (currentData.autoLoad && EditorGUIUtility.GetObjectPickerControlID() != 0
-                    ) //어떤 object picker 가 안 열렸을 때 0
-                    {
-                        _tempPickedObject = EditorGUIUtility.GetObjectPickerObject() as GameObject;
-                        if (_prefab != _tempPickedObject)
-                        {
-                            _prefab = _tempPickedObject;
-                            SetModel(_prefab);
-                            _tempPickedObject = null;
-                        }
-                    }
-
+                if (!currentData.autoLoad)
+                {
                     using (EditorHelper.Horizontal.Do())
                     {
                         if (GUILayout.Button("Primitives", GUILayout.Width(80), GUILayout.Height(32)))
                         {
                             int number = UnityEngine.Random.Range(1, 4);
-                            var primitive = GameObject.CreatePrimitive((PrimitiveType)number);
+                            var primitive = GameObject.CreatePrimitive((PrimitiveType) number);
                             SetModel(primitive);
                             DestroyImmediate(primitive);
                         }
@@ -5987,26 +6248,32 @@ namespace See1
                             }
                         }
                     }
-                }
-            }
-            if (modelAssembler != null)
-            {
-                modelAssembler.OnGUI();
-            }
 
-            EditorHelper.Foldout(true, "Model");
-            using (new EditorGUI.DisabledGroupScope(true))
-            {
-                EditorGUILayout.ObjectField("", _prefab, typeof(GameObject), false);
-            }
-            EditorHelper.Foldout(true, "Materials");
-            using (new EditorGUI.DisabledGroupScope(true))
-            {
-                foreach (var mat in _targetInfo.materials)
-                {
-                    EditorGUILayout.ObjectField("", mat, typeof(Material), false);
+                    if (modelAssembler != null)
+                    {
+                        modelAssembler.OnGUI();
+                    }
                 }
-            }
+            });
+
+            EditorHelper.FoldGroup.Do("Prefab", true, () =>
+            {
+                using (new EditorGUI.DisabledGroupScope(true))
+                {
+                    EditorGUILayout.ObjectField("", _prefab, typeof(GameObject), false);
+                }
+            });
+
+            EditorHelper.FoldGroup.Do("Materials", true, () =>
+            {
+                using (new EditorGUI.DisabledGroupScope(true))
+                {
+                    foreach (var mat in _targetInfo.materials)
+                    {
+                        EditorGUILayout.ObjectField("", mat, typeof(Material), false);
+                    }
+                }
+            });
         }
 
         void OnGUI_Animation()
@@ -6014,69 +6281,38 @@ namespace See1
             for (int a = 0; a < _playerList.Count; a++)
             {
                 var player = _playerList[a];
-                //EditorHelper.Foldout(true, "Playlist");
-                //foreach (var animationClip in player.playList)
-                //{
-                //    EditorGUILayout.LabelField(animationClip.name, EditorStyles.miniLabel);
-                //    if (animationClip.name == player.GetCurrentClipName())
-                //    {
-                //        var progressRect = GUILayoutUtility.GetLastRect();
-                //        EditorGUI.ProgressBar(progressRect, (float) player.time / player.GetCurrentClipLength(),
-                //            string.Format("{0} : {1}s", player.GetCurrentClipName(),
-                //                player.GetCurrentClipLength().ToString("0.00")));
-                //    }
-                //}
-
-                _isShowingABList[a].target = EditorHelper.Foldout(_isShowingABList[a].target, string.Format("Player {0}", a.ToString()));
-                for (int b = 0; b < player.animatedList.Count; b++)
+                EditorHelper.FoldGroup.Do(string.Format("{0} - {1}", a.ToString(),player.name), true, () =>
                 {
-                    using (var fade = new EditorGUILayout.FadeGroupScope(_isShowingABList[a].faded))
+                    for (int b = 0; b < player.animatedList.Count; b++)
                     {
-                        if (fade.visible)
-                        {
-                            //using (var check = new EditorGUI.ChangeCheckScope())
-                            //{
-                            //    player.animator.runtimeAnimatorController =
-                            //        EditorGUILayout.ObjectField(player.animator.runtimeAnimatorController,
-                            //            typeof(AnimatorController), false) as AnimatorController;
-                            //    if (check.changed)
-                            //    {
-                            //        player.InitAnimatorAndClips();
-                            //    }
-                            //}
-                            using (new EditorGUILayout.VerticalScope())
-                            {
-                                //player.reorderableObjectList.DoLayoutList();
-                                player.reorderableClipList.DoLayoutList();
-                            }
-                        }
+                        player.reorderableClipList.DoLayoutList();
                     }
                     EditorGUILayout.Space();
-                }
-            }                
-            ////Drag and Drop
-            Event evt = Event.current;
-            Rect drop_area = _viewPortRect; //? 왜 뷰포트가 되고 right 는 안되는가?
-            switch (evt.type)
-            {
-                case EventType.DragUpdated:
-                case EventType.DragPerform:
-                    if (!drop_area.Contains(evt.mousePosition))
-                        return;
-                    DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
-                    if (evt.type == EventType.DragPerform)
-                    {
-                        DragAndDrop.AcceptDrag();
-                        foreach (Object dragged_object in DragAndDrop.objectReferences)
+                });
+                ////Drag and Drop
+                Event evt = Event.current;
+                Rect drop_area = _viewPortRect; //? 왜 뷰포트가 되고 right 는 안되는가?
+                switch (evt.type)
+                {
+                    case EventType.DragUpdated:
+                    case EventType.DragPerform:
+                        if (!drop_area.Contains(evt.mousePosition))
+                            return;
+                        DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                        if (evt.type == EventType.DragPerform)
                         {
-                            if (dragged_object is AnimationClip)
+                            DragAndDrop.AcceptDrag();
+                            foreach (Object dragged_object in DragAndDrop.objectReferences)
                             {
-                                var clip = dragged_object as AnimationClip;
-                                _playerList.FirstOrDefault().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
+                                if (dragged_object is AnimationClip)
+                                {
+                                    var clip = dragged_object as AnimationClip;
+                                    _playerList.FirstOrDefault().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
+                                }
                             }
                         }
-                    }
-                    break;
+                        break;
+                }
             }
         }
 
@@ -6157,606 +6393,118 @@ namespace See1
             }
         }
 
-        void OnGUI_Tools()
+        void OnGUI_Misc()
         {
-            EditorHelper.Foldout(true, "Manage Data");
-            //settings.autoLoad = GUILayout.Toggle(settings.autoLoad, "Auto Load Selection", "Button", GUILayout.Height(32));
-
-            using (new EditorGUI.DisabledScope(!EditorPrefs.HasKey(See1ViewSettings.key)))
+            EditorHelper.FoldGroup.Do("Manage Data", false, () =>
             {
-                using (EditorHelper.Horizontal.Do())
+                //settings.autoLoad = GUILayout.Toggle(settings.autoLoad, "Auto Load Selection", "Button", GUILayout.Height(32));
+
+                using (new EditorGUI.DisabledScope(!EditorPrefs.HasKey(See1ViewSettings.key)))
                 {
-                    if (GUILayout.Button("Load", EditorStyles.miniButtonLeft))
+                    using (EditorHelper.Horizontal.Do())
                     {
-                        var path = (EditorUtility.OpenFilePanel("Load Settings File", Application.dataPath, "json"));
-                        if (!string.IsNullOrEmpty(path))
+                        if (GUILayout.Button("Load", EditorStyles.miniButtonLeft))
                         {
-                            var json = File.ReadAllText(path);
-                            if (!string.IsNullOrEmpty(json))
+                            var path = (EditorUtility.OpenFilePanel("Load Settings File", Application.dataPath,
+                                "json"));
+                            if (!string.IsNullOrEmpty(path))
                             {
-                                JsonUtility.FromJsonOverwrite(json, settings);
-                                See1ViewSettings.Save();
+                                var json = File.ReadAllText(path);
+                                if (!string.IsNullOrEmpty(json))
+                                {
+                                    JsonUtility.FromJsonOverwrite(json, settings);
+                                    See1ViewSettings.Save();
+                                }
                             }
                         }
-                    }
-                    if (GUILayout.Button("Save", EditorStyles.miniButtonMid))
-                    {
-                        See1ViewSettings.Save();
-                    }
-                    if (GUILayout.Button("Delete", EditorStyles.miniButtonRight))
-                    {
-                        See1ViewSettings.DeleteAll();
+
+                        if (GUILayout.Button("Save", EditorStyles.miniButtonMid))
+                        {
+                            See1ViewSettings.Save();
+                        }
+
+                        if (GUILayout.Button("Delete", EditorStyles.miniButtonRight))
+                        {
+                            See1ViewSettings.DeleteAll();
+                        }
                     }
                 }
-            }
-            EditorHelper.GridLayout(settings.dataList.Count, 2, (i) =>
-            {
-                using (EditorHelper.Horizontal.Do())
+
+                EditorHelper.GridLayout(settings.dataList.Count, 2, (i) =>
                 {
-                    using (EditorHelper.LabelWidth.Do(20))
+                    using (EditorHelper.Horizontal.Do())
                     {
-                        var data = settings.dataList[i];
-                        EditorGUILayout.PrefixLabel(i.ToString());
-                        data.name = EditorGUILayout.TextField(data.name);
+                        using (EditorHelper.LabelWidth.Do(20))
+                        {
+                            var data = settings.dataList[i];
+                            EditorGUILayout.PrefixLabel(i.ToString());
+                            data.name = EditorGUILayout.TextField(data.name);
+                        }
                     }
+                });
+            });
+
+            EditorHelper.FoldGroup.Do("Manage View", false, () =>
+            {
+                EditorHelper.GridLayout(settings.current.viewList.Count, 2, (i) =>
+                {
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (EditorHelper.LabelWidth.Do(20))
+                        {
+                            var view = settings.current.viewList[i];
+                            EditorGUILayout.PrefixLabel(i.ToString());
+                            view.name = EditorGUILayout.TextField(view.name);
+                        }
+                    }
+                });
+            });
+            EditorHelper.FoldGroup.Do("Manage Lighting", false, () =>
+            {
+                EditorHelper.GridLayout(settings.current.lightingList.Count, 2, (i) =>
+                {
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (EditorHelper.LabelWidth.Do(20))
+                        {
+                            var lighting = settings.current.lightingList[i];
+                            EditorGUILayout.PrefixLabel(i.ToString());
+                            lighting.name = EditorGUILayout.TextField(lighting.name);
+                        }
+                    }
+                });
+            });
+            EditorHelper.FoldGroup.Do("Resources", false, () =>
+            {
+                EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture), false);
+                EditorGUILayout.ObjectField(_wireMaterial, typeof(Material), false);
+                EditorGUILayout.ObjectField(_shadowMaterial, typeof(Material), false);
+                EditorGUILayout.ObjectField(_heightFogMaterial, typeof(Material), false);
+                EditorGUILayout.ObjectField(_depthMaterial, typeof(Material), false);
+                EditorGUILayout.ObjectField(_depthNormalMaterial, typeof(Material), false);
+
+            });
+            EditorHelper.FoldGroup.Do("Updater", true, () =>
+            {
+                if (Updater.outOfDate)
+                {
+                    EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Error);
+                    if (GUILayout.Button("Download latest version", GUILayout.ExpandHeight(true)))
+                    {
+                        Application.OpenURL(Updater.downloadUrl);
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Info);
                 }
             });
 
-            EditorHelper.Foldout(true, "Manage View");
-            EditorHelper.GridLayout(settings.current.viewList.Count, 2, (i) =>
-            {
-                using (EditorHelper.Horizontal.Do())
-                {
-                    using (EditorHelper.LabelWidth.Do(20))
-                    {
-                        var view = settings.current.viewList[i];
-                        EditorGUILayout.PrefixLabel(i.ToString());
-                        view.name = EditorGUILayout.TextField(view.name);
-                    }
-                }
-            });
+            EditorHelper.FoldGroup.Do("Shortcuts", true,
+                () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.Info); });
 
-            EditorHelper.Foldout(true, "Manage Lighting");
-            EditorHelper.GridLayout(settings.current.lightingList.Count, 2, (i) =>
-            {
-                using (EditorHelper.Horizontal.Do())
-                {
-                    using (EditorHelper.LabelWidth.Do(20))
-                    {
-                        var lighting = settings.current.lightingList[i];
-                    EditorGUILayout.PrefixLabel(i.ToString());
-                    lighting.name = EditorGUILayout.TextField(lighting.name);
-                    }
-                }
-            });
-
-            EditorHelper.Foldout(true, "Resources");
-            EditorGUILayout.ObjectField(_preview.camera.targetTexture, typeof(RenderTexture),false);
-            EditorGUILayout.ObjectField(_wireMaterial, typeof(Material), false);
-            EditorGUILayout.ObjectField(_shadowMaterial, typeof(Material), false);
-            EditorGUILayout.ObjectField(_heightFogMaterial, typeof(Material), false);
-            EditorGUILayout.ObjectField(_depthMaterial, typeof(Material), false);
-            EditorGUILayout.ObjectField(_depthNormalMaterial, typeof(Material), false);
-
-
-            EditorHelper.Foldout(true, "Updater");
-            if (Updater.outOfDate)
-            {
-                EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Error);
-                if (GUILayout.Button("Download latest version", GUILayout.ExpandHeight(true)))
-                {
-                    Application.OpenURL(Updater.downloadUrl);
-                }
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(Updater.updateCheck, MessageType.Info);
-            }
-            EditorHelper.Foldout(true, "Shortcuts");
-            EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.Info);
-            EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.",EditorStyles.centeredGreyMiniLabel);
+            EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.", EditorStyles.centeredGreyMiniLabel);
             EditorGUILayout.LabelField("Jongwoo Park", EditorStyles.centeredGreyMiniLabel);
-            //GUILayout.Label("© 2020 See1 Studios All right reserved.", EditorStyles.miniLabel);
-            //settings.mouseAccelerationEnabled = GUILayout.Toggle(settings.mouseAccelerationEnabled, "Mouse Acceleration Enabled", "Button", GUILayout.Height(32));
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                settings.reframeToTarget = GUILayout.Toggle(settings.reframeToTarget, "Reframe Target",
-            //                    EditorStyles.miniButtonLeft);
-            //                settings.recalculateBound = GUILayout.Toggle(settings.recalculateBound, "Recalculate Bound",
-            //                    EditorStyles.miniButtonRight);
-            //            }
-
-            //            _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                if (GUILayout.Button("Primitives", GUILayout.Width(80), GUILayout.Height(32)))
-            //                {
-            //                    int number = UnityEngine.Random.Range(1, 4);
-            //                    var primitive = GameObject.CreatePrimitive((PrimitiveType)number);
-            //                    SetModel(primitive);
-            //                    DestroyImmediate(primitive);
-            //                }
-
-            //                if (GUILayout.Button("Create", GUILayout.Height(32)))
-            //                {
-            //                    if (_prefab)
-            //                    {
-            //                        SetModel(_prefab);
-            //                    }
-            //                }
-            //            }
-
-            //            EditorHelper.Foldout(true, "Control");
-            //            settings.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", settings.rotSpeed, 0, 10);
-            //            settings.zoomSpeed = EditorGUILayout.IntSlider("Zoom Speed", settings.zoomSpeed, 0, 10);
-            //            settings.panSpeed = EditorGUILayout.IntSlider("Pan Speed", settings.panSpeed, 0, 10);
-            //            settings.smoothFactor = EditorGUILayout.IntSlider("Smoothness", settings.smoothFactor, 0, 10);
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                _autoRotateCamera = GUILayout.Toggle(_autoRotateCamera, "Rotate Camera", EditorStyles.miniButton,
-            //                    GUILayout.Width(_labelWidth));
-            //                _cameraAutoRotationSpeed = EditorGUILayout.IntSlider(_cameraAutoRotationSpeed, -10, 10);
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                _autoRotateLight = GUILayout.Toggle(_autoRotateLight, "Rotate Light", EditorStyles.miniButton,
-            //                    GUILayout.Width(_labelWidth));
-            //                _lightAutoRotationSpeed = EditorGUILayout.IntSlider(_lightAutoRotationSpeed, -10, 10);
-            //            }
-
-            //            EditorHelper.Foldout(true, "Capture");
-
-            //            GUILayout.Label(
-            //                string.Format("Image Size : {0} x {1}", _renderRect.width * settings.captureMultiplier,
-            //                    _renderRect.height * settings.captureMultiplier), EditorStyles.miniLabel);
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                settings.captureMultiplier = EditorGUILayout.IntSlider(settings.captureMultiplier, 1, 8);
-            //                settings.screenshotAlpha =
-            //                    GUILayout.Toggle(settings.screenshotAlpha, "Alpha", EditorStyles.miniButton);
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (new EditorGUILayout.VerticalScope())
-            //                {
-            //                    settings.openSavedImage = GUILayout.Toggle(settings.openSavedImage, "Open Saved Image",
-            //                        EditorStyles.miniButton);
-            //                    if (GUILayout.Button("Open Saved Folder", EditorStyles.miniButton))
-            //                    {
-            //                        EditorUtility.OpenWithDefaultApp(Directory.GetParent(Application.dataPath).ToString() +
-            //                                                         "/Screenshots");
-            //                    }
-            //                }
-
-            //                GUI.backgroundColor = Color.red;
-            //                if (GUILayout.Button("Screenshot", GUILayout.Height(32)))
-            //                {
-            //                    Texture2D tex = RenderToTexture((int)settings.captureMultiplier, settings.screenshotAlpha);
-            //                    string savedPath = SaveAsFile(tex,
-            //                        Directory.GetParent(Application.dataPath).ToString() + "/Screenshots", _targetGo.name,
-            //                        "MMddHHmmss");
-            //                    if (settings.openSavedImage)
-            //                    {
-            //                        EditorUtility.OpenWithDefaultApp(savedPath);
-            //                    }
-
-
-            //                }
-
-            //                GUI.backgroundColor = Color.white;
-            //            }
-
-            //            EditorHelper.Foldout(true, "View");
-            //            //_targetOffset = EditorGUILayout.Vector3Field("Target Offset", _targetOffset);
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                if (GUILayout.Button("Front", EditorStyles.miniButtonLeft))
-            //                {
-            //                    _destRot = new Vector2(180, 0);
-            //                }
-
-            //                if (GUILayout.Button("Left", EditorStyles.miniButtonMid))
-            //                {
-            //                    _destRot = new Vector2(90, 0);
-            //                }
-
-            //                if (GUILayout.Button("Back", EditorStyles.miniButtonMid))
-            //                {
-            //                    _destRot = Vector2.zero;
-            //                }
-
-            //                if (GUILayout.Button("Right", EditorStyles.miniButtonMid))
-            //                {
-            //                    _destRot = new Vector2(-90, 0);
-            //                }
-
-            //                if (GUILayout.Button("Top", EditorStyles.miniButtonMid))
-            //                {
-            //                    _destRot = new Vector2(180, 90);
-            //                }
-
-            //                if (GUILayout.Button("Bottom", EditorStyles.miniButtonRight))
-            //                {
-            //                    _destRot = new Vector2(180, -90);
-            //                }
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                _preview.camera.fieldOfView =
-            //                    EditorGUILayout.IntSlider("Field Of View", (int)_preview.camera.fieldOfView, 10, 90);
-            //                _preview.camera.orthographic =
-            //                    GUILayout.Toggle(_preview.camera.orthographic, _preview.camera.orthographic ? "O" : "P",
-            //                        EditorStyles.miniButton, GUILayout.Width(20));
-            //            }
-
-            //            if (GUILayout.Button("Add Custom View", EditorStyles.miniButton))
-            //            {
-            //                settings.viewList.Add(new View(_destRot, _destDistance, _destPivotPos,
-            //                    _preview.cameraFieldOfView));
-            //            }
-
-
-            //            using (var scope = EditorHelper.Horizontal.Do())
-            //            {
-            //                float width = 0;
-            //                if (Event.current.type == EventType.Repaint)
-            //                {
-            //                    //Rect left = new Rect(scope.rect.position, new Vector2(scope.rect.size.x * 0.5f, scope.rect.size.y));
-            //                    //EditorGUI.DrawRect(left, Color.red);
-            //                    //Rect right = new Rect(new Vector2(scope.rect.position.x + left.size.x, scope.rect.position.y),                        left.size);
-            //                    //EditorGUI.DrawRect(right, Color.green);
-            //                    width = scope.rect.size.x * 0.5f;
-            //                }
-
-            //                using (new EditorGUILayout.VerticalScope(GUILayout.Width(110)))
-            //                {
-            //                    for (var i = 0; i < settings.viewList.Count; i = i + 2)
-            //                    {
-            //                        using (EditorHelper.Horizontal.Do())
-            //                        {
-            //                            var view = settings.viewList[i];
-            //                            if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(30)))
-            //                            {
-            //                                view.rotation = _destRot;
-            //                                view.distance = _destDistance;
-            //                                view.pivot = _destPivotPos;
-            //                                view.fieldOfView = _preview.cameraFieldOfView;
-            //                            }
-
-            //                            if (GUILayout.Button(i.ToString(), EditorStyles.miniButtonMid))
-            //                            {
-            //                                _destRot = view.rotation;
-            //                                _destDistance = view.distance;
-            //                                _destPivotPos = view.pivot;
-            //                                _preview.cameraFieldOfView = view.fieldOfView;
-            //                            }
-
-            //                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-            //                            {
-            //                                settings.viewList.Remove(view);
-            //                            }
-            //                        }
-            //                    }
-            //                }
-
-            //                using (new EditorGUILayout.VerticalScope())
-            //                {
-            //                    for (var i = 1; i < settings.viewList.Count; i = i + 2)
-            //                    {
-
-            //                        using (EditorHelper.Horizontal.Do())
-            //                        {
-            //                            var view = settings.viewList[i];
-            //                            if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(30)))
-            //                            {
-            //                                view.rotation = _destRot;
-            //                                view.distance = _destDistance;
-            //                                view.pivot = _destPivotPos;
-            //                                view.fieldOfView = _preview.cameraFieldOfView;
-            //                            }
-
-            //                            if (GUILayout.Button(i.ToString(), EditorStyles.miniButtonMid))
-            //                            {
-            //                                _destRot = view.rotation;
-            //                                _destDistance = view.distance;
-            //                                _destPivotPos = view.pivot;
-            //                                _preview.cameraFieldOfView = view.fieldOfView;
-            //                            }
-
-
-            //                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-            //                            {
-            //                                settings.viewList.Remove(view);
-            //                            }
-            //                        }
-            //                    }
-            //                }
-            //            }
-
-            //            GUILayout.Label("Viewport Sizes", EditorStyles.miniLabel);
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                if (GUILayout.Button("New", EditorStyles.miniButtonLeft))
-            //                {
-            //                    ShowPopupWindow();
-            //                }
-
-            //                if (GUILayout.Button("Add Current", EditorStyles.miniButtonRight))
-            //                {
-            //                    AddViewportSize(_renderRect.size);
-            //                }
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (new EditorGUILayout.VerticalScope())
-            //                {
-            //                    for (var i = 0; i < settings.viewportSizes.Count; i = i + 2)
-            //                    {
-            //                        using (EditorHelper.Horizontal.Do())
-            //                        {
-            //                            var size = settings.viewportSizes[i];
-            //                            if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
-            //                                EditorStyles.miniButtonLeft))
-            //                            {
-            //                                ResizeWindow(size);
-            //                            }
-
-            //                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-            //                            {
-            //                                settings.viewportSizes.Remove(size);
-            //                            }
-            //                        }
-            //                    }
-            //                }
-
-            //                using (new EditorGUILayout.VerticalScope())
-            //                {
-            //                    for (var i = 1; i < settings.viewportSizes.Count; i = i + 2)
-            //                    {
-            //                        using (EditorHelper.Horizontal.Do())
-            //                        {
-            //                            var size = settings.viewportSizes[i];
-            //                            if (GUILayout.Button(string.Format("{0}x{1}", size.x.ToString("#"), size.y.ToString("#")),
-            //                                EditorStyles.miniButtonLeft))
-            //                            {
-            //                                ResizeWindow(size);
-            //                            }
-
-            //                            if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
-            //                            {
-            //                                settings.viewportSizes.Remove(size);
-            //                            }
-            //                        }
-            //                    }
-            //                }
-            //            }
-
-            //            EditorHelper.Foldout(true, "Materials");
-            //            using (new EditorGUI.DisabledGroupScope(true))
-            //            {
-            //                foreach (var mat in _targetInfo.materials)
-            //                {
-            //                    EditorGUILayout.ObjectField("", mat, typeof(Material), false);
-            //                }
-            //            }
-
-            //            EditorHelper.Foldout(true, "Environment");
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                EditorGUILayout.PrefixLabel("Background");
-            //                using (var check = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    bool isSky = (settings.clearFlag == Settings.CleaFlags.Sky);
-            //                    isSky = !GUILayout.Toggle(!isSky, "Color", EditorStyles.miniButtonLeft);
-            //                    isSky = GUILayout.Toggle(isSky, "Environment", EditorStyles.miniButtonRight);
-            //                    if (check.changed)
-            //                    {
-            //                        settings.clearFlag = isSky ? Settings.CleaFlags.Sky : Settings.CleaFlags.Color;
-
-            //                    }
-            //                }
-            //            }
-
-
-            //            if (settings.clearFlag == Settings.CleaFlags.Sky)
-            //            {
-            //                using (new EditorGUI.DisabledGroupScope(true))
-            //                {
-            //                    EditorGUILayout.ObjectField("Material", _skyMaterial, typeof(Material), false);
-            //                }
-            //                _preview.camera.clearFlags = CameraClearFlags.Skybox;
-            //            }
-            //            else
-            //            {
-            //                using (EditorHelper.Horizontal.Do())
-            //                {
-            //                    settings.bgColor = EditorGUILayout.ColorField("Color", settings.bgColor);
-            //                    _preview.camera.backgroundColor = settings.bgColor;
-            //                    _preview.camera.clearFlags = CameraClearFlags.SolidColor;
-            //                }
-            //            }
-
-            //            _preview.ambientColor = settings.ambientSkyColor =
-            //                EditorGUILayout.ColorField("Ambient", settings.ambientSkyColor);
-            //            _probe.customBakedTexture = settings.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", settings.cubeMap, typeof(Cubemap), false);
-
-            //            settings.cubeMapmipMapBias = EditorGUILayout.IntSlider("Bias", (int)settings.cubeMapmipMapBias, 0, 10);
-
-            //            //settings.enableSRP = GUILayout.Toggle(settings.enableSRP, "Enable Scriptable Render Pipeline", EditorStyles.miniButton);
-
-            //            EditorHelper.Foldout(true, "Light");
-
-            //            foreach (var previewLight in _preview.lights)
-            //            {
-            //                using (EditorHelper.Horizontal.Do())
-            //                {
-            //                    using (var lightCheck = new EditorGUI.ChangeCheckScope())
-            //                    {
-            //                        previewLight.color = EditorGUILayout.ColorField(previewLight.color);
-            //                        previewLight.intensity = EditorGUILayout.Slider(previewLight.intensity, 0, 2);
-            //                        settings.enableShadows =
-            //                            GUILayout.Toggle(settings.enableShadows, "S", EditorStyles.miniButton);
-            //                        if (lightCheck.changed)
-            //                        {
-            //                            previewLight.shadows = settings.enableShadows ? LightShadows.Soft : LightShadows.None;
-            //                        }
-            //                    }
-            //                }
-            //            }
-
-            //            EditorHelper.Foldout(true, "Render");
-
-            //            settings.viewportMultiplier = GUILayout.Toggle((settings.viewportMultiplier == 2), "Enable Viewport Supersampling", EditorStyles.miniButton) ? 2 : 1;
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (var cbCheck = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton, GUILayout.Width(_labelWidth));
-            //                    //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
-            //                    if (cbCheck.changed)
-            //                    {
-            //                        SetGridBuffer(_gridEnabled);
-            //                    }
-            //                }
-            //                _gridColor = EditorGUILayout.ColorField(_gridColor);
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (var cbCheck = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    _wireFrameEnabled = GUILayout.Toggle(_wireFrameEnabled, "WireFrame", EditorStyles.miniButton,
-            //                        GUILayout.Width(_labelWidth));
-            //                    if (cbCheck.changed)
-            //                    {
-            //                        SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial,
-            //                            _wireFrameEnabled);
-            //                    }
-            //                }
-
-            //                settings.wireLineColor = EditorGUILayout.ColorField(settings.wireLineColor);
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (var cbCheck = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton,
-            //                        GUILayout.Width(_labelWidth));
-            //                    if (cbCheck.changed)
-            //                    {
-            //                        SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial,
-            //                            _colorEnabled);
-            //                    }
-            //                }
-
-            //                _color = EditorGUILayout.ColorField(_color);
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (var psCheck = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    settings.enablePlaneShadows = GUILayout.Toggle(settings.enablePlaneShadows, "PlaneShadow",
-            //                        EditorStyles.miniButton, GUILayout.Width(_labelWidth));
-            //                    if (psCheck.changed)
-            //                    {
-            //                        SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial,
-            //                            settings.enablePlaneShadows);
-            //                    }
-            //                }
-
-            //                settings.planeShadowColor = EditorGUILayout.ColorField(settings.planeShadowColor);
-            //            }
-
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                using (var cbCheck = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    _DepthNormalEnabled = GUILayout.Toggle(_DepthNormalEnabled, "Normal Visualize",
-            //                        EditorStyles.miniButton);
-            //                    if (cbCheck.changed)
-            //                    {
-            //                        _preview.camera.depthTextureMode =
-            //                            _DepthNormalEnabled ? DepthTextureMode.DepthNormals : DepthTextureMode.None;
-            //                        SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _normalCommandBuffer, _normalMaterial, _DepthNormalEnabled);
-            //                        //if (_DepthNormalEnabled)
-            //                        //{
-            //                        //    _preview.camera.SetReplacementShader(_normalMaterial.shader, string.Empty);
-            //                        //}
-            //                        //else
-            //                        //{
-            //                        //    _preview.camera.ResetReplacementShader();
-            //                        //}
-            //                    }
-            //                }
-            //            }
-
-            //            EditorHelper.Foldout(true, "Post Process");
-            //#if UNITY_POST_PROCESSING_STACK_V2
-
-            //            using (var check = new EditorGUI.ChangeCheckScope())
-            //            {
-            //                settings.enablePostProcess = GUILayout.Toggle(settings.enablePostProcess, "Enable Post Processing",
-            //                    EditorStyles.miniButton);
-            //                if (settings.enablePostProcess)
-            //                    settings.profile =
-            //                        (PostProcessProfile)EditorGUILayout.ObjectField("", settings.profile,
-            //                            typeof(PostProcessProfile), false);
-            //                if (check.changed)
-            //                {
-            //                    SetPostProcess();
-            //                }
-            //            }
-
-            //            //if (_ppsEditor) _ppsEditor.OnInspectorGUI();
-            //#else
-            //                    EditorGUILayout.HelpBox("To use Post Process, add the Post Process Stack V2 package to your project.", MessageType.Info);
-            //#endif
-
-            //            EditorHelper.Foldout(true, "Gizmos");
-            //            using (EditorHelper.Horizontal.Do())
-            //            {
-            //                string[] enumNames = Enum.GetNames(_gizmoMode.GetType());
-            //                bool[] buttons = new bool[enumNames.Length];
-            //                using (var check = new EditorGUI.ChangeCheckScope())
-            //                {
-            //                    _gizmoMode = GUILayout.Toggle((int)_gizmoMode == 0, "None", EditorStyles.miniButtonLeft)
-            //                        ? 0
-            //                        : _gizmoMode;
-            //                    int buttonsValue = 0;
-            //                    for (int i = 0; i < buttons.Length; i++)
-            //                    {
-            //                        buttons[i] = ((int)_gizmoMode & (1 << i + 1)) == (1 << i + 1);
-            //                        buttons[i] = GUILayout.Toggle(buttons[i], enumNames[i], EditorStyles.miniButtonMid);
-            //                        if (buttons[i])
-            //                        {
-            //                            buttonsValue += 1 << i + 1;
-            //                        }
-            //                    }
-
-            //                    if (check.changed)
-            //                    {
-            //                        _gizmoMode = (GizmoMode)buttonsValue;
-            //                    }
-
-            //                    //_gizmoMode = GUILayout.Toggle((int)_gizmoMode == ~0, "All", EditorStyles.miniButtonRight) ? (GizmoMode)~0 : _gizmoMode;
-            //                    if (GUILayout.Button("All", EditorStyles.miniButtonRight))
-            //                    {
-            //                        _gizmoMode = (GizmoMode)~0;
-            //                    }
-            //                }
-            //            }
-
-            GUI.color = Color.white;
-            GUI.backgroundColor = Color.white;
         }
 
         void OnGUI_Info(Rect r)
@@ -6827,12 +6575,12 @@ namespace See1
                     //Store FOV
                     float fieldOfView = _preview.camera.fieldOfView;
                     var rt = _preview.camera.targetTexture;
-                    if (_updateFOV)
-                        _preview.camera.fieldOfView =
-                            (float)((double)Mathf.Atan(
-                                (rt.width > 0 ? Mathf.Max(1f, (float)rt.height / (float)rt.width) : 1f) *
-                                Mathf.Tan((float)((double)_preview.camera.fieldOfView * 0.5 *
-                                                   (Math.PI / 180.0)))) * 57.2957801818848 * 2.0);
+                    //if (_updateFOV)
+                    //    _preview.camera.fieldOfView =
+                    //        (float)((double)Mathf.Atan(
+                    //            (rt.width > 0 ? Mathf.Max(1f, (float)rt.height / (float)rt.width) : 1f) *
+                    //            Mathf.Tan((float)((double)_preview.camera.fieldOfView * 0.5 *
+                    //                               (Math.PI / 180.0)))) * 57.2957801818848 * 2.0);
                     //Set Camera
                     Handles.SetCamera(gizmoRect, _preview.camera);
                     DrawWorldAxis();
@@ -7009,9 +6757,9 @@ namespace See1
             Handles.color = color;
         }
 
-        #endregion
+#endregion
 
-        #region Handle Input
+#region Handle Input
 
         void FitTargetToViewport()
         {
@@ -7261,16 +7009,16 @@ namespace See1
         {
             RemoveBufferFromAllEvent(_preview.camera,_depthCommandBuffer);
             RemoveBufferFromAllEvent(_preview.camera, _depthNormalCommandBuffer);
-            switch (_debugViewMode)
+            switch (_viewMode)
             {
-                case DebugViewMode.None:
+                case ViewMode.None:
                     _preview.camera.depthTextureMode = DepthTextureMode.None;
                     break;
-                case DebugViewMode.Depth:
+                case ViewMode.Depth:
                     _preview.camera.depthTextureMode = DepthTextureMode.Depth;
                     SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthCommandBuffer, _depthMaterial, true);
                     break;
-                case DebugViewMode.Normal:
+                case ViewMode.Normal:
                     _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
                     SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, true);
                     break;
@@ -7289,9 +7037,9 @@ namespace See1
             }
         }
 
-    #endregion
+#endregion
 
-    #region Utils
+#region Utils
 
     public static List<GameObject> FindAllObjectsInScene()
         {
@@ -7519,9 +7267,9 @@ namespace See1
             Graphics.DrawMeshNow(mesh, Vector3.zero, Quaternion.identity, 0);
         }
 
-        #endregion
+#endregion
 
-        #region Reflection
+#region Reflection
 
         private Scene GetPreviewScene()
         {
@@ -7559,7 +7307,7 @@ namespace See1
             return shader;
         }
 
-        #endregion
+#endregion
 
         [MenuItem("Tools/See1Studios/Open See1View", false, 0)]
         private static void Init()
