@@ -14,6 +14,7 @@
         
         Pass
         {
+			ColorMask RGB
 			Blend SrcAlpha  OneMinusSrcAlpha
 			//Blend Zero SrcColor
             CGPROGRAM

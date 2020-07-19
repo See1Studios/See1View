@@ -334,7 +334,7 @@ namespace See1
                     if (_heightFog == null)
                     {
                         _heightFog = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/HeightFog\"\n{\nProperties\n{\n_Height (\"Height\", Float) = 2\n_Ground (\"Ground\", Float) = 0\n_Color (\"Color\", Color) = (0, 0, 0, 0)\n}\n\nSubShader\n{\nTags { \"RenderType\" = \"Opaque\" }\nLOD 100\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n//Blend Zero SrcColor\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n\nstruct appdata_t\n{\nfloat4 vertex: POSITION;\n};\n\nstruct v2f\n{\nfloat4 vertex: SV_POSITION;\nfloat3 worldPos: TEXCOORD0;\n};\n\nfixed _Height;\nfixed _Ground;\nfixed4 _Color;\n\n// remap value to 0-1 range\nfloat remap(float value, float minSource, float maxSource)\n{\nreturn(value - minSource) / (maxSource - minSource);\n}\n\nv2f vert(appdata_t v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;\nreturn o;\n}\n\nfixed4 frag(v2f i): COLOR\n{\nfixed4 c = fixed4(0, 0, 0, 0);\nfloat bottom = _Ground;\nfloat top = _Ground + _Height;\nfloat v = remap(clamp(i.worldPos.y, bottom, top), bottom, top);\nfixed4 t = fixed4(0,0,0,0);\nc = lerp(_Color, t, v);\nreturn c;\n}\nENDCG\n\n}\n}\n}");
+                            "Shader \"See1View/HeightFog\"\n{\nProperties\n{\n_Height (\"Height\", Float) = 2\n_Ground (\"Ground\", Float) = 0\n_Color (\"Color\", Color) = (0, 0, 0, 0)\n}\n\nSubShader\n{\nTags { \"RenderType\" = \"Opaque\" }\nLOD 100\n\nPass\n{\nColorMask RGB\nBlend SrcAlpha  OneMinusSrcAlpha\n//Blend Zero SrcColor\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n\nstruct appdata_t\n{\nfloat4 vertex: POSITION;\n};\n\nstruct v2f\n{\nfloat4 vertex: SV_POSITION;\nfloat3 worldPos: TEXCOORD0;\n};\n\nfixed _Height;\nfixed _Ground;\nfixed4 _Color;\n\n// remap value to 0-1 range\nfloat remap(float value, float minSource, float maxSource)\n{\nreturn(value - minSource) / (maxSource - minSource);\n}\n\nv2f vert(appdata_t v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;\nreturn o;\n}\n\nfixed4 frag(v2f i): COLOR\n{\nfixed4 c = fixed4(0, 0, 0, 0);\nfloat bottom = _Ground;\nfloat top = _Ground + _Height;\nfloat v = remap(clamp(i.worldPos.y, bottom, top), bottom, top);\nfixed4 t = fixed4(0,0,0,0);\nc = lerp(_Color, t, v);\nreturn c;\n}\nENDCG\n\n}\n}\n}");
                     }
 
                     return _heightFog;
@@ -408,26 +408,26 @@ namespace See1
 
 
         [Serializable]
-        class SmoothAnimBool : BaseAnimValue<bool>
+        class AnimBoolS : BaseAnimValue<bool>
         {
             [SerializeField] private float m_Value;
 
-            public SmoothAnimBool()
+            public AnimBoolS()
                 : base(false)
             {
             }
 
-            public SmoothAnimBool(bool value)
+            public AnimBoolS(bool value)
                 : base(value)
             {
             }
 
-            public SmoothAnimBool(UnityAction callback)
+            public AnimBoolS(UnityAction callback)
                 : base(false, callback)
             {
             }
 
-            public SmoothAnimBool(bool value, UnityAction callback)
+            public AnimBoolS(bool value, UnityAction callback)
                 : base(value, callback)
             {
             }
@@ -467,10 +467,10 @@ namespace See1
             }
 
             //EditiorWindow GUI
-            public SmoothAnimBool openTop;
-            public SmoothAnimBool openLeft;
-            public SmoothAnimBool openRight;
-            public SmoothAnimBool openBottom;
+            public AnimBoolS openTop;
+            public AnimBoolS openLeft;
+            public AnimBoolS openRight;
+            public AnimBoolS openBottom;
             public float topTargetHeight = 100;
             public float bottomTargetHeight = 100;
             public float leftTargetWidth = 200;
@@ -556,10 +556,10 @@ namespace See1
 
             public RectSlicer()
             {
-                this.openTop = new SmoothAnimBool(false);
-                this.openBottom = new SmoothAnimBool(false);
-                this.openLeft = new SmoothAnimBool(false);
-                this.openRight = new SmoothAnimBool(false);
+                this.openTop = new AnimBoolS(false);
+                this.openBottom = new AnimBoolS(false);
+                this.openLeft = new AnimBoolS(false);
+                this.openRight = new AnimBoolS(false);
             }
 
 
@@ -567,38 +567,38 @@ namespace See1
             {
                 this.window = window;
                 UnityAction onChangeCallback = window.Repaint;
-                this.openTop = new SmoothAnimBool(false);
+                this.openTop = new AnimBoolS(false);
                 this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new SmoothAnimBool(false);
+                this.openBottom = new AnimBoolS(false);
                 this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new SmoothAnimBool(false);
+                this.openLeft = new AnimBoolS(false);
                 this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new SmoothAnimBool(false);
+                this.openRight = new AnimBoolS(false);
                 this.openRight.valueChanged.AddListener(onChangeCallback);
             }
 
             public RectSlicer(UnityAction onChangeCallback)
             {
-                this.openTop = new SmoothAnimBool(false);
+                this.openTop = new AnimBoolS(false);
                 this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new SmoothAnimBool(false);
+                this.openBottom = new AnimBoolS(false);
                 this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new SmoothAnimBool(false);
+                this.openLeft = new AnimBoolS(false);
                 this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new SmoothAnimBool(false);
+                this.openRight = new AnimBoolS(false);
                 this.openRight.valueChanged.AddListener(onChangeCallback);
             }
 
             public RectSlicer(Rect r, UnityAction onChangeCallback)
             {
                 this.rect = r;
-                this.openTop = new SmoothAnimBool(false);
+                this.openTop = new AnimBoolS(false);
                 this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new SmoothAnimBool(false);
+                this.openBottom = new AnimBoolS(false);
                 this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new SmoothAnimBool(false);
+                this.openLeft = new AnimBoolS(false);
                 this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new SmoothAnimBool(false);
+                this.openRight = new AnimBoolS(false);
                 this.openRight.valueChanged.AddListener(onChangeCallback);
             }
 
@@ -606,13 +606,13 @@ namespace See1
                 UnityAction onChangeCallback)
             {
                 this.rect = r;
-                this.openTop = new SmoothAnimBool(false);
+                this.openTop = new AnimBoolS(false);
                 this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new SmoothAnimBool(false);
+                this.openBottom = new AnimBoolS(false);
                 this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new SmoothAnimBool(false);
+                this.openLeft = new AnimBoolS(false);
                 this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new SmoothAnimBool(false);
+                this.openRight = new AnimBoolS(false);
                 this.openRight.valueChanged.AddListener(onChangeCallback);
 
                 this.topTargetHeight = topHeight;
@@ -625,13 +625,13 @@ namespace See1
                 float leftWidth, bool openRight, float rightWidth, UnityAction onChangeCallback)
             {
                 this.rect = r;
-                this.openTop = new SmoothAnimBool(openTop);
+                this.openTop = new AnimBoolS(openTop);
                 this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new SmoothAnimBool(openBottom);
+                this.openBottom = new AnimBoolS(openBottom);
                 this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new SmoothAnimBool(openLeft);
+                this.openLeft = new AnimBoolS(openLeft);
                 this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new SmoothAnimBool(openRight);
+                this.openRight = new AnimBoolS(openRight);
                 this.openRight.valueChanged.AddListener(onChangeCallback);
 
                 this.topTargetHeight = topHeight;
@@ -1312,19 +1312,52 @@ namespace See1
             //private DepthTextureMode _mode = DepthTextureMode.None;
             private Camera _camera;
 
-            public void Add(Camera camera, DepthTextureMode mode, Material mat)
+            public CommandBufferManager(Camera camera)
             {
                 this._camera = camera;
+            }
+
+            public void Add(DepthTextureMode mode, Material mat)
+            {
                 //this._mode = mode;
                 _camera.depthTextureMode = mode;
                 foreach (var blitter in blitterList)
                 {
                     blitter.rt =
-                        RenderTexture.GetTemporary(camera.targetTexture.width, _camera.targetTexture.height, 24);
+                        RenderTexture.GetTemporary(_camera.targetTexture.width, _camera.targetTexture.height, 24);
                     _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
                     blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
                     blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
                 }
+            }
+
+            public static void RemoveBufferFromAllEvent(Camera camera, CommandBuffer buffer)
+            {
+                camera.RemoveCommandBuffer(CameraEvent.BeforeDepthTexture, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeDepthNormalsTexture, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterDepthNormalsTexture, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeGBuffer, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterGBuffer, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterLighting, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeFinalPass, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterFinalPass, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterForwardOpaque, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffectsOpaque, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterImageEffectsOpaque, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeSkybox, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterSkybox, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterEverything, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeReflections, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterReflections, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.BeforeHaloAndLensFlares, buffer);
+                camera.RemoveCommandBuffer(CameraEvent.AfterHaloAndLensFlares, buffer);
             }
         }
 
@@ -4202,11 +4235,11 @@ namespace See1
 
             public class FoldGroup
             {
-                static Dictionary<string, SmoothAnimBool> dict = new Dictionary<string, SmoothAnimBool>();
+                static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
 
                 public static void Do(string label, bool initValue, UnityAction action)
                 {
-                    if (!dict.ContainsKey(label)) dict.Add(label, new SmoothAnimBool(initValue));
+                    if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
                     dict[label].target = EditorHelper.Foldout(dict[label].target, label);
                     using (var fade = new EditorGUILayout.FadeGroupScope(dict[label].faded))
                     {
@@ -4215,6 +4248,42 @@ namespace See1
                             action.Invoke();
                         }
                     }
+                }
+            }
+
+            public class FoldGroup2 : IDisposable//미완성
+            {
+                static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
+                private static string current;
+
+                public static FoldGroup2 Do(string label, bool initValue)
+                {
+                    if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
+                    current = label;
+                    dict[label].target = EditorHelper.Foldout(dict[label].target, label);
+                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                    {
+                        EditorGUILayout.BeginFadeGroup(dict[label].faded);
+                    }
+
+                    return new FoldGroup2(label, dict[label].faded);
+                }
+
+                public FoldGroup2(string label, float value)
+                {
+                    current = label;
+                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                    {
+                        EditorGUILayout.BeginFadeGroup(value);
+                    }
+                }
+
+                public void Dispose()
+                {
+                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                        return;
+                    EditorGUILayout.EndFadeGroup();
+                    dict.Remove(current);
                 }
             }
 
@@ -4543,9 +4612,6 @@ namespace See1
             Create();
             RegisterShortcut();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
-            //기타 작업
-            ApplyView(settings.current.lastView);
-            ApplyLighting(settings.current.lastLighting);
             Updater.CheckForUpdates();
         }
 
@@ -4778,7 +4844,6 @@ namespace See1
             _rs.openLeft.target = false;
             _rs.openRight.target = true;
 
-
             _preview = new PreviewRenderUtility(true, true);
             _camTr = _preview.camera.transform;
 
@@ -4844,9 +4909,13 @@ namespace See1
             _probe.cullingMask = ~_previewLayer;
             InitTreeView();
             ResetLight();
+            //Apply Settings From Data
             SetPostProcess();
             _prefab = currentData.lastTarget;
             SetModel(_prefab);
+            ApplyView(settings.current.lastView);
+            ApplyEnv();
+            ApplyLighting(settings.current.lastLighting);
         }
 
         void Cleanup()
@@ -5029,10 +5098,9 @@ namespace See1
 
         #region CommandBuffer and Render
 
-
         void SetGridBuffer(bool set)
         {
-            RemoveBufferFromAllEvent(_preview.camera, _gridCommandBuffer);
+            CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, _gridCommandBuffer);
             _gridCommandBuffer.Clear();
             if (set)
             {
@@ -5045,7 +5113,7 @@ namespace See1
 
         void SetModelRenderBuffer(CameraEvent cameraEvent, CommandBuffer buffer, Material mat, bool set)
         {
-            RemoveBufferFromAllEvent(_preview.camera, buffer);
+            CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, buffer);
             //_preview.camera.RemoveCommandBuffer(cameraEvent, buffer);
             buffer.Clear();
             if (_targetGo && set)
@@ -5081,7 +5149,7 @@ namespace See1
 
         void SetCameraTargetBlitBuffer(CameraEvent cameraEvent, CommandBuffer buffer, Material mat, bool set)
         {
-            RemoveBufferFromAllEvent(_preview.camera, buffer);
+            CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, buffer);
             buffer.Clear();
             if (_targetGo && set)
             {
@@ -5098,33 +5166,32 @@ namespace See1
             }
         }
 
-        private void RemoveBufferFromAllEvent(Camera camera, CommandBuffer buffer)
+        void ApplyModelCommandBuffers()
         {
-            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthNormalsTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterDepthNormalsTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeGBuffer, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterGBuffer, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterLighting, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeFinalPass, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterFinalPass, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterForwardOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffectsOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffectsOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeSkybox, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterSkybox, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterEverything, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeReflections, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterReflections, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeHaloAndLensFlares, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterHaloAndLensFlares, buffer);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
+        }
+
+        void ApplyCameraCommandBuffers()
+        {
+            CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, _depthCommandBuffer);
+            CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, _depthNormalCommandBuffer);
+            switch (_viewMode)
+            {
+                case ViewMode.None:
+                    _preview.camera.depthTextureMode = DepthTextureMode.None;
+                    break;
+                case ViewMode.Depth:
+                    _preview.camera.depthTextureMode = DepthTextureMode.Depth;
+                    SetCameraTargetBlitBuffer(CameraEvent.AfterSkybox, _depthCommandBuffer, _depthMaterial, true);
+                    break;
+                case ViewMode.Normal:
+                    _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
+                    SetCameraTargetBlitBuffer(CameraEvent.AfterSkybox, _depthNormalCommandBuffer, _depthNormalMaterial, true);
+                    break;
+            }
         }
 
         void SetPostProcess()
@@ -5213,6 +5280,7 @@ namespace See1
         //        EditorUtility.OpenWithDefaultApp(savedPath);
         //    }
         //}
+
         void RenderAndSaveFile()
         {
             Texture2D tex = RenderToTexture((int) currentData.captureMultiplier, currentData.screenShotAlpha);
@@ -5657,6 +5725,11 @@ namespace See1
 
         void OnGUI_View()
         {
+            //using (EditorHelper.FoldGroup2.Do("About", true))
+            //{
+            //    EditorGUILayout.LabelField("About");
+            //}
+
             EditorHelper.FoldGroup.Do("Control", true, () =>
             {
                 currentData.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", currentData.rotSpeed, 1, 5);
@@ -6973,6 +7046,21 @@ namespace See1
             Notice.Log(message, false);
         }
 
+        void ApplyEnv()
+        {
+            if (currentData.clearFlag == ClearFlags.Sky)
+            {
+                _preview.camera.clearFlags = CameraClearFlags.Skybox;
+            }
+            else
+            {
+                _preview.camera.backgroundColor = currentData.bgColor;
+                _preview.camera.clearFlags = CameraClearFlags.SolidColor;
+            }
+            _probe.customBakedTexture = currentData.cubeMap;
+            currentData.CubeMapMipMapBias = currentData.CubeMapMipMapBias;
+        }
+
         void ApplyLighting(Lighting lighting, string message = "")
         {
             for (int i = 0; i < _preview.lights.Length; i++)
@@ -6995,34 +7083,6 @@ namespace See1
 
             settings.current.ambientSkyColor = lighting.ambientSkyColor;
             Notice.Log(message, false);
-        }
-
-        void ApplyModelCommandBuffers()
-        {
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
-        }
-
-        void ApplyCameraCommandBuffers()
-        {
-            RemoveBufferFromAllEvent(_preview.camera,_depthCommandBuffer);
-            RemoveBufferFromAllEvent(_preview.camera, _depthNormalCommandBuffer);
-            switch (_viewMode)
-            {
-                case ViewMode.None:
-                    _preview.camera.depthTextureMode = DepthTextureMode.None;
-                    break;
-                case ViewMode.Depth:
-                    _preview.camera.depthTextureMode = DepthTextureMode.Depth;
-                    SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthCommandBuffer, _depthMaterial, true);
-                    break;
-                case ViewMode.Normal:
-                    _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
-                    SetCameraTargetBlitBuffer(CameraEvent.AfterForwardOpaque, _depthNormalCommandBuffer, _depthNormalMaterial, true);
-                    break;
-            }
         }
 
         IEnumerator Interpolate(float value, float startValue, float endValue, float time)
