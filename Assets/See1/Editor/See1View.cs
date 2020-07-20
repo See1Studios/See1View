@@ -74,10 +74,10 @@ namespace See1
             Sky
         }
 
-        public enum FileExistsMode
+        public enum ImageSaveMode
         {
             Overwrite,
-            Rename
+            Incremental
         }
 
         public enum ViewMode
@@ -657,7 +657,7 @@ namespace See1
             public int zoomSpeed = 3;
             public int panSpeed = 3;
             public int smoothFactor = 3;
-            public FileExistsMode fileExistsMode = FileExistsMode.Overwrite;
+            public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
             public bool openSavedImage = true;
             public bool screenShotAlpha = true;
             public int captureMultiplier = 1;
@@ -4538,6 +4538,7 @@ namespace See1
 
         int _gridSize = 100;
         Color _gridColor = new Color(.5f, .5f, .5f, .5f);
+        Shader replaceMentShader;
 
         ViewMode _viewMode = ViewMode.None;
         GizmoMode _gizmoMode = 0;
@@ -4773,7 +4774,8 @@ namespace See1
             if (!prefab) return;
             if (_targetGo) DestroyImmediate(_targetGo);
             //if (_shadowGo) DestroyImmediate(_shadowGo);
-            _targetGo = PrefabUtility.InstantiateAttachedAsset(prefab) as GameObject;
+            _targetGo = Instantiate(prefab) as GameObject;
+            PrefabUtility.DisconnectPrefabInstance(_targetGo); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
             //_shadowGo = Instantiate(prefab);
             if (_targetGo != null)
             {
@@ -5286,7 +5288,7 @@ namespace See1
             Texture2D tex = RenderToTexture((int) currentData.captureMultiplier, currentData.screenShotAlpha);
             string baseName = _targetGo ? _targetGo.name : "Blank";
             string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots",
-                baseName, settings.current.fileExistsMode);
+                baseName, settings.current.imageSaveMode);
             if (currentData.openSavedImage)
             {
                 EditorUtility.OpenWithDefaultApp(savedPath);
@@ -5806,8 +5808,8 @@ namespace See1
                     {
                         using (EditorHelper.Horizontal.Do())
                         {
-                            currentData.fileExistsMode = (FileExistsMode) GUILayout.Toolbar(
-                                (int) currentData.fileExistsMode, Enum.GetNames(typeof(FileExistsMode)),
+                            currentData.imageSaveMode = (ImageSaveMode) GUILayout.Toolbar(
+                                (int) currentData.imageSaveMode, Enum.GetNames(typeof(ImageSaveMode)),
                                 EditorStyles.miniButton);
                         }
 
@@ -6181,8 +6183,43 @@ namespace See1
 #endif
             });
 
+            EditorHelper.FoldGroup.Do("Shader Replacement", true, () =>
+            {
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    using (EditorHelper.LabelWidth.Do(60))
+                    {
+                        using (EditorHelper.Horizontal.Do())
+                        {
+                            replaceMentShader = (Shader) EditorGUILayout.ObjectField("Shader", replaceMentShader,
+                                typeof(Shader), false);
+                            if (GUILayout.Button("Clear",EditorStyles.miniButton,GUILayout.Width(40)))
+                            {
+                                replaceMentShader = null;
+                                _preview.camera.ResetReplacementShader();
+                            }
+                        }
+                    }
+
+                    if (check.changed)
+                    {
+                        if (replaceMentShader)
+                        {
+                            _preview.camera.SetReplacementShader(replaceMentShader, "");
+
+                        }
+                        else
+                        {
+                            _preview.camera.ResetReplacementShader();
+                        }
+                    }
+                }
+            });
+
             EditorHelper.FoldGroup.Do("View Mode", true, () =>
             {
+
+
                 using (EditorHelper.Horizontal.Do())
                 {
                     using (var check = new EditorGUI.ChangeCheckScope())
@@ -6838,15 +6875,20 @@ namespace See1
         {
             if (_targetGo)
             {
-                Vector3 size = _targetInfo.bounds.max - _targetInfo.bounds.min;
-                float largestSize = Mathf.Max(size.x, size.y, size.z);
-                float distance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
+                CalcMinMaxDistance();
                 _destPivotPos = _targetInfo.bounds.center;
-                _destDistance = distance;
-                _minDistance = distance * 0.1f;
-                _maxDistance = largestSize * 10f;
-                SetClipPlane();
+                _destDistance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera); ;
             }
+        }
+
+        void CalcMinMaxDistance()
+        {
+            Vector3 size = _targetInfo.bounds.max - _targetInfo.bounds.min;
+            float largestSize = Mathf.Max(size.x, size.y, size.z);
+            float distance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
+            _minDistance = distance * 0.01f;
+            _maxDistance = largestSize * 100f;
+            SetClipPlane();
         }
 
         float GetFitDistanceOfCamera(Bounds targetBounds, Camera camera)
@@ -6929,7 +6971,7 @@ namespace See1
             _camTr.rotation = rotation;
 
             //PAN
-            var panFactor = new Vector2(-axis2.x, axis2.y) * (_dist * 0.001f);
+            var panFactor = new Vector2(-axis2.x, axis2.y) * (_dist * 0.002f);
             _camPivot.rotation = rotation;
             _destPivotPos += _camPivot.rotation * panFactor;
             var pivotPos = _camPivot.position;
@@ -6942,6 +6984,9 @@ namespace See1
             _destDistance = Mathf.Clamp(_destDistance, _minDistance, _maxDistance);
             _dist = Mathf.Lerp(_dist, _destDistance, _deltaTime * smoothFactor);
 
+            //FOV
+            _preview.cameraFieldOfView = Mathf.Lerp(_preview.cameraFieldOfView, _destFOV, _deltaTime * smoothFactor);
+
             //Final
             _camTr.position = pivotPos - (rotation * Vector3.forward * _dist + _targetOffset);
             SetClipPlane();
@@ -6951,7 +6996,6 @@ namespace See1
             {
                 _preview.camera.orthographicSize = _destDistance * _preview.cameraFieldOfView * 0.01f;
             }
-            _preview.cameraFieldOfView = Mathf.Lerp(_preview.cameraFieldOfView, _destFOV, _deltaTime * smoothFactor);
         }
 
         void UpdateLight(Vector2 axis)
@@ -7043,6 +7087,7 @@ namespace See1
             _destDistance = view.distance;
             _destPivotPos = view.pivot;
             _destFOV = view.fieldOfView;
+            CalcMinMaxDistance();
             Notice.Log(message, false);
         }
 
@@ -7178,9 +7223,9 @@ namespace See1
             return Mathf.Clamp(angle, min, max);
         }
 
-        static string SaveAsFile(Texture2D texture, string folder, string name, FileExistsMode whenFileExists)
+        static string SaveAsFile(Texture2D texture, string folder, string name, ImageSaveMode whenImageSave)
         {
-            string addString =(whenFileExists == FileExistsMode.Rename) ? DateTime.Now.ToString("MMddHHmmss"):string.Empty;
+            string addString =(whenImageSave == ImageSaveMode.Incremental) ? DateTime.Now.ToString("MMddHHmmss"):string.Empty;
             byte[] bytes = texture.EncodeToPNG();
             var imageFilePath = folder + "/" + MakeValidFileName(string.Format("{0}_{1}.{2}", name, addString, "png"));
             var directoryInfo = (new FileInfo(imageFilePath)).Directory;
