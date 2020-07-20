@@ -77,7 +77,7 @@ namespace See1
         public enum ImageSaveMode
         {
             Overwrite,
-            Incremental
+            Increment
         }
 
         public enum ViewMode
@@ -4498,6 +4498,7 @@ namespace See1
         Popup _popup;
         bool _guiEnabled = true;
         bool _overlayEnabled = true;
+        GUISkin skin;
 
         //Camera & Render
         Transform _camTr;
@@ -7225,7 +7226,7 @@ namespace See1
 
         static string SaveAsFile(Texture2D texture, string folder, string name, ImageSaveMode whenImageSave)
         {
-            string addString =(whenImageSave == ImageSaveMode.Incremental) ? DateTime.Now.ToString("MMddHHmmss"):string.Empty;
+            string addString =(whenImageSave == ImageSaveMode.Increment) ? DateTime.Now.ToString("MMddHHmmss"):string.Empty;
             byte[] bytes = texture.EncodeToPNG();
             var imageFilePath = folder + "/" + MakeValidFileName(string.Format("{0}_{1}.{2}", name, addString, "png"));
             var directoryInfo = (new FileInfo(imageFilePath)).Directory;
