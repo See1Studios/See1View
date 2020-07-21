@@ -6445,10 +6445,10 @@ namespace See1
                 }
                 break;
                     case ModelCreateMode.Preview:
-                        EditorGUILayout.HelpBox("Select GameObject from Project View", MessageType.Info);
+                        EditorGUILayout.HelpBox("Select GameObject from Project View", MessageType.None);
                         break;
                     case ModelCreateMode.Assembler:
-                        EditorGUILayout.HelpBox("The assembler is a See1View Pro feature and can assemble multiple part objects.", MessageType.Info);
+                        EditorGUILayout.HelpBox("The assembler is a See1View Pro feature and can assemble multiple part objects.", MessageType.None);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -6473,7 +6473,7 @@ namespace See1
 
             EditorHelper.FoldGroup.Do("Model Info", true, () =>
             {
-                EditorGUILayout.HelpBox(_targetInfo.Print(), MessageType.Info);
+                EditorGUILayout.HelpBox(_targetInfo.Print(), MessageType.None);
             });
 
             EditorHelper.FoldGroup.Do("Prefab", true, () =>
@@ -6726,7 +6726,7 @@ namespace See1
             });
 
             EditorHelper.FoldGroup.Do("Shortcuts", true,
-                () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.Info); });
+                () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.None); });
 
             EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.", EditorStyles.centeredGreyMiniLabel);
             EditorGUILayout.LabelField("Jongwoo Park", EditorStyles.centeredGreyMiniLabel);
