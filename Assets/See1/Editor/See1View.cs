@@ -60,6 +60,13 @@ namespace See1
             Bone = (1 << 4)
         }
 
+        public enum ModelCreateMode
+        {
+            Default,
+            Preview,
+            Assembler
+        }
+
         public enum SidePanelMode
         {
             View,
@@ -661,7 +668,7 @@ namespace See1
             public bool openSavedImage = true;
             public bool screenShotAlpha = true;
             public int captureMultiplier = 1;
-            public bool autoLoad = false;
+            public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
             public int viewportMultiplier = 2;
             public Color planeShadowColor = Color.gray;
             public bool enablePlaneShadows = true;
@@ -1078,7 +1085,11 @@ namespace See1
             public void Init(GameObject root)
             {
                 Cleanup();
+#if UNITY_2018
+                var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(root);
+#else
                 var srcPrefab = PrefabUtility.GetPrefabParent(root);
+#endif
                 assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : string.Empty;
                 sb.Append(root.name);
                 sb.Append("\n");
@@ -3122,7 +3133,9 @@ namespace See1
                 {
                     if (animator)
                     {
-                        name = animator.runtimeAnimatorController ? animator.runtimeAnimatorController.name : animatedList[0].gameObject.name;
+                        name = animator.runtimeAnimatorController
+                            ? animator.runtimeAnimatorController.name
+                            : animatedList[0].gameObject.name;
                         _isOptimized = !animator.hasTransformHierarchy;
                         //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
                         //DeOptimizeObject();
@@ -4251,7 +4264,7 @@ namespace See1
                 }
             }
 
-            public class FoldGroup2 : IDisposable//미완성
+            public class FoldGroup2 : IDisposable //미완성
             {
                 static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
                 private static string current;
@@ -4261,7 +4274,7 @@ namespace See1
                     if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
                     current = label;
                     dict[label].target = EditorHelper.Foldout(dict[label].target, label);
-                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                    if ((double) dict[current].faded == 0.0 || (double) dict[current].faded == 1.0)
                     {
                         EditorGUILayout.BeginFadeGroup(dict[label].faded);
                     }
@@ -4272,7 +4285,7 @@ namespace See1
                 public FoldGroup2(string label, float value)
                 {
                     current = label;
-                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                    if ((double) dict[current].faded == 0.0 || (double) dict[current].faded == 1.0)
                     {
                         EditorGUILayout.BeginFadeGroup(value);
                     }
@@ -4280,10 +4293,42 @@ namespace See1
 
                 public void Dispose()
                 {
-                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                    if ((double) dict[current].faded == 0.0 || (double) dict[current].faded == 1.0)
                         return;
                     EditorGUILayout.EndFadeGroup();
                     dict.Remove(current);
+                }
+            }
+
+            public static void IconLabel(Type type, string text, int size = 18)
+            {
+                using (var scope = new EditorGUILayout.HorizontalScope())
+                {
+                    Color color = Color.gray;
+                    var icon =new GUIContent(EditorGUIUtility.ObjectContent(null, type).image);
+                    GUIContent title = new GUIContent(text, EditorGUIUtility.ObjectContent(null, type).image, text);
+                    //var icon = EditorGUIUtility.IconContent("ViewToolOrbit").image;
+                    var st1 = new GUIStyle(EditorStyles.label);
+                    st1.fontSize = size;
+                    //st1.font = GetFont(type);
+                    st1.normal.textColor = color;
+                    st1.alignment = TextAnchor.MiddleRight;
+                    st1.stretchWidth = false;
+                    st1.stretchHeight = false;
+                    st1.fixedWidth = 32;
+
+                    var st2 = new GUIStyle(EditorStyles.label);
+                    st2.fontSize = size;
+                    st2.normal.textColor = color * 0.75f;
+                    st2.fontStyle = FontStyle.BoldAndItalic;
+                    st2.alignment = TextAnchor.MiddleLeft;
+                    st2.stretchWidth = false;
+                    st2.stretchHeight = false;
+                    GUILayout.Label(title,st2);
+                    //Rect iconRect = GUILayoutUtility.GetRect(icon, st1);
+                    //EditorGUI.LabelField(iconRect, icon, st1);
+                    //Rect textRect = GUILayoutUtility.GetRect(new GUIContent(text), st2);
+                    //EditorGUI.LabelField(textRect, new GUIContent(text), st2);
                 }
             }
 
@@ -4467,8 +4512,9 @@ namespace See1
 
         //GameObject _shadowGo; //Hacky ShadowCaster
         ReflectionProbe _probe;
+
         Transform _lightPivot;
-        private ModelAssembler modelAssembler;
+        //private ModelAssembler modelAssembler;
 
         //Animation
         List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
@@ -4686,7 +4732,7 @@ namespace See1
 
         void OnSelectionChange()
         {
-            if (!currentData.autoLoad) return;
+            if (!(currentData.modelCreateMode == ModelCreateMode.Preview)) return;
             if (Validate(Selection.activeGameObject) == false) return;
             _prefab = Selection.activeGameObject;
             SetModel(_prefab);
@@ -4773,10 +4819,13 @@ namespace See1
         void SetModel(GameObject prefab)
         {
             if (!prefab) return;
+            if (prefab.GetType() != typeof(GameObject)) return;
             if (_targetGo) DestroyImmediate(_targetGo);
             //if (_shadowGo) DestroyImmediate(_shadowGo);
             _targetGo = Instantiate(prefab) as GameObject;
+#if UNITY_2017
             PrefabUtility.DisconnectPrefabInstance(_targetGo); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
+#endif
             //_shadowGo = Instantiate(prefab);
             if (_targetGo != null)
             {
@@ -5173,8 +5222,10 @@ namespace See1
         {
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial,
+                currentData.enableHeightFog);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial,
+                currentData.enablePlaneShadows);
         }
 
         void ApplyCameraCommandBuffers()
@@ -5192,7 +5243,8 @@ namespace See1
                     break;
                 case ViewMode.Normal:
                     _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
-                    SetCameraTargetBlitBuffer(CameraEvent.AfterSkybox, _depthNormalCommandBuffer, _depthNormalMaterial, true);
+                    SetCameraTargetBlitBuffer(CameraEvent.AfterSkybox, _depthNormalCommandBuffer, _depthNormalMaterial,
+                        true);
                     break;
             }
         }
@@ -5391,11 +5443,14 @@ namespace See1
                     //    //    EditorUtility.SetDirty(settings);
                     //    //}
                     //}
-                    using (EditorHelper.Colorize.Do(Color.white, settings.current.autoLoad ? Color.cyan : Color.white))
-                    {
-                        settings.current.autoLoad = GUILayout.Toggle(settings.current.autoLoad, "Preview",
-                            EditorStyles.toolbarButton);
-                    }
+                    //bool isPreview = settings.current.modelCreateMode == ModelCreateMode.Preview;
+                    //using (EditorHelper.Colorize.Do(Color.white, isPreview ? Color.cyan : Color.white))
+                    //{
+                    //    if (GUILayout.Toggle(isPreview, "Preview", EditorStyles.toolbarButton))
+                    //    {
+                    //        settings.current.modelCreateMode = ModelCreateMode.Preview;
+                    //    }
+                    //}
 
                     if (GUILayout.Button("Size", EditorStyles.toolbarDropDown))
                     {
@@ -5733,6 +5788,7 @@ namespace See1
             //    EditorGUILayout.LabelField("About");
             //}
 
+            EditorHelper.IconLabel(typeof(Camera),"View");
             EditorHelper.FoldGroup.Do("Control", true, () =>
             {
                 currentData.rotSpeed = EditorGUILayout.IntSlider("Rotate Speed", currentData.rotSpeed, 1, 5);
@@ -5960,8 +6016,9 @@ namespace See1
                         }
                     }
                 }
-
+#if UNITY_2017
                 ColorPickerHDRConfig config = new ColorPickerHDRConfig(0, 2, 0, 2);
+#endif
                 if (currentData.clearFlag == ClearFlags.Sky)
                 {
                     using (new EditorGUI.DisabledGroupScope(true))
@@ -5975,8 +6032,13 @@ namespace See1
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
+#if UNITY_2017
                         currentData.bgColor = EditorGUILayout.ColorField(new GUIContent("Color"), currentData.bgColor,
                             true, true, true, config);
+#else
+                    currentData.bgColor =
+ EditorGUILayout.ColorField(new GUIContent("Color"), currentData.bgColor, false, false, false);
+#endif
                         _preview.camera.backgroundColor = currentData.bgColor;
                         _preview.camera.clearFlags = CameraClearFlags.SolidColor;
                     }
@@ -6194,7 +6256,7 @@ namespace See1
                         {
                             replaceMentShader = (Shader) EditorGUILayout.ObjectField("Shader", replaceMentShader,
                                 typeof(Shader), false);
-                            if (GUILayout.Button("Clear",EditorStyles.miniButton,GUILayout.Width(40)))
+                            if (GUILayout.Button("Clear", EditorStyles.miniButton, GUILayout.Width(40)))
                             {
                                 replaceMentShader = null;
                                 _preview.camera.ResetReplacementShader();
@@ -6309,14 +6371,11 @@ namespace See1
 
         void OnGUI_Model()
         {
+            EditorHelper.IconLabel(typeof(GameObject), "Model");
             EditorHelper.FoldGroup.Do("Create", true, () =>
             {
-                using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
-                {
-                    currentData.autoLoad = GUILayout.Toggle(currentData.autoLoad, "Preview Mode", "Button",
-                        GUILayout.Height(32));
-                }
-
+                settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode,
+                    Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
                 using (EditorHelper.Horizontal.Do())
                 {
                     currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, "Reframe Target",
@@ -6325,10 +6384,77 @@ namespace See1
                         EditorStyles.miniButtonRight);
                 }
 
-                _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
+                switch (settings.current.modelCreateMode)
+                {
+                    case ModelCreateMode.Default:
+                        _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
+                        using (EditorHelper.Horizontal.Do())
+                        {
+                            using (EditorHelper.Vertical.Do())
+                            {
+                                if (GUILayout.Button("Primitives", EditorStyles.popup))
+                                {
+                                    var menu = new GenericMenu();
+                                    menu.AddItem(new GUIContent("Sphere"), false, () =>
+                                    {
+                                        var primitive = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                                        SetModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    });
+                                    menu.AddItem(new GUIContent("Capsule"), false, () =>
+                                    {
+                                        var primitive = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                                        SetModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    });
+                                    menu.AddItem(new GUIContent("Cylinder"), false, () =>
+                                    {
+                                        var primitive = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                                        SetModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    });
+                                    menu.AddItem(new GUIContent("Plane"), false, () =>
+                                    {
+                                        var primitive = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                                        SetModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    });
+                                    menu.AddItem(new GUIContent("Quad"), false, () =>
+                                    {
+                                        var primitive = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                                        SetModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    });
+                                    menu.ShowAsContext();
+                                }
 
-                if (currentData.autoLoad && EditorGUIUtility.GetObjectPickerControlID() != 0
-                ) //어떤 object picker 가 안 열렸을 때 0
+                                if (GUILayout.Button("Extra Primitives", EditorStyles.popup))
+                                {
+                                }
+                            }
+
+                            if (GUILayout.Button("Create", GUILayout.Height(32)))
+                            {
+                                if (_prefab)
+                                {
+                                    SetModel(_prefab);
+                                }
+                            }
+                        
+
+                }
+                break;
+                    case ModelCreateMode.Preview:
+                        EditorGUILayout.HelpBox("Select GameObject from Project View", MessageType.Info);
+                        break;
+                    case ModelCreateMode.Assembler:
+                        EditorGUILayout.HelpBox("The assembler is a See1View Pro feature and can assemble multiple part objects.", MessageType.Info);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                if (EditorGUIUtility.GetObjectPickerControlID() != 0) //어떤 object picker 가 안 열렸을 때 0
                 {
                     _tempPickedObject = EditorGUIUtility.GetObjectPickerObject() as GameObject;
                     if (_prefab != _tempPickedObject)
@@ -6339,32 +6465,15 @@ namespace See1
                     }
                 }
 
-                if (!currentData.autoLoad)
+                if (!(currentData.modelCreateMode == ModelCreateMode.Preview))
                 {
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        if (GUILayout.Button("Primitives", GUILayout.Width(80), GUILayout.Height(32)))
-                        {
-                            int number = UnityEngine.Random.Range(1, 4);
-                            var primitive = GameObject.CreatePrimitive((PrimitiveType) number);
-                            SetModel(primitive);
-                            DestroyImmediate(primitive);
-                        }
 
-                        if (GUILayout.Button("Create", GUILayout.Height(32)))
-                        {
-                            if (_prefab)
-                            {
-                                SetModel(_prefab);
-                            }
-                        }
-                    }
-
-                    if (modelAssembler != null)
-                    {
-                        modelAssembler.OnGUI();
-                    }
                 }
+            });
+
+            EditorHelper.FoldGroup.Do("Model Info", true, () =>
+            {
+                EditorGUILayout.HelpBox(_targetInfo.Print(), MessageType.Info);
             });
 
             EditorHelper.FoldGroup.Do("Prefab", true, () =>
@@ -6389,15 +6498,17 @@ namespace See1
 
         void OnGUI_Animation()
         {
+            EditorHelper.IconLabel(typeof(Avatar), "Animation");
             for (int a = 0; a < _playerList.Count; a++)
             {
                 var player = _playerList[a];
-                EditorHelper.FoldGroup.Do(string.Format("{0} - {1}", a.ToString(),player.name), true, () =>
+                EditorHelper.FoldGroup.Do(string.Format("{0} - {1}", a.ToString(), player.name), true, () =>
                 {
                     for (int b = 0; b < player.animatedList.Count; b++)
                     {
                         player.reorderableClipList.DoLayoutList();
                     }
+
                     EditorGUILayout.Space();
                 });
                 ////Drag and Drop
@@ -6422,6 +6533,7 @@ namespace See1
                                 }
                             }
                         }
+
                         break;
                 }
             }
@@ -6457,7 +6569,8 @@ namespace See1
                 //EditorGUI.DrawRect(progressRect, Color.red);
                 //particleSystem.main.time = GUI.HorizontalSlider(progressRect, (float)_player.time, 0, _player.GetCurrentClipLength(), style, style);
                 float length = particleSystem.main.duration;
-                EditorGUI.ProgressBar(progressRect, (float)particleSystem.time / length, string.Format("{0} : {1}s", particleSystem.name, length.ToString("0.00")));
+                EditorGUI.ProgressBar(progressRect, (float) particleSystem.time / length,
+                    string.Format("{0} : {1}s", particleSystem.name, length.ToString("0.00")));
 
                 using (EditorHelper.Horizontal.Do())
                 {
@@ -6506,6 +6619,7 @@ namespace See1
 
         void OnGUI_Misc()
         {
+            EditorHelper.IconLabel(typeof(DefaultAsset), "Misc");
             EditorHelper.FoldGroup.Do("Manage Data", false, () =>
             {
                 //settings.autoLoad = GUILayout.Toggle(settings.autoLoad, "Auto Load Selection", "Button", GUILayout.Height(32));
@@ -6633,7 +6747,7 @@ namespace See1
             _sb0.Append(FPS.GetString());
             //_sb0.Append(string.Format("{0}:{1}", "GetObjectPickerControlID : ", EditorGUIUtility.GetObjectPickerControlID().ToString()));
             //_sb0.AppendLine();
-            if (EditorGUIUtility.GetObjectPickerControlID()!=0) //picker 가 없을 때는 0
+            if (EditorGUIUtility.GetObjectPickerControlID() != 0) //picker 가 없을 때는 0
             {
                 if (EditorGUIUtility.GetObjectPickerObject() != null)
                 {
@@ -6642,6 +6756,7 @@ namespace See1
                     //_sb0.AppendLine();
                 }
             }
+
             //_sb0.Append("\n");
             //_sb0.Append(string.Format("{0}:{1}", "Dest Distance : ", _destDistance.ToString()));
             //_sb0.Append("\n");
@@ -6678,7 +6793,7 @@ namespace See1
                 {
                     Rect gizmoRect = (currentData.viewportMultiplier > 1)
                         ? r
-                        : new RectOffset((int)(r.x / currentData.viewportMultiplier), 0, 0, 0)
+                        : new RectOffset((int) (r.x / currentData.viewportMultiplier), 0, 0, 0)
                             .Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
 
                     //Rect gizmoRect = (settings.viewportMultiplier > 1) ? r : _rs.center;
@@ -6700,9 +6815,12 @@ namespace See1
                     DrawBasis(_targetGo.transform, scale * 0.1f, true);
 
                     DrawBasis(_camPivot.transform, scale * 0.1f, true);
-                    Handles.Label(_camPivot.transform.position, string.Format("Pivot: Position {0} Rotation {1}\nCam: Postion {2} Rotation {3}", _camPivot.transform.position, _camPivot.transform.rotation.eulerAngles,_camTr.position,_camTr.rotation.eulerAngles), EditorStyles.miniLabel);
+                    Handles.Label(_camPivot.transform.position,
+                        string.Format("Pivot: Position {0} Rotation {1}\nCam: Postion {2} Rotation {3}",
+                            _camPivot.transform.position, _camPivot.transform.rotation.eulerAngles, _camTr.position,
+                            _camTr.rotation.eulerAngles), EditorStyles.miniLabel);
 
-                    var length = 0.05f;// _maxDistance;
+                    var length = 0.05f; // _maxDistance;
                     Handles.color = Color.magenta * 1f;
                     Vector3 rotateCenter = _camPivot.position - _targetOffset;
                     Handles.DrawLine(rotateCenter, rotateCenter + Vector3.right * length);
@@ -6711,7 +6829,9 @@ namespace See1
                     Handles.DrawLine(rotateCenter, rotateCenter - Vector3.up * length);
                     Handles.DrawLine(rotateCenter, rotateCenter + Vector3.forward * length);
                     Handles.DrawLine(rotateCenter, rotateCenter - Vector3.forward * length);
-                    Handles.Label(rotateCenter + new Vector3(0,0.1f,0), string.Format("View Pivot : {0}\nCam Pivot: {1}\nOffset : {2}", rotateCenter, _camPivot.transform.position,_targetOffset),EditorStyles.miniLabel);
+                    Handles.Label(rotateCenter + new Vector3(0, 0.1f, 0),
+                        string.Format("View Pivot : {0}\nCam Pivot: {1}\nOffset : {2}", rotateCenter,
+                            _camPivot.transform.position, _targetOffset), EditorStyles.miniLabel);
 
                     //DrawGrid();
 
@@ -6759,7 +6879,7 @@ namespace See1
                         //Draw Bones
                         foreach (var bone in _targetInfo.bones)
                         {
-                            if (bone==null) continue;
+                            if (bone == null) continue;
                             if (bone.parent == null) continue;
                             Handles.color = Color.yellow;
                             //var endpoint = bone.parent.position + bone.parent.rotation * bone.localPosition;
@@ -6769,7 +6889,7 @@ namespace See1
                             DrawBasis(bone, scale * 0.02f, false);
                             //var midPoint = (bone.position + bone.parent.position) / 2;
                             var parentDirection = bone.position + (bone.position - bone.parent.position) * 0.1f;
-                            var d =Mathf.Clamp01(1 / _destDistance);
+                            var d = Mathf.Clamp01(1 / _destDistance);
                             GUI.color = Color.Lerp(Color.clear, Color.white, d);
                             if (d > 0.5f) Handles.Label(parentDirection, bone.name, EditorStyles.miniLabel);
                             GUI.color = Color.white;
@@ -6794,13 +6914,15 @@ namespace See1
                                 Handles.DrawLine(tr.position + tr.forward * -scale, tr.position);
                                 Handles.color = new Color(color.r, color.g, color.b, 0.1f);
                                 Handles.DrawSolidDisc(tr.position + tr.forward * -scale, tr.forward, scale * 0.5f);
-                                Handles.DrawSolidDisc(tr.position + tr.forward * -scale, tr.forward, scale * 0.5f * previewLight.intensity * 0.5f);
+                                Handles.DrawSolidDisc(tr.position + tr.forward * -scale, tr.forward,
+                                    scale * 0.5f * previewLight.intensity * 0.5f);
                                 string lightInfo = string.Format("Light {0}\nColor : {1}\nRotation : {2}\n",
                                     i.ToString(), color.ToString(), tr.rotation.eulerAngles.ToString());
                                 Handles.Label(tr.position + tr.forward * -scale, lightInfo, EditorStyles.miniLabel);
                             }
                         }
                     }
+
                     Handles.ClearCamera(gizmoRect, _preview.camera);
                     //Restore FOV
                     _preview.camera.fieldOfView = fieldOfView;
@@ -6850,27 +6972,29 @@ namespace See1
         {
             Handles.zTest = CompareFunction.Greater;
             Color color = Handles.color;
-            Handles.color = Color.gray*0.5f;
+            Handles.color = Color.gray * 0.5f;
             int count = 9;
             int d = count * 2;
-            Vector3 offset =new Vector3(-count,0,-count);
-            Vector3 startPos = Vector3.zero +offset;
-            for (int i = 0; i < d+1; i++)
+            Vector3 offset = new Vector3(-count, 0, -count);
+            Vector3 startPos = Vector3.zero + offset;
+            for (int i = 0; i < d + 1; i++)
             {
                 Vector3 pos = startPos + new Vector3(i, 0, 0);
                 Handles.DrawLine(pos, pos + Vector3.forward * d);
             }
-            for (int j = 0; j < d+1; j++)
+
+            for (int j = 0; j < d + 1; j++)
             {
                 Vector3 pos = startPos + new Vector3(0, 0, j);
                 Handles.DrawLine(pos, pos + Vector3.right * d);
             }
+
             Handles.color = color;
         }
 
-#endregion
+        #endregion
 
-#region Handle Input
+        #region Handle Input
 
         void FitTargetToViewport()
         {
@@ -6878,7 +7002,8 @@ namespace See1
             {
                 CalcMinMaxDistance();
                 _destPivotPos = _targetInfo.bounds.center;
-                _destDistance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera); ;
+                _destDistance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
+                ;
             }
         }
 
@@ -6911,7 +7036,8 @@ namespace See1
             var axis2 = Vector2.zero;
             var zoom = 0.0f;
             var evt = Event.current;
-            Rect inputEnabledArea = new Rect(_rs.center.position,new Vector2(_rs.center.width,_rs.center.height-_controlRect.height)); 
+            Rect inputEnabledArea = new Rect(_rs.center.position,
+                new Vector2(_rs.center.width, _rs.center.height - _controlRect.height));
             var isLDragging = evt.type == EventType.MouseDrag && evt.button == 0 && _isStartDragValid;
             var isRDragging = evt.type == EventType.MouseDrag && evt.button == 1 && _isStartDragValid;
             var isMDragging = evt.type == EventType.MouseDrag && evt.button == 2 && _isStartDragValid;
@@ -6936,7 +7062,9 @@ namespace See1
                 _isStartDragValid = false;
             }
 
-            Vector2 input = evt.delta.normalized;// settings.mouseAccelerationEnabled ? evt.delta * 0.1f : evt.delta.normalized;
+            Vector2
+                input = evt.delta
+                    .normalized; // settings.mouseAccelerationEnabled ? evt.delta * 0.1f : evt.delta.normalized;
             if (isLDragging) axis0 = input;
             if (isRDragging) axis1 = input;
             if (isMDragging) axis2 = input;
@@ -6963,12 +7091,13 @@ namespace See1
             float smoothFactor = Mathf.Lerp(10f, 1f, currentData.smoothFactor * 0.2f);
 
             //ROTATE
-            var rotationFactor = axis0;// * Mathf.Pow(currentData.rotSpeed, 2);
+            var rotationFactor = axis0; // * Mathf.Pow(currentData.rotSpeed, 2);
             _destRot += rotationFactor;
             _destRot.x = ClampAngle(_destRot.x, -360.0f, 360.0f);
             _destRot.y = ClampAngle(_destRot.y, -90.0f, 90.0f);
             var rotation = _camTr.rotation;
-            rotation = Quaternion.Slerp(rotation, Quaternion.Euler(_destRot.y, _destRot.x, 0), _deltaTime * smoothFactor);
+            rotation = Quaternion.Slerp(rotation, Quaternion.Euler(_destRot.y, _destRot.x, 0),
+                _deltaTime * smoothFactor);
             _camTr.rotation = rotation;
 
             //PAN
@@ -7032,20 +7161,22 @@ namespace See1
                 var lightTr = _preview.lights[i].transform;
                 lightTr.Rotate(angle);
 
-                _preview.lights[i].shadows = currentData.enableShadows && i == 0 ? LightShadows.Soft : LightShadows.None;
+                _preview.lights[i].shadows =
+                    currentData.enableShadows && i == 0 ? LightShadows.Soft : LightShadows.None;
                 _preview.lights[i].shadowResolution = LightShadowResolution.VeryHigh;
                 _preview.lights[i].shadowBias = 0.01f;
             }
+
             _preview.ambientColor = currentData.ambientSkyColor = Color.gray;
         }
 
         static ParticleSystem GetRoot(ParticleSystem ps)
         {
-            if ((Object)ps == (Object)null)
-                return (ParticleSystem)null;
+            if ((Object) ps == (Object) null)
+                return (ParticleSystem) null;
             Transform transform = ps.transform;
-            while ((bool)(Object)transform.parent &&
-                   (Object)transform.parent.gameObject.GetComponent<ParticleSystem>() != (Object)null)
+            while ((bool) (Object) transform.parent &&
+                   (Object) transform.parent.gameObject.GetComponent<ParticleSystem>() != (Object) null)
                 transform = transform.parent;
             return transform.gameObject.GetComponent<ParticleSystem>();
         }
@@ -7065,11 +7196,11 @@ namespace See1
             foreach (ParticleSystem componentsInChild in ps.transform.GetComponentsInChildren<ParticleSystem>())
             {
                 ParticleSystem child = componentsInChild;
-                if ((UnityEngine.Object)child != (UnityEngine.Object)ps &&
-                    !((UnityEngine.Object)((IEnumerable<ParticleSystem>)_targetInfo.particleSystems)
-                        .FirstOrDefault<ParticleSystem>((Func<ParticleSystem, bool>)(o =>
-                           (UnityEngine.Object)GetRoot(o) == (UnityEngine.Object)child)) !=
-                        (UnityEngine.Object)null))
+                if ((UnityEngine.Object) child != (UnityEngine.Object) ps &&
+                    !((UnityEngine.Object) ((IEnumerable<ParticleSystem>) _targetInfo.particleSystems)
+                      .FirstOrDefault<ParticleSystem>((Func<ParticleSystem, bool>) (o =>
+                          (UnityEngine.Object) GetRoot(o) == (UnityEngine.Object) child)) !=
+                      (UnityEngine.Object) null))
                     this.ShowBounds(child);
             }
         }
@@ -7079,10 +7210,10 @@ namespace See1
             if (currentData.viewList.Count - 1 < viewListIndex) return;
             var view = currentData.viewList[viewListIndex];
             var message = string.Format("View {0} Loaded", viewListIndex.ToString());
-            ApplyView(view,message);
+            ApplyView(view, message);
         }
 
-        void ApplyView(View view,string message = "")
+        void ApplyView(View view, string message = "")
         {
             _destRot = view.rotation;
             _destDistance = view.distance;
@@ -7103,6 +7234,7 @@ namespace See1
                 _preview.camera.backgroundColor = currentData.bgColor;
                 _preview.camera.clearFlags = CameraClearFlags.SolidColor;
             }
+
             _probe.customBakedTexture = currentData.cubeMap;
             currentData.CubeMapMipMapBias = currentData.CubeMapMipMapBias;
         }
@@ -7134,7 +7266,7 @@ namespace See1
         IEnumerator Interpolate(float value, float startValue, float endValue, float time)
         {
             float elapedTime = 0f;
-            while (elapedTime<time)
+            while (elapedTime < time)
             {
                 elapedTime += _deltaTime;
                 var delta = elapedTime / time;
@@ -7143,11 +7275,11 @@ namespace See1
             }
         }
 
-#endregion
+        #endregion
 
-#region Utils
+        #region Utils
 
-    public static List<GameObject> FindAllObjectsInScene()
+        public static List<GameObject> FindAllObjectsInScene()
         {
             UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
 
@@ -7168,7 +7300,8 @@ namespace See1
                 {
                     for (int i2 = 0; i2 < rootObjects.Length; i2++)
                     {
-                        if (allObjects[i].transform.root == rootObjects[i2].transform && allObjects[i] != rootObjects[i2])
+                        if (allObjects[i].transform.root == rootObjects[i2].transform &&
+                            allObjects[i] != rootObjects[i2])
                         {
                             objectsInScene.Add(allObjects[i]);
                             break;
@@ -7176,6 +7309,7 @@ namespace See1
                     }
                 }
             }
+
             return objectsInScene;
         }
 
@@ -7203,6 +7337,7 @@ namespace See1
                 shader = Shader.Find(fallBackName);
                 Debug.Log(string.Format("{0} Shader not found. Fallback to {1}", shaderName, fallBackName));
             }
+
             return shader;
         }
 
@@ -7226,7 +7361,9 @@ namespace See1
 
         static string SaveAsFile(Texture2D texture, string folder, string name, ImageSaveMode whenImageSave)
         {
-            string addString =(whenImageSave == ImageSaveMode.Increment) ? DateTime.Now.ToString("MMddHHmmss"):string.Empty;
+            string addString = (whenImageSave == ImageSaveMode.Increment)
+                ? DateTime.Now.ToString("MMddHHmmss")
+                : string.Empty;
             byte[] bytes = texture.EncodeToPNG();
             var imageFilePath = folder + "/" + MakeValidFileName(string.Format("{0}_{1}.{2}", name, addString, "png"));
             var directoryInfo = (new FileInfo(imageFilePath)).Directory;
@@ -7373,9 +7510,9 @@ namespace See1
             Graphics.DrawMeshNow(mesh, Vector3.zero, Quaternion.identity, 0);
         }
 
-#endregion
+        #endregion
 
-#region Reflection
+        #region Reflection
 
         private Scene GetPreviewScene()
         {
@@ -7383,10 +7520,11 @@ namespace See1
             if (fi != null)
             {
                 var previewScene = fi.GetValue(_preview);
-                var scene = (UnityEngine.SceneManagement.Scene)(previewScene.GetType()
+                var scene = (UnityEngine.SceneManagement.Scene) (previewScene.GetType()
                     .GetField("m_Scene", BindingFlags.Instance | BindingFlags.NonPublic)).GetValue(previewScene);
                 return scene;
             }
+
             return EditorSceneManager.NewPreviewScene();
         }
 
@@ -7394,7 +7532,7 @@ namespace See1
         {
             var flags = BindingFlags.Static | BindingFlags.NonPublic;
             var propInfo = typeof(Camera).GetProperty("PreviewCullingLayer", flags);
-            _previewLayer = (int)propInfo.GetValue(null, new object[0]);
+            _previewLayer = (int) propInfo.GetValue(null, new object[0]);
         }
 
         bool IsDocked()
@@ -7402,18 +7540,19 @@ namespace See1
             BindingFlags fullBinding = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
                                        BindingFlags.Static;
             MethodInfo isDockedMethod = typeof(EditorWindow).GetProperty("docked", fullBinding).GetGetMethod(true);
-            return (bool)isDockedMethod.Invoke(this, null);
+            return (bool) isDockedMethod.Invoke(this, null);
         }
 
         Shader FindBuiltinShader(string shaderName)
         {
             Type shaderType = typeof(Shader);
-            MethodInfo mi = shaderType.GetMethod("FindBuiltin", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
-            Shader shader = (mi != null) ? mi.Invoke(this, new object[] { shaderName }) as Shader : null;
+            MethodInfo mi = shaderType.GetMethod("FindBuiltin",
+                BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+            Shader shader = (mi != null) ? mi.Invoke(this, new object[] {shaderName}) as Shader : null;
             return shader;
         }
 
-#endregion
+        #endregion
 
         [MenuItem("Tools/See1Studios/Open See1View", false, 0)]
         private static void Init()
