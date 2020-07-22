@@ -39,6 +39,7 @@ using UnityEngine.Events;
 using UnityEngine.Networking;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using UnityEngine.XR.WSA.Input;
 using Object = UnityEngine.Object;
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
@@ -84,7 +85,7 @@ namespace See1
         public enum ImageSaveMode
         {
             Overwrite,
-            Increment
+            Incremental
         }
 
         public enum ViewMode
@@ -652,24 +653,23 @@ namespace See1
         internal class Data : ICloneable
         {
             public string name;
-
-            //private static bool _willBeDeleted = false;
-            public Color wireLineColor = Color.white;
-            public Color wireFillColor = Color.black;
-            public float wireThickness = 0.1f;
-            public float wireUseDiscard = 1;
             public bool reframeToTarget = true;
-            public bool recalculateBound;
+            public bool recalculateBound = true;
             public int rotSpeed = 3;
             public int zoomSpeed = 3;
             public int panSpeed = 3;
             public int smoothFactor = 3;
+            //Image Save
             public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
             public bool openSavedImage = true;
-            public bool screenShotAlpha = true;
-            public int captureMultiplier = 1;
-            public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
+            public bool alphaAppliedImage = true;
+            public int imageSizeMultiplier = 1;
+            //Render
             public int viewportMultiplier = 2;
+            public Color wireLineColor = Color.white;
+            public Color wireFillColor = Color.black;
+            public float wireThickness = 0.1f;
+            public float wireUseDiscard = 1;
             public Color planeShadowColor = Color.gray;
             public bool enablePlaneShadows = true;
             public Color heightFogColor = new Color(0, 0, 0, 0.5f);
@@ -679,12 +679,7 @@ namespace See1
             public float shadowBias = 0.01f;
             public bool enableSRP = false;
             public bool enablePostProcess = true;
-
-            public string lastTargetPath = string.Empty;
-
-            //public string skyMatPath = string.Empty;
-            public string cubemapPath = string.Empty;
-            public string profilePath = string.Empty;
+            //Resources
             public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
             public Color ambientSkyColor = Color.gray;
             public ClearFlags clearFlag = ClearFlags.Color;
@@ -694,8 +689,11 @@ namespace See1
             public List<Lighting> lightingList = new List<Lighting>();
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
-            public GameObject _lastTarget;
+            //Model
+            public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
 
+            public string lastTargetPath = string.Empty;
+            public GameObject _lastTarget;
             public GameObject lastTarget
 
             {
@@ -712,8 +710,8 @@ namespace See1
                 }
             }
 
+            public string cubemapPath = string.Empty;
             private Texture _cubeMap;
-
             public Texture cubeMap
             {
                 get { return _cubeMap ? _cubeMap : _cubeMap = AssetDatabase.LoadAssetAtPath<Cubemap>(cubemapPath); }
@@ -734,6 +732,8 @@ namespace See1
                     if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
                 }
             }
+
+            public string profilePath = string.Empty;
 #if UNITY_POST_PROCESSING_STACK_V2
             private PostProcessProfile _profile;
 
@@ -1149,19 +1149,30 @@ namespace See1
                     renderers.SelectMany(x => x.sharedMaterials).Distinct().Count().ToString()));
             }
 
-            public string GetInfoString()
+            public string GetMeshInfo(Mesh target)
             {
-                //Type type = typeof(InternalMeshUtil);
-                //Mesh target = this.target as Mesh;
-                //string str = target.vertexCount.ToString() + " verts, " + (object)InternalMeshUtil.GetPrimitiveCount(target) + " tris";
-                //int subMeshCount = target.subMeshCount;
-                //if (subMeshCount > 1)
-                //    str = str + ", " + (object)subMeshCount + " submeshes";
-                //int blendShapeCount = target.blendShapeCount;
-                //if (blendShapeCount > 1)
-                //    str = str + ", " + (object)blendShapeCount + " blendShapes";
-                //return str + "\n" + InternalMeshUtil.GetVertexFormat(target);
-                return string.Empty;
+                //namespace UnityEditor
+                    //{
+                    //  internal sealed class InternalMeshUtil
+                    //  {
+                    //    public static extern int GetPrimitiveCount(Mesh mesh);
+                    //    public static extern int CalcTriangleCount(Mesh mesh);
+                    //    public static extern bool HasNormals(Mesh mesh);
+                    //    public static extern string GetVertexFormat(Mesh mesh);
+                    //    public static extern float GetCachedMeshSurfaceArea(MeshRenderer meshRenderer);
+                    //  }
+                    //}
+                Type internalMeshUtil = Type.GetType("InternalMeshUtil");
+                MethodInfo getPrimitiveCount = internalMeshUtil.GetMethod("GetPrimitiveCount", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                MethodInfo getVertexFormat = internalMeshUtil.GetMethod("GetVertexFormat", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                string str = target.vertexCount.ToString() + " verts, " + (object)getPrimitiveCount.Invoke(this,new object[]{ target }) + " tris";
+                int subMeshCount = target.subMeshCount;
+                if (subMeshCount > 1)
+                    str = str + ", " + (object)subMeshCount + " submeshes";
+                int blendShapeCount = target.blendShapeCount;
+                if (blendShapeCount > 1)
+                    str = str + ", " + (object)blendShapeCount + " blendShapes";
+                return str + "\n" + getVertexFormat.Invoke(this,new object[]{target});
             }
 
             public string Print()
@@ -4193,6 +4204,34 @@ namespace See1
                 }
             }
 
+            public struct PrefixLabelSize : System.IDisposable
+            {
+                private readonly Font savedFont;
+                private readonly int savedFontSize;
+
+                public static PrefixLabelSize Do(Font font, int fontSize)
+                {
+                    var savedFont = EditorStyles.label.font;
+                    var savedFontSize = EditorStyles.label.fontSize;
+                    EditorStyles.label.font = font;
+                    EditorStyles.label.fontSize = fontSize;
+
+                    return new PrefixLabelSize(savedFont,savedFontSize);
+                }
+
+                private PrefixLabelSize(Font savedFont, int savedFontSize)
+                {
+                    this.savedFont = savedFont;
+                    this.savedFontSize = savedFontSize;
+                }
+
+                public void Dispose()
+                {
+                    EditorStyles.label.font = savedFont;
+                    EditorStyles.label.fontSize = savedFontSize;
+                }
+            }
+
             //Custom
             public static void GridLayout(int count, int column, Action<int> action)
             {
@@ -4302,34 +4341,15 @@ namespace See1
 
             public static void IconLabel(Type type, string text, int size = 18)
             {
-                using (var scope = new EditorGUILayout.HorizontalScope())
-                {
-                    Color color = Color.gray;
-                    var icon =new GUIContent(EditorGUIUtility.ObjectContent(null, type).image);
-                    GUIContent title = new GUIContent(text, EditorGUIUtility.ObjectContent(null, type).image, text);
-                    //var icon = EditorGUIUtility.IconContent("ViewToolOrbit").image;
-                    var st1 = new GUIStyle(EditorStyles.label);
-                    st1.fontSize = size;
-                    //st1.font = GetFont(type);
-                    st1.normal.textColor = color;
-                    st1.alignment = TextAnchor.MiddleRight;
-                    st1.stretchWidth = false;
-                    st1.stretchHeight = false;
-                    st1.fixedWidth = 32;
-
-                    var st2 = new GUIStyle(EditorStyles.label);
-                    st2.fontSize = size;
-                    st2.normal.textColor = color * 0.75f;
-                    st2.fontStyle = FontStyle.BoldAndItalic;
-                    st2.alignment = TextAnchor.MiddleLeft;
-                    st2.stretchWidth = false;
-                    st2.stretchHeight = false;
-                    GUILayout.Label(title,st2);
-                    //Rect iconRect = GUILayoutUtility.GetRect(icon, st1);
-                    //EditorGUI.LabelField(iconRect, icon, st1);
-                    //Rect textRect = GUILayoutUtility.GetRect(new GUIContent(text), st2);
-                    //EditorGUI.LabelField(textRect, new GUIContent(text), st2);
-                }
+                GUIContent title = new GUIContent(text, EditorGUIUtility.ObjectContent(null, type).image, text);
+                var style = new GUIStyle(EditorStyles.label);
+                style.fontSize = size;
+                style.normal.textColor = Color.gray * 0.75f;
+                style.fontStyle = FontStyle.BoldAndItalic;
+                style.alignment = TextAnchor.MiddleLeft;
+                style.stretchWidth = true;
+                style.stretchHeight = true;
+                GUILayout.Label(title, style, GUILayout.Height(size*2));
             }
 
             static Texture2D staticTex;
@@ -4544,7 +4564,6 @@ namespace See1
         Popup _popup;
         bool _guiEnabled = true;
         bool _overlayEnabled = true;
-        GUISkin skin;
 
         //Camera & Render
         Transform _camTr;
@@ -4705,29 +4724,32 @@ namespace See1
             if (_preview == null) return;
             if (!_preview.camera) return;
             GUI.enabled = _guiEnabled;
-            EditorGUIUtility.labelWidth = _labelWidth;
-            _viewPortRect = IsDocked() ? _rs.full : _rs.center;
-            _controlRect = new Rect(_rs.center.position.x, _rs.center.position.y + _rs.center.size.y - 120,
-                _rs.center.size.x, 120);
+            using (EditorHelper.LabelWidth.Do(_labelWidth))
+            {
+                using (EditorHelper.PrefixLabelSize.Do(EditorStyles.miniLabel.font, 10))
+                {
+                    _viewPortRect = IsDocked() ? _rs.full : _rs.center;
+                    _controlRect = new Rect(_rs.center.position.x, _rs.center.position.y + _rs.center.size.y - 120,
+                        _rs.center.size.x, 120);
 
-            ProcessInput();
+                    ProcessInput();
+                    OnGUI_Viewport(_viewPortRect);
+                    OnGUI_Top(_rs.top);
+                    OnGUI_Bottom(_rs.bottom);
+                    OnGUI_Left(_rs.stretchedLeft);
+                    OnGUI_Right(_rs.stretchedRight);
+                    OnGUI_AnimationControl(_controlRect);
+                    OnGUI_ParticleSystemControl(_controlRect);
+                    OnGUI_Info(_viewPortRect);
+                    OnGUI_Log(_viewPortRect);
+                    if (!_guiEnabled)
+                        EditorGUI.DrawRect(_rs.full, Color.black * 0.5f);
+                    if (_overlayEnabled)
+                        EditorGUI.DrawRect(_controlRect, Color.black * 0.1f);
 
-            OnGUI_Viewport(_viewPortRect);
-            OnGUI_Top(_rs.top);
-            OnGUI_Bottom(_rs.bottom);
-            OnGUI_Left(_rs.stretchedLeft);
-            OnGUI_Right(_rs.stretchedRight);
-            OnGUI_AnimationControl(_controlRect);
-            OnGUI_ParticleSystemControl(_controlRect);
-            OnGUI_Info(_viewPortRect);
-            OnGUI_Log(_viewPortRect);
-            if (!_guiEnabled)
-                EditorGUI.DrawRect(_rs.full, Color.black * 0.5f);
-            if (_overlayEnabled)
-                EditorGUI.DrawRect(_controlRect, Color.black * 0.1f);
-
-            OnGUI_Gizmos(_viewPortRect);
-
+                    OnGUI_Gizmos(_viewPortRect);
+                }
+            }
         }
 
         void OnSelectionChange()
@@ -4885,7 +4907,6 @@ namespace See1
         void Create()
         {
             Cleanup();
-
             _rs = new RectSlicer(this);
             _rs.topTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
             _rs.bottomTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
@@ -5239,11 +5260,11 @@ namespace See1
                     break;
                 case ViewMode.Depth:
                     _preview.camera.depthTextureMode = DepthTextureMode.Depth;
-                    SetCameraTargetBlitBuffer(CameraEvent.AfterSkybox, _depthCommandBuffer, _depthMaterial, true);
+                    SetCameraTargetBlitBuffer(CameraEvent.BeforeImageEffects, _depthCommandBuffer, _depthMaterial, true);
                     break;
                 case ViewMode.Normal:
                     _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
-                    SetCameraTargetBlitBuffer(CameraEvent.AfterSkybox, _depthNormalCommandBuffer, _depthNormalMaterial,
+                    SetCameraTargetBlitBuffer(CameraEvent.BeforeImageEffects, _depthNormalCommandBuffer, _depthNormalMaterial,
                         true);
                     break;
             }
@@ -5338,7 +5359,7 @@ namespace See1
 
         void RenderAndSaveFile()
         {
-            Texture2D tex = RenderToTexture((int) currentData.captureMultiplier, currentData.screenShotAlpha);
+            Texture2D tex = RenderToTexture((int) currentData.imageSizeMultiplier, currentData.alphaAppliedImage);
             string baseName = _targetGo ? _targetGo.name : "Blank";
             string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots",
                 baseName, settings.current.imageSaveMode);
@@ -5504,19 +5525,14 @@ namespace See1
                         menu.ShowAsContext();
                     }
 
-                    GUI.backgroundColor = Color.red;
-                    if (GUILayout.Button("Render", EditorStyles.toolbarButton))
+                    using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        RenderAndSaveFile();
+                        if (GUILayout.Button("Render", EditorStyles.toolbarButton))
+                        {
+                            RenderAndSaveFile();
+                        }
                     }
 
-                    GUI.backgroundColor = Color.white;
-                    //viewPortSize.x = (int)EditorGUILayout.Slider(viewPortSize.x, this.minSize.x - rs.right.size.x, this.maxSize.x, GUILayout.Width(200));
-                    //viewPortSize.y = (int)EditorGUILayout.Slider(viewPortSize.y, this.minSize.y - rs.stretchedTop.size.y - rs.stretchedBottom.size.y, this.maxSize.y, GUILayout.Width(200));
-                    //if (GUILayout.Button("Set", EditorStyles.toolbarButton))
-                    //{
-                    //    ResizeWindow();
-                    //}
                     GUILayout.FlexibleSpace();
 
                     int idx = See1ViewSettings.instance.dataIndex;
@@ -5846,17 +5862,17 @@ namespace See1
 
             });
 
-            EditorHelper.FoldGroup.Do("Render", true, () =>
+            EditorHelper.FoldGroup.Do("Image", true, () =>
             {
                 //GUILayout.Label(string.Format("Name : {0}"), EditorStyles.miniLabel);
                 GUILayout.Label(
-                    string.Format("Size : {0} x {1}", _viewPortRect.width * currentData.captureMultiplier,
-                        _viewPortRect.height * currentData.captureMultiplier), EditorStyles.miniLabel);
+                    string.Format("Size : {0} x {1}", _viewPortRect.width * currentData.imageSizeMultiplier,
+                        _viewPortRect.height * currentData.imageSizeMultiplier), EditorStyles.miniLabel);
                 using (EditorHelper.Horizontal.Do())
                 {
-                    currentData.captureMultiplier = EditorGUILayout.IntSlider(currentData.captureMultiplier, 1, 8);
-                    currentData.screenShotAlpha =
-                        GUILayout.Toggle(currentData.screenShotAlpha, "Alpha", EditorStyles.miniButton);
+                    currentData.imageSizeMultiplier = EditorGUILayout.IntSlider(currentData.imageSizeMultiplier, 1, 8);
+                    currentData.alphaAppliedImage =
+                        GUILayout.Toggle(currentData.alphaAppliedImage, "Alpha", EditorStyles.miniButton, GUILayout.Width(60));
                 }
 
                 using (EditorHelper.Horizontal.Do())
@@ -5879,17 +5895,17 @@ namespace See1
                         }
                     }
 
-                    GUI.backgroundColor = Color.red;
-                    if (GUILayout.Button("Render", GUILayout.Width(80), GUILayout.Height(48)))
+                    using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        RenderAndSaveFile();
+                        if (GUILayout.Button("Render", GUILayout.Width(60), GUILayout.Height(48)))
+                        {
+                            RenderAndSaveFile();
+                        }
                     }
-
-                    GUI.backgroundColor = Color.white;
                 }
 
                 if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") &&
-                    currentData.screenShotAlpha && currentData.enablePostProcess)
+                    currentData.alphaAppliedImage && currentData.enablePostProcess)
                 {
                     EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ",
                         MessageType.Warning);
@@ -6163,7 +6179,7 @@ namespace See1
                 }
             });
 
-            EditorHelper.FoldGroup.Do("Render Customize", true, () =>
+            EditorHelper.FoldGroup.Do("Render", true, () =>
             {
 
                 currentData.viewportMultiplier = GUILayout.Toggle((currentData.viewportMultiplier == 2),
@@ -6619,7 +6635,7 @@ namespace See1
 
         void OnGUI_Misc()
         {
-            EditorHelper.IconLabel(typeof(DefaultAsset), "Misc");
+            EditorHelper.IconLabel(typeof(SceneAsset), "Misc");
             EditorHelper.FoldGroup.Do("Manage Data", false, () =>
             {
                 //settings.autoLoad = GUILayout.Toggle(settings.autoLoad, "Auto Load Selection", "Button", GUILayout.Height(32));
@@ -7361,7 +7377,7 @@ namespace See1
 
         static string SaveAsFile(Texture2D texture, string folder, string name, ImageSaveMode whenImageSave)
         {
-            string addString = (whenImageSave == ImageSaveMode.Increment)
+            string addString = (whenImageSave == ImageSaveMode.Incremental)
                 ? DateTime.Now.ToString("MMddHHmmss")
                 : string.Empty;
             byte[] bytes = texture.EncodeToPNG();
