@@ -4339,6 +4339,31 @@ namespace See1
                 }
             }
 
+            public static List<string> StringSelector(List<string> result, string[] src)
+            {
+                if (src != null)
+                {
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        for (int i = 0; i < src.Length; i++)
+                        {
+                            bool enabled = result.Contains(src[i]);
+                            var style = GUIStyle.none;
+                            if (i == 0) style = EditorStyles.miniButtonLeft;
+                            else if (i == src.Length - 1) style = EditorStyles.miniButtonRight;
+                            else style = EditorStyles.miniButtonMid;
+                            enabled = GUILayout.Toggle(enabled, src[i].Replace(".", "").ToUpper(), style,
+                                GUILayout.Height(30));
+                            if (enabled && !result.Contains(src[i])) result.Add(src[i]);
+                            else if (enabled && result.Contains(src[i])) continue;
+                            else result.Remove(src[i]);
+                        }
+                    }
+                }
+
+                return result;
+            }
+
             public static void IconLabel(Type type, string text, int size = 18)
             {
                 GUIContent title = new GUIContent(text, EditorGUIUtility.ObjectContent(null, type).image, text);
@@ -6387,7 +6412,7 @@ namespace See1
 
         void OnGUI_Model()
         {
-            EditorHelper.IconLabel(typeof(GameObject), "Model");
+            EditorHelper.IconLabel(typeof(Avatar), "Model");
             EditorHelper.FoldGroup.Do("Create", true, () =>
             {
                 settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode,
@@ -6514,7 +6539,7 @@ namespace See1
 
         void OnGUI_Animation()
         {
-            EditorHelper.IconLabel(typeof(Avatar), "Animation");
+            EditorHelper.IconLabel(typeof(Animation), "Animation");
             for (int a = 0; a < _playerList.Count; a++)
             {
                 var player = _playerList[a];
