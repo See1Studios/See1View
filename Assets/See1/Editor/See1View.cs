@@ -4976,6 +4976,8 @@ namespace See1
                 }
 
                 Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? src.name : _targetInfo.assetPath, false);
+                SetAnimation(_mainTarget, true);
+                ApplyModelCommandBuffers();
                 Repaint();
             }
         }
@@ -4996,6 +4998,8 @@ namespace See1
             }
 
             Notice.Log(string.Format("{0} Removed", name), false);
+            SetAnimation(_mainTarget, true);
+            ApplyModelCommandBuffers();
             Repaint();
         }
 
@@ -5485,6 +5489,11 @@ namespace See1
 
         public void SetAnimation(GameObject root, bool reset)
         {
+            if(!root)
+            {
+                _playerList.Clear();
+                return;
+            }
             //기존 수집된 애니메이터에 문제가 있는지 검사 (모델 옵션이 바뀜에 따라 있던 애니메이터가 없어지는 경우가 생김.
             if (_playerList.Any(x => x.actorList.Any(ani => ani.instance == null)))
             {
@@ -6486,7 +6495,7 @@ namespace See1
         void OnGUI_Model()
         {
             EditorHelper.IconLabel(typeof(Avatar), "Model");
-            EditorHelper.FoldGroup.Do("Create", true, () =>
+            EditorHelper.FoldGroup.Do("Create Mode", true, () =>
             {
                 settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode,
                     Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
@@ -6585,21 +6594,33 @@ namespace See1
                 }
             });
 
-            EditorHelper.FoldGroup.Do("Model Info", true, () =>
+            EditorHelper.FoldGroup.Do("Info", true, () =>
             {
                 EditorGUILayout.HelpBox(_targetInfo.Print(), MessageType.None);
-                
-                foreach (var target in _targetDic)
-                {
-                   if(target.Key) GUILayout.Label(target.Key.name,EditorStyles.miniLabel);
-                }
+
+
             });
 
-            EditorHelper.FoldGroup.Do("Prefab", true, () =>
+            EditorHelper.FoldGroup.Do("Model", true, () =>
             {
                 using (new EditorGUI.DisabledGroupScope(true))
                 {
                     EditorGUILayout.ObjectField("", _prefab, typeof(GameObject), false);
+                }
+                foreach (var target in _targetDic.ToArray())
+                {
+                    if (target.Key)
+                    {
+                        using (EditorHelper.Vertical.Do())
+                        {
+                            EditorGUILayout.ObjectField("Source", target.Key, typeof(GameObject), false);
+                            EditorGUILayout.ObjectField("Instance", target.Value, typeof(GameObject), false);
+                            if (GUILayout.Button("Remove", EditorStyles.miniButton, GUILayout.Width(60)))
+                            {
+                                RemoveModel(target.Value);
+                            }
+                        }
+                    }
                 }
             });
 
