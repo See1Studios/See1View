@@ -28,7 +28,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Text;
 using UnityEditor;
 using UnityEditor.AnimatedValues;
@@ -39,7 +38,6 @@ using UnityEngine.Events;
 using UnityEngine.Networking;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
-using UnityEngine.XR.WSA.Input;
 using Object = UnityEngine.Object;
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
@@ -1749,6 +1747,12 @@ namespace See1
                 r.x += 16f;
                 r.width = args.rowRect.width;
                 EditorGUI.DropShadowLabel(r, args.item.displayName, EditorStyles.whiteMiniLabel);
+                //r.x += r.width- 60;
+                //r.width = 40;
+                //if (GUI.Button(r,"X"))
+                //{
+
+                //}
                 // Text
                 //base.RowGUI(args);
             }
@@ -2708,32 +2712,59 @@ namespace See1
             }
         }
 
-        class AnimationPlayer
+        public class AnimationPlayer
         {
-            internal class Animated
+            public class Actor
             {
                 public bool enabled;
-                public GameObject gameObject;
+                public GameObject prefab;
+                public GameObject instance;
                 public Animator animator;
+                public Bounds bounds;
 
-                public Animated(GameObject gameObject)
+                public bool isSceneObject
+                {
+                    get { return prefab == null; }
+                }
+                public string name
+                {
+                    get { return isSceneObject ? instance.name : prefab.name; }
+                }
+                public Actor(GameObject src, bool sceneObject)
                 {
                     this.enabled = true;
-                    this.gameObject = gameObject;
-                    Animator animator = gameObject.GetComponent<Animator>();
+                    if (sceneObject)
+                    {
+                        this.instance = src;
+                    }
+                    else
+                    {
+                        this.prefab = src;
+                        this.instance = (GameObject)PrefabUtility.InstantiatePrefab((prefab));
+                        if (!instance)
+                        {
+                            Debug.Log(string.Format("Can't instantiate : {0}", src.name));
+                            return;
+                        }
+                        this.instance.name = prefab.name + "(Actor)";
+                    }
+                    Animator animator = instance.GetComponent<Animator>();
                     if (animator)
                     {
                         this.animator = animator;
                     }
+                    var renderers = instance.GetComponentsInChildren<Renderer>().ToList();
+                    foreach (var renderer in renderers)
+                    {
+                        bounds.Encapsulate(renderer.bounds);
+                    }
                 }
             }
 
-            internal class ClipInfo
+            public class ClipInfo
             {
                 public AnimationClip clip;
-
                 public bool enabled;
-
                 //public int loopTimes;
                 StringBuilder sb = new StringBuilder();
 
@@ -2771,33 +2802,23 @@ namespace See1
                 }
             }
 
-            internal string name = string.Empty;
-            internal UnityEditorInternal.ReorderableList reorderableObjectList;
+            internal UnityEditorInternal.ReorderableList reorderableActorList;
             internal UnityEditorInternal.ReorderableList reorderableClipList;
-            internal List<Animated> animatedList = new List<Animated>();
+            internal List<Actor> actorList = new List<Actor>();
             internal List<AnimationClip> playList = new List<AnimationClip>();
             internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
             private int current;
             internal double time = 0.0f;
             internal float timeSpeed = 1.0f;
             private bool _isOptimized { get; set; }
-
-            internal bool isPlayable
-            {
-                get { return animatedList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; }
-            }
-
+            internal bool isPlayable { get { return actorList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
             internal bool isPlaying { get; set; }
             internal bool isLooping { get; set; }
             private bool _showEvent { get; set; }
-
-            internal AnimationClip _currentClip
-            {
-                get { return playList[0]; }
-            }
-
+            private int _actorRow = 4;
+            private int _actorDistance = 1;
+            internal AnimationClip _currentClip { get { return playList[0]; } }
             internal UnityEvent onStopPlaying = new UnityEvent();
-
             internal ClipInfo currentClipInfo
             {
                 get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
@@ -2806,8 +2827,16 @@ namespace See1
 
             public AnimationPlayer()
             {
-                InitAnimatedList();
+                InitActorList();
                 InitClipList();
+            }
+
+            public void Dispose()
+            {
+                foreach (var actor in actorList.ToArray())
+                {
+                    RemoveActor(actor);
+                }
             }
 
             public void TogglePlay()
@@ -2816,18 +2845,17 @@ namespace See1
                 if (isPlaying) Play();
             }
 
-            private void InitAnimatedList()
+            private void InitActorList()
             {
-                animatedList = new List<Animated>();
-                reorderableObjectList =
-                    new UnityEditorInternal.ReorderableList(animatedList, typeof(GameObject), true, true, false, false);
+                actorList = new List<Actor>();
+                reorderableActorList = new UnityEditorInternal.ReorderableList(actorList, typeof(GameObject), true, true, false, false);
                 //fields
-                reorderableObjectList.showDefaultBackground = false;
-                reorderableObjectList.headerHeight = 20;
-                reorderableObjectList.elementHeight = 18;
-                reorderableObjectList.footerHeight = 0;
+                reorderableActorList.showDefaultBackground = false;
+                reorderableActorList.headerHeight = 20;
+                reorderableActorList.elementHeight = 18;
+                reorderableActorList.footerHeight = 40;
                 //draw callback
-                reorderableObjectList.drawHeaderCallback = (position) =>
+                reorderableActorList.drawHeaderCallback = (position) =>
                 {
                     var btn30 = position.width * 0.3333f;
                     position.width = btn30;
@@ -2835,36 +2863,39 @@ namespace See1
                     {
                         if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
                         {
-                            reorderableObjectList.onAddDropdownCallback.Invoke(position, reorderableObjectList);
+                            reorderableActorList.onAddDropdownCallback.Invoke(position, reorderableActorList);
                         }
                     }
 
                     position.x += position.width;
                     position.width = btn30;
-                    using (new EditorGUI.DisabledScope(reorderableObjectList.index < 0))
+                    using (new EditorGUI.DisabledScope(reorderableActorList.index < 0))
                     {
                         if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
                         {
-                            reorderableObjectList.onRemoveCallback(reorderableObjectList);
+                            reorderableActorList.onRemoveCallback(reorderableActorList);
                         }
                     }
 
                     position.x += position.width;
                     position.width = btn30;
-                    using (new EditorGUI.DisabledScope(animatedList.Count == 0))
+                    using (new EditorGUI.DisabledScope(actorList.Count == 0))
                     {
                         if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
                         {
-                            animatedList.Clear();
+                            foreach (var actor in actorList.ToArray())
+                            {
+                                RemoveActor(actor);
+                            }
                         }
                     }
                 };
-                reorderableObjectList.drawElementCallback = (position, index, isActive, isFocused) =>
+                reorderableActorList.drawElementCallback = (position, index, isActive, isFocused) =>
                 {
-                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 &&
-                        position.Contains(Event.current.mousePosition))
+                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
                     {
-                        Selection.activeGameObject = animatedList[index].gameObject;
+                        Selection.activeGameObject = actorList[index].instance;
+                        SceneView.lastActiveSceneView.pivot = actorList[index].instance.transform.position + actorList[index].bounds.center;
                     }
 
                     float rectWidth = position.width;
@@ -2874,7 +2905,7 @@ namespace See1
                     position.width = tglWidth;
                     using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        animatedList[index].enabled = EditorGUI.Toggle(position, animatedList[index].enabled);
+                        actorList[index].enabled = EditorGUI.Toggle(position, actorList[index].enabled);
                         if (check.changed)
                         {
                         }
@@ -2882,14 +2913,13 @@ namespace See1
 
                     position.x += position.width;
                     position.width = rectWidth - btnWidth - tglWidth;
-                    EditorGUI.LabelField(position, animatedList[index].gameObject.name, EditorStyles.miniBoldLabel);
+                    EditorGUI.LabelField(position, actorList[index].name, EditorStyles.miniBoldLabel);
                     var style = new GUIStyle(EditorStyles.miniLabel);
                     style.alignment = TextAnchor.MiddleRight;
                     style.normal.textColor = Color.gray;
-                    bool animatorExist = animatedList[index].animator != null;
+                    bool animatorExist = actorList[index].animator != null;
                     if (animatorExist)
-                        EditorGUI.LabelField(position, animatedList[index].animator.isHuman ? "Humanoid" : "Generic",
-                            style);
+                        EditorGUI.LabelField(position, actorList[index].animator.isHuman ? "Humanoid" : "Generic", style);
                     position.x += position.width;
                     position.width = btnWidth;
                     position.height = 16;
@@ -2897,45 +2927,42 @@ namespace See1
                     {
                         if (GUI.Button(position, "GetClips", EditorStyles.miniButton))
                         {
-                            InitAnimatorAndClips(animatedList[index].animator);
+                            InitAnimatorAndClips(actorList[index].animator);
                         }
                     }
                 };
 
-                reorderableObjectList.drawFooterCallback = position =>
+                reorderableActorList.drawFooterCallback = position =>
                 {
-                    //    var btn20 = position.width * 0.2f;
-                    //    var btn25 = position.width * 0.25f;
-                    //    var btn30 = position.width * 0.3f;
-                    //    var btn50 = position.width * 0.5f;
 
-                    //    position.width = btn50;
-                    //    if (GUI.Button(position, "Select All", EditorStyles.miniButtonLeft))
-                    //    {
-                    //        foreach (var info in animInfoList)
-                    //        {
-                    //            info.enabled = true;
-                    //        }
-
-                    //        RefreshPlayList();
-                    //    }
-
-                    //    position.x += position.width;
-                    //    position.width = btn50;
-                    //    if (GUI.Button(position, "Unselect All", EditorStyles.miniButtonRight))
-                    //    {
-                    //        foreach (var info in animInfoList)
-                    //        {
-                    //            info.enabled = false;
-                    //        }
-
-                    //        RefreshPlayList();
-                    //    }
-
-                    //    position.x += position.width;
+                    var start = position;
+                    var btn50 = position.width * 0.5f;
+                    position.height *= 0.5f;
+                    var labelwidth = 60;
+                    EditorGUIUtility.labelWidth = labelwidth;
+                    position.width = btn50;
+                    var controlPos = EditorGUI.PrefixLabel(position, new GUIContent(string.Format(" Rows : {0}", _actorRow)), EditorStyles.miniLabel);
+                    _actorRow = (int)GUI.HorizontalSlider(controlPos, _actorRow, 1, 8);
+                    position.x += position.width;
+                    controlPos = EditorGUI.PrefixLabel(position, new GUIContent(string.Format(" Dist : {0}", _actorDistance)), EditorStyles.miniLabel);
+                    _actorDistance = (int)GUI.HorizontalSlider(controlPos, _actorDistance, 1, 8);
+                    EditorGUIUtility.labelWidth = labelwidth;
+                    position.x = start.x;
+                    position.y += position.height;
+                    position.width = btn50;
+                    if (GUI.Button(position, "Grid", EditorStyles.miniButtonLeft))
+                    {
+                        SetActorPosition(true);
+                    }
+                    position.x += position.width;
+                    if (GUI.Button(position, "Reset", EditorStyles.miniButtonRight))
+                    {
+                        SetActorPosition(false);
+                    }
+                    position.x += position.width;
                 };
                 //btn callback
-                reorderableObjectList.onAddDropdownCallback = (buttonRect, list) =>
+                reorderableActorList.onAddDropdownCallback = (buttonRect, list) =>
                 {
                     var selection = Selection.gameObjects;
                     foreach (var go in selection)
@@ -2943,34 +2970,31 @@ namespace See1
                         var root = go.transform.root;
                         if (root)
                         {
-                            if (!AssetDatabase.Contains(root.gameObject) &&
-                                !(Enumerable.Any(animatedList, x => x.gameObject == root.gameObject)))
+                            if (!AssetDatabase.Contains(root.gameObject) && !(Enumerable.Any(actorList, x => x.instance == root.gameObject)))
                             {
-                                this.animatedList.Add(new Animated(root.gameObject));
+                                this.actorList.Add(new Actor(root.gameObject, true));
                             }
                         }
                     }
                 };
-                reorderableObjectList.onRemoveCallback = (list) =>
+                reorderableActorList.onRemoveCallback = (list) =>
                 {
-                    reorderableObjectList.index =
-                        Mathf.Clamp(reorderableObjectList.index, 0, reorderableObjectList.count - 1);
-                    if (animatedList.Count > 0)
+                    reorderableActorList.index = Mathf.Clamp(reorderableActorList.index, 0, reorderableActorList.count - 1);
+                    if (actorList.Count > 0)
                     {
-                        animatedList.RemoveAt(reorderableObjectList.index);
+                        var actor = actorList[reorderableActorList.index];
+                        RemoveActor(actor);
                     }
 
-                    reorderableObjectList.index =
-                        Mathf.Clamp(reorderableObjectList.index, 0, reorderableObjectList.count - 1);
+                    reorderableActorList.index = Mathf.Clamp(reorderableActorList.index, 0, reorderableActorList.count - 1);
                 };
-                reorderableObjectList.onChangedCallback = list => { };
+                reorderableActorList.onChangedCallback = list => { };
             }
 
             private void InitClipList()
             {
                 clipInfoList = new List<ClipInfo>();
-                reorderableClipList =
-                    new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
+                reorderableClipList = new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
                 //fields
                 reorderableClipList.showDefaultBackground = false;
                 reorderableClipList.headerHeight = 20;
@@ -2996,7 +3020,6 @@ namespace See1
                             reorderableClipList.onRemoveCallback(reorderableClipList);
                         }
                     }
-
                     position.x += position.width;
                     position.width = btn30;
                     using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
@@ -3006,7 +3029,6 @@ namespace See1
                             clipInfoList.Clear();
                         }
                     }
-
                     string commandName = Event.current.commandName;
                     if (commandName == "ObjectSelectorUpdated")
                     {
@@ -3038,8 +3060,7 @@ namespace See1
                 };
                 reorderableClipList.drawElementCallback = (position, index, isActive, isFocused) =>
                 {
-                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 &&
-                        position.Contains(Event.current.mousePosition))
+                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
                     {
                         foreach (var info in clipInfoList)
                         {
@@ -3050,7 +3071,6 @@ namespace See1
                         RefreshPlayList();
                         Play();
                     }
-
                     float rectWidth = position.width;
                     float rectHeight = position.height;
                     float tglWidth = 15;
@@ -3064,7 +3084,6 @@ namespace See1
                             RefreshPlayList();
                         }
                     }
-
                     position.x += position.width;
                     position.width = rectWidth - btnWidth - tglWidth;
                     bool playing = isPlayable && playList[0] == clipInfoList[index].clip;
@@ -3074,8 +3093,7 @@ namespace See1
                     var style1 = new GUIStyle(EditorStyles.miniLabel);
                     style1.alignment = TextAnchor.MiddleRight;
                     style1.normal.textColor = Color.gray;
-                    EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic",
-                        style1);
+                    EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic", style1);
                     position.x += position.width;
                     position.width = btnWidth;
                     position.height = 16;
@@ -3090,7 +3108,6 @@ namespace See1
                     //var btn25 = position.width * 0.25f;
                     //var btn30 = position.width * 0.3f;
                     var btn50 = position.width * 0.5f;
-
                     position.width = btn50;
                     if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
                     {
@@ -3124,33 +3141,27 @@ namespace See1
                 };
                 reorderableClipList.onRemoveCallback = (list) =>
                 {
-                    reorderableClipList.index =
-                        Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
+                    reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
                     if (clipInfoList.Count > 0)
                     {
                         clipInfoList.RemoveAt(reorderableClipList.index);
                         RefreshPlayList();
                     }
-
-                    reorderableClipList.index =
-                        Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
+                    reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
                 };
                 reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
             }
 
             void InitAnimatorAndClips(Animator animator)
             {
-                foreach (var animated in animatedList.ToArray())
+                foreach (var actor in actorList.ToArray())
                 {
                     if (animator)
                     {
-                        name = animator.runtimeAnimatorController
-                            ? animator.runtimeAnimatorController.name
-                            : animatedList[0].gameObject.name;
                         _isOptimized = !animator.hasTransformHierarchy;
                         //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
                         //DeOptimizeObject();
-                        var clips = AnimationUtility.GetAnimationClips(animated.gameObject);
+                        var clips = AnimationUtility.GetAnimationClips(actor.instance);
                         foreach (var clip in clips)
                         {
                             if (Enumerable.Any(clipInfoList, x => x.clip == clip)) continue;
@@ -3158,17 +3169,42 @@ namespace See1
                         }
                     }
                 }
-
                 RefreshPlayList();
             }
 
-            public void AddAnimated(GameObject go, bool collectClip = true)
+            public void AddActor(GameObject go, bool isSceneObject, bool collectClip = true)
             {
-                var animated = new Animated(go);
-                animatedList.Add(animated);
+                if (actorList.Any(x => (isSceneObject ? x.instance : x.prefab) == go)) return;
+                var actor = new Actor(go, isSceneObject);
+                actorList.Add(actor);
                 if (collectClip)
                 {
-                    InitAnimatorAndClips(animated.animator);
+                    InitAnimatorAndClips(actor.animator);
+                }
+            }
+
+            public void RemoveActor(Actor actor)
+            {
+                if (!actor.isSceneObject) GameObject.DestroyImmediate(actor.instance);
+                actorList.Remove(actor);
+            }
+
+            public void SetActorPosition(bool grid)
+            {
+                for (int i = 0; i < actorList.Count; i++)
+                {
+                    if (grid)
+                    {
+                        var row = i / _actorRow;
+                        var column = i - (row * _actorRow);
+                        var xpos = column * _actorDistance;
+                        var zpos = row * _actorDistance;
+                        actorList[i].instance.transform.position = new Vector3(-xpos, 0, -zpos);
+                    }
+                    else
+                    {
+                        actorList[i].instance.transform.position = Vector3.zero;
+                    }
                 }
             }
 
@@ -3196,20 +3232,19 @@ namespace See1
                     return;
                 }
 
-                if (animatedList.Count > 0)
+                if (actorList.Count > 0)
                 {
                     if (AnimationMode.InAnimationMode())
                     {
                         AnimationMode.BeginSampling();
-                        for (var i = 0; i < animatedList.Count; i++)
+                        for (var i = 0; i < actorList.Count; i++)
                         {
-                            var animated = animatedList[i];
+                            var animated = actorList[i];
                             if (animated.enabled)
                             {
-                                AnimationMode.SampleAnimationClip(animated.gameObject, _currentClip, (float) time);
+                                AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
                             }
                         }
-
                         AnimationMode.EndSampling();
 
                         //_currentClip.SampleAnimation(animatedObject, (float) time);
@@ -3254,10 +3289,10 @@ namespace See1
                     var progressRect =
                         EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
                     progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
-                    time = GUI.HorizontalSlider(progressRect, (float) time, 0, GetCurrentClipLength(), GUIStyle.none,
+                    time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none,
                         GUIStyle.none);
                     float length = GetCurrentClipLength();
-                    float progress = (float) time / length;
+                    float progress = (float)time / length;
                     EditorGUI.ProgressBar(progressRect, progress,
                         string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
 
@@ -3274,12 +3309,11 @@ namespace See1
                             {
 
                             }
-
                             //button
                             GUIContent btn = new GUIContent(animEvent.functionName);
                             var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
                             Rect btnRect = new Rect(btnPos, GUIStyle.none.CalcSize(btn));
-                            if (GUI.Button(btnRect, btn, "AssetLabel"))
+                            if (GUI.Button(btnRect, btn, EditorStyles.miniButton))
                             {
 
                             }
@@ -3287,16 +3321,13 @@ namespace See1
                         }
                     }
 
-                    using (var hr = EditorHelper.Horizontal.Do())
+                    using (var hr = new EditorGUILayout.HorizontalScope())
                     {
                         var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
-                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()),
-                            EditorStyles.miniLabel);
+                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
                         GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
                         style.alignment = TextAnchor.MiddleRight;
-                        EditorGUI.DropShadowLabel(infoRect,
-                            string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"),
-                                (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
+                        EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
                         GUILayout.FlexibleSpace();
 
                         //if (GUILayout.Button(isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50),
@@ -3309,13 +3340,11 @@ namespace See1
                         using (var check = new EditorGUI.ChangeCheckScope())
                         {
                             if (AnimationMode.InAnimationMode()) GUI.backgroundColor = Color.red;
-                            isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft",
-                                GUILayout.Width(50), GUILayout.Height(30));
+                            isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30));
                             if (check.changed)
                             {
                                 if (isPlaying) Play();
                             }
-
                             GUI.backgroundColor = Color.white;
                         }
 
@@ -3324,8 +3353,7 @@ namespace See1
                             Stop();
                         }
 
-                        isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50),
-                            GUILayout.Height(30));
+                        isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
 
                         if (GUILayout.Button("-", "ButtonLeft", GUILayout.Height(30)))
                         {
@@ -3339,7 +3367,6 @@ namespace See1
                             timeSpeed = 0.5f;
 
                         }
-
                         GUI.backgroundColor = Color.white;
 
                         if (Mathf.Approximately(timeSpeed, 1.0f)) GUI.backgroundColor = Color.cyan;
@@ -3348,7 +3375,6 @@ namespace See1
                             timeSpeed = 1.0f;
 
                         }
-
                         GUI.backgroundColor = Color.white;
 
                         if (Mathf.Approximately(timeSpeed, 2.0f)) GUI.backgroundColor = Color.cyan;
@@ -3357,7 +3383,6 @@ namespace See1
                             timeSpeed = 2.0f;
 
                         }
-
                         GUI.backgroundColor = Color.white;
 
                         if (GUILayout.Button("+", "ButtonRight", GUILayout.Height(30)))
@@ -3406,21 +3431,21 @@ namespace See1
 
             internal void DeOptimizeObject()
             {
-                for (var i = 0; i < animatedList.Count; i++)
+                for (var i = 0; i < actorList.Count; i++)
                 {
-                    var animated = animatedList[i];
-                    AnimatorUtility.OptimizeTransformHierarchy(animated.gameObject, new string[] { });
-                    AnimatorUtility.DeoptimizeTransformHierarchy(animated.gameObject);
+                    var animated = actorList[i];
+                    AnimatorUtility.OptimizeTransformHierarchy(animated.instance, new string[] { });
+                    AnimatorUtility.DeoptimizeTransformHierarchy(animated.instance);
                 }
             }
 
             internal void Play()
             {
-                for (var i = 0; i < animatedList.Count; i++)
+                for (var i = 0; i < actorList.Count; i++)
                 {
-                    var animated = animatedList[i];
+                    var animated = actorList[i];
                     isPlaying = true;
-                    AnimatorUtility.DeoptimizeTransformHierarchy(animated.gameObject);
+                    AnimatorUtility.DeoptimizeTransformHierarchy(animated.instance);
                     if (!AnimationMode.InAnimationMode())
                         AnimationMode.StartAnimationMode();
                 }
@@ -3435,11 +3460,11 @@ namespace See1
             {
                 if (_isOptimized)
                 {
-                    for (var i = 0; i < animatedList.Count; i++)
+                    for (var i = 0; i < actorList.Count; i++)
                     {
-                        var animated = animatedList[i];
-                        AnimatorUtility.OptimizeTransformHierarchy(animated.gameObject, null);
-                        ReflectionRestoreToBindPose(animated.gameObject);
+                        var animated = actorList[i];
+                        AnimatorUtility.OptimizeTransformHierarchy(animated.instance, null);
+                        ReflectionRestoreToBindPose(animated.instance);
                     }
                 }
             }
@@ -3454,7 +3479,7 @@ namespace See1
                     MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
                     if (info != null)
                     {
-                        info.Invoke(null, new object[] {_target});
+                        info.Invoke(null, new object[] { _target });
                     }
                 }
             }
@@ -3468,9 +3493,8 @@ namespace See1
                 {
                     MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
                     if (info != null)
-                        info.Invoke(null, new object[] {asset});
+                        info.Invoke(null, new object[] { asset });
                 }
-
                 if (!reimportModel) return;
 
                 var modelImporter = AssetImporter.GetAtPath(path) as ModelImporter;
@@ -4551,9 +4575,9 @@ namespace See1
         PreviewRenderUtility _preview;
         GameObject _prefab;
         GameObject _tempPickedObject;
-        GameObject _targetGo;
+        GameObject _mainTarget;
 
-        List<GameObject> _additionalObjectList = new List<GameObject>(); //멀티오브젝트 검사용
+        Dictionary<GameObject,GameObject> _targetDic = new Dictionary<GameObject, GameObject>(); //멀티오브젝트 검사용
 
         //GameObject _shadowGo; //Hacky ShadowCaster
         ReflectionProbe _probe;
@@ -4738,8 +4762,12 @@ namespace See1
                 UpdateLight(rot);
             }
 
+            for (int i = 0; i < _playerList.Count; i++)
+            {
+                _playerList[i].Update(_deltaTime);
+            }
+
             SetMaterial();
-            UpdateAnimation(_deltaTime);
             FPS.Calculate(_deltaTime);
             Repaint();
         }
@@ -4782,7 +4810,7 @@ namespace See1
             if (!(currentData.modelCreateMode == ModelCreateMode.Preview)) return;
             if (Validate(Selection.activeGameObject) == false) return;
             _prefab = Selection.activeGameObject;
-            SetModel(_prefab);
+            AddModel(_prefab, true);
         }
 
         void OnOpenNewScene(Scene scene, NewSceneSetup setup, NewSceneMode mode)
@@ -4857,64 +4885,87 @@ namespace See1
                 ApplyModelCommandBuffers();
             });
             Shortcuts.Add(KeyCode.Escape, new GUIContent("Toggle Gizmo"), () => _gizmoMode = ~_gizmoMode);
+            Shortcuts.Add(KeyCode.Delete, new GUIContent("Delete Target"), () =>
+            {
+                var selected = Selection.activeGameObject;
+                if (_targetDic.ContainsValue(selected))
+                {
+                    RemoveModel(selected);
+                }
+            });
             Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"),
                 () => _playerList.FirstOrDefault().TogglePlay());
             Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"),
                 () => _overlayEnabled = !_overlayEnabled);
         }
 
-        void SetModel(GameObject prefab)
-        {
-            if (!prefab) return;
-            if (prefab.GetType() != typeof(GameObject)) return;
-            if (_targetGo) DestroyImmediate(_targetGo);
-            //if (_shadowGo) DestroyImmediate(_shadowGo);
-            _targetGo = Instantiate(prefab) as GameObject;
-#if UNITY_2017
-            PrefabUtility.DisconnectPrefabInstance(_targetGo); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
-#endif
-            //_shadowGo = Instantiate(prefab);
-            if (_targetGo != null)
-            {
-                _targetGo.name = prefab.name;
-                //_shadowGo.name = prefab.name + "_Shadow";
+//        void SetModel(GameObject prefab)
+//        {
+//            if (!prefab) return;
+//            if (prefab.GetType() != typeof(GameObject)) return;
+//            if (_mainTarget) DestroyImmediate(_mainTarget);
+//            //if (_shadowGo) DestroyImmediate(_shadowGo);
+//            _mainTarget = Instantiate(prefab) as GameObject;
 
-                SetFlagsAll(_targetGo, HideFlags.HideAndDontSave);
-                //SetFlagsAll(_shadowGo, HideFlags.HideAndDontSave);
-                SetLayerAll(_targetGo, _previewLayer);
-                //SetLayerAll(_shadowGo, _previewLayer);
-                //ShowHideAll(_shadowGo, false);
-                _preview.AddSingleGO(_targetGo);
-                _targetInfo.Init(_targetGo);
+//            //_shadowGo = Instantiate(prefab);
+//            if (_mainTarget != null)
+//            {
+//#if UNITY_2017
+//                PrefabUtility.DisconnectPrefabInstance(_mainTarget); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
+//#endif
+//                _mainTarget.name = prefab.name;
+//                //_shadowGo.name = prefab.name + "_Shadow";
 
-                //etc
-                if (currentData.reframeToTarget) FitTargetToViewport();
-                currentData.lastTarget = prefab;
-                Selection.activeGameObject = _targetGo;
-                if (_treeView != null)
-                {
-                    _treeView.Reload();
-                }
+//                SetFlagsAll(_mainTarget, HideFlags.HideAndDontSave);
+//                //SetFlagsAll(_shadowGo, HideFlags.HideAndDontSave);
+//                SetLayerAll(_mainTarget, _previewLayer);
+//                //SetLayerAll(_shadowGo, _previewLayer);
+//                //ShowHideAll(_shadowGo, false);
+//                _preview.AddSingleGO(_mainTarget);
+//                _targetInfo.Init(_mainTarget);
 
-                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
-                SetAnimation(_targetGo, true);
-                ApplyModelCommandBuffers();
-                Repaint();
-                //_fade.target = true;
-                //_fade.target = false;
-            }
-        }
+//                //etc
+//                if (currentData.reframeToTarget) FitTargetToViewport();
+//                currentData.lastTarget = prefab;
+//                Selection.activeGameObject = _mainTarget;
+//                if (_treeView != null)
+//                {
+//                    _treeView.Reload();
+//                }
+
+//                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
+//                SetAnimation(_mainTarget, true);
+//                ApplyModelCommandBuffers();
+//                Repaint();
+//                //_fade.target = true;
+//                //_fade.target = false;
+//            }
+//        }
 
         //메인오브젝트 이외에 하이어라키를 열어 강제로 오브젝트를 추가할 용도.
-        void AddModel(GameObject prefab)
+        void AddModel(GameObject src, bool isMain = true)
         {
-            if (!prefab) return;
-            if (_additionalObjectList.Contains(prefab)) return;
-            _additionalObjectList.Add(prefab);
-            var instance = PrefabUtility.InstantiateAttachedAsset(prefab) as GameObject;
+            if (!src) return;
+            if (src.GetType() != typeof(GameObject)) return;
+            if (_targetDic.ContainsKey(src)) return;
+
+            if (isMain)
+            {
+                foreach (var target in _targetDic)
+                {
+                    if (target.Value) DestroyImmediate(target.Value);
+                }
+                _targetDic.Clear();
+            }
+            var instance = PrefabUtility.InstantiateAttachedAsset(src) as GameObject;
+            _targetDic.Add(src,  instance);
+            if (isMain) _mainTarget = instance;
             if (instance != null)
             {
-                instance.name = prefab.name;
+#if UNITY_2017
+                PrefabUtility.DisconnectPrefabInstance(instance); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
+#endif
+                instance.name = src.name;
                 SetFlagsAll(instance, HideFlags.HideAndDontSave);
                 SetLayerAll(instance, _previewLayer);
                 _preview.AddSingleGO(instance);
@@ -4924,9 +4975,28 @@ namespace See1
                     _treeView.Reload();
                 }
 
-                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
+                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? src.name : _targetInfo.assetPath, false);
                 Repaint();
             }
+        }
+
+        void RemoveModel(GameObject instance)
+        {
+            string name = instance.name;
+            if (!_targetDic.ContainsValue(instance)) return;
+            if (instance) DestroyImmediate(instance);
+            var pair = _targetDic.Where(x => x.Value == instance).FirstOrDefault();
+            if (pair.Key)
+            {
+                _targetDic.Remove(pair.Key);
+            }
+            if (_treeView != null)
+            {
+                _treeView.Reload();
+            }
+
+            Notice.Log(string.Format("{0} Removed", name), false);
+            Repaint();
         }
 
         void Create()
@@ -5010,7 +5080,7 @@ namespace See1
             //Apply Settings From Data
             SetPostProcess();
             _prefab = currentData.lastTarget;
-            SetModel(_prefab);
+            AddModel(_prefab, true);
             ApplyView(settings.current.lastView);
             ApplyEnv();
             ApplyLighting(settings.current.lastLighting);
@@ -5090,7 +5160,7 @@ namespace See1
                 if (_treeViewState == null)
                     _treeViewState = new TreeViewState();
                 _treeView = new TransformTreeView(scene, _treeViewState);
-                _treeView.onDragObject = (go) => { AddModel(go); };
+                _treeView.onDragObject = (go) => { AddModel(go,false); };
             }
         }
 
@@ -5178,7 +5248,7 @@ namespace See1
             _preview.lights[1].gameObject.hideFlags = HideFlags.None;
             _camPivot.gameObject.hideFlags = HideFlags.None;
             _lightPivot.gameObject.hideFlags = HideFlags.None;
-            if (_targetGo) SetFlagsAll(_targetGo.gameObject, HideFlags.None);
+            if (_mainTarget) SetFlagsAll(_mainTarget.gameObject, HideFlags.None);
             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
         }
 
@@ -5187,7 +5257,7 @@ namespace See1
             //_list = AS_PartList.Create(settings.currentData, PartChanged, TargetItemHandler, MenuItemHandler);
             //Selection.activeObject = settings.currentData;
             _prefab = settings.current.lastTarget;
-            SetModel(_prefab);
+            AddModel(_prefab, true);
             SetPostProcess();
             See1ViewSettings.SetDirty();
         }
@@ -5214,10 +5284,10 @@ namespace See1
             CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, buffer);
             //_preview.camera.RemoveCommandBuffer(cameraEvent, buffer);
             buffer.Clear();
-            if (_targetGo && set)
+            if (_mainTarget && set)
             {
                 _preview.camera.AddCommandBuffer(cameraEvent, buffer);
-                var renderers = _targetGo.GetComponentsInChildren<Renderer>();
+                var renderers = _mainTarget.GetComponentsInChildren<Renderer>();
                 for (var i = 0; i < renderers.Length; i++)
                 {
                     var renderer = renderers[i];
@@ -5249,7 +5319,7 @@ namespace See1
         {
             CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, buffer);
             buffer.Clear();
-            if (_targetGo && set)
+            if (_mainTarget && set)
             {
                 int nameID = Shader.PropertyToID("See1View");
                 _preview.camera.AddCommandBuffer(cameraEvent, buffer);
@@ -5385,7 +5455,7 @@ namespace See1
         void RenderAndSaveFile()
         {
             Texture2D tex = RenderToTexture((int) currentData.imageSizeMultiplier, currentData.alphaAppliedImage);
-            string baseName = _targetGo ? _targetGo.name : "Blank";
+            string baseName = _mainTarget ? _mainTarget.name : "Blank";
             string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots",
                 baseName, settings.current.imageSaveMode);
             if (currentData.openSavedImage)
@@ -5413,10 +5483,10 @@ namespace See1
 
         #region Animation
 
-        public void SetAnimation(GameObject animatedRoot, bool reset)
+        public void SetAnimation(GameObject root, bool reset)
         {
             //기존 수집된 애니메이터에 문제가 있는지 검사 (모델 옵션이 바뀜에 따라 있던 애니메이터가 없어지는 경우가 생김.
-            if (_playerList.Any(x => x.animatedList.Any(ani => ani.gameObject == null)))
+            if (_playerList.Any(x => x.actorList.Any(ani => ani.instance == null)))
             {
                 reset = true;
             }
@@ -5434,23 +5504,26 @@ namespace See1
             else
             {
                 _playerList.Clear();
-                Animator[] animators = animatedRoot.GetComponentsInChildren<Animator>();
-                for (int i = 0; i < animators.Length; i++)
+                Animator[] animators = root.GetComponentsInChildren<Animator>();
+                if (animators.Length > 0)
                 {
-                    Animator animator = animators[i];
+                    for (int i = 0; i < animators.Length; i++)
+                    {
+                        Animator animator = animators[i];
+                        AnimationPlayer player = new AnimationPlayer();
+                        player.AddActor(animator.gameObject, true);
+                        player.onStopPlaying = onStopPlaying;
+                        _playerList.Add(player);
+                    }
+                }
+                else
+                {
+                    //애니메이터가 없어도 기본 하나 만들어줌.
                     AnimationPlayer player = new AnimationPlayer();
-                    player.AddAnimated(animator.gameObject);
+                    player.AddActor(root, true);
                     player.onStopPlaying = onStopPlaying;
                     _playerList.Add(player);
                 }
-            }
-        }
-
-        public void UpdateAnimation(double delta)
-        {
-            for (int i = 0; i < _playerList.Count; i++)
-            {
-                _playerList[i].Update(delta);
             }
         }
 
@@ -6439,31 +6512,31 @@ namespace See1
                                     menu.AddItem(new GUIContent("Sphere"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                                        SetModel(primitive);
+                                        AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
                                     menu.AddItem(new GUIContent("Capsule"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                                        SetModel(primitive);
+                                        AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
                                     menu.AddItem(new GUIContent("Cylinder"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                                        SetModel(primitive);
+                                        AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
                                     menu.AddItem(new GUIContent("Plane"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Plane);
-                                        SetModel(primitive);
+                                        AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
                                     menu.AddItem(new GUIContent("Quad"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                                        SetModel(primitive);
+                                        AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
                                     menu.ShowAsContext();
@@ -6478,7 +6551,7 @@ namespace See1
                             {
                                 if (_prefab)
                                 {
-                                    SetModel(_prefab);
+                                    AddModel(_prefab);
                                 }
                             }
                         
@@ -6501,7 +6574,7 @@ namespace See1
                     if (_prefab != _tempPickedObject)
                     {
                         _prefab = _tempPickedObject;
-                        SetModel(_prefab);
+                        AddModel(_prefab);
                         _tempPickedObject = null;
                     }
                 }
@@ -6515,6 +6588,11 @@ namespace See1
             EditorHelper.FoldGroup.Do("Model Info", true, () =>
             {
                 EditorGUILayout.HelpBox(_targetInfo.Print(), MessageType.None);
+                
+                foreach (var target in _targetDic)
+                {
+                   if(target.Key) GUILayout.Label(target.Key.name,EditorStyles.miniLabel);
+                }
             });
 
             EditorHelper.FoldGroup.Do("Prefab", true, () =>
@@ -6543,9 +6621,9 @@ namespace See1
             for (int a = 0; a < _playerList.Count; a++)
             {
                 var player = _playerList[a];
-                EditorHelper.FoldGroup.Do(string.Format("{0} - {1}", a.ToString(), player.name), true, () =>
+                EditorHelper.FoldGroup.Do(string.Format("{0} - {1}","Player", a.ToString()), true, () =>
                 {
-                    for (int b = 0; b < player.animatedList.Count; b++)
+                    for (int b = 0; b < player.actorList.Count; b++)
                     {
                         player.reorderableClipList.DoLayoutList();
                     }
@@ -6618,7 +6696,7 @@ namespace See1
                     GUILayout.FlexibleSpace();
                     if (GUILayout.Button("Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30)))
                     {
-                        Selection.activeGameObject = _targetGo;
+                        Selection.activeGameObject = _mainTarget;
                         foreach (var ps in _targetInfo.particleSystems)
                         {
                             ps.Play();
@@ -6627,7 +6705,7 @@ namespace See1
 
                     if (GUILayout.Button("Restart", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
                     {
-                        Selection.activeGameObject = _targetGo;
+                        Selection.activeGameObject = _mainTarget;
                         foreach (var ps in _targetInfo.particleSystems)
                         {
                             ps.Stop();
@@ -6637,7 +6715,7 @@ namespace See1
 
                     if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
                     {
-                        Selection.activeGameObject = _targetGo;
+                        Selection.activeGameObject = _mainTarget;
                         foreach (var ps in _targetInfo.particleSystems)
                         {
                             ps.Clear();
@@ -6646,7 +6724,7 @@ namespace See1
 
                     if (GUILayout.Button("Pause", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30)))
                     {
-                        Selection.activeGameObject = _targetGo;
+                        Selection.activeGameObject = _mainTarget;
                         foreach (var ps in _targetInfo.particleSystems)
                         {
                             ps.Pause();
@@ -6827,7 +6905,7 @@ namespace See1
             //Handles.ClearCamera 를 호출해줘야 Preview Camera 가 정상적으로 렌더링 가능 그런데...
             //Handles.ClearCamera 호출시 GUI 를 더 이상 그리지 않으므로 GUI 마지막에서 호출해줘야 다른 GUI 가 잘 나옴
             //Render(updateFOV) 때문에 제 위치에 안나옴.PreviewRenderUtility.Render 에서 참조
-            if (_targetGo && (_gizmoMode != 0))
+            if (_mainTarget && (_gizmoMode != 0))
             {
 
                 if (Event.current.type == EventType.Repaint)
@@ -6853,7 +6931,7 @@ namespace See1
                     DrawWorldAxis();
                     var scale = _targetInfo.bounds.size.magnitude;
 
-                    DrawBasis(_targetGo.transform, scale * 0.1f, true);
+                    DrawBasis(_mainTarget.transform, scale * 0.1f, true);
 
                     DrawBasis(_camPivot.transform, scale * 0.1f, true);
                     Handles.Label(_camPivot.transform.position,
@@ -6876,12 +6954,12 @@ namespace See1
 
                     //DrawGrid();
 
-                    DrawBasis(_targetGo.transform, scale * 0.1f, true);
+                    DrawBasis(_mainTarget.transform, scale * 0.1f, true);
                     if ((_gizmoMode & GizmoMode.Info) == GizmoMode.Info)
                     {
                         Handles.color = Color.white;
-                        DrawBasis(_targetGo.transform, scale * 0.1f, true);
-                        Handles.Label(_targetGo.transform.position, _targetInfo.Print(), EditorStyles.miniLabel);
+                        DrawBasis(_mainTarget.transform, scale * 0.1f, true);
+                        Handles.Label(_mainTarget.transform.position, _targetInfo.Print(), EditorStyles.miniLabel);
                     }
 
                     if ((_gizmoMode & GizmoMode.Bound) == GizmoMode.Bound)
@@ -7039,7 +7117,7 @@ namespace See1
 
         void FitTargetToViewport()
         {
-            if (_targetGo)
+            if (_mainTarget)
             {
                 CalcMinMaxDistance();
                 _destPivotPos = _targetInfo.bounds.center;
