@@ -25,6 +25,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -795,9 +796,11 @@ namespace See1
 
             public static string path = "Assets/Editor/See1ViewSettings.json";
 
-            public static readonly string key = string.Format("{0}.{1}", "com.see1.See1View.settings",
-                GetProjectName().ToLower());
-
+            public static readonly string key = string.Format("{0}.{1}", "com.see1.See1View.settings", GetProjectName().ToLower());
+            public static UnityEvent onDataChanged = new UnityEvent();
+            static bool isAddName;
+            static bool isEditName;
+            private static string inputStr;
             public static bool _isDirty;
 
             public bool Add(string name)
@@ -872,8 +875,7 @@ namespace See1
             public static void Save()
             {
                 var json = JsonUtility.ToJson(instance, true);
-                DirectoryInfo di =
-                    new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
+                DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
                 if (!di.Exists) di.Create();
                 AssetDatabase.Refresh();
                 File.WriteAllText(path, json);
@@ -886,21 +888,12 @@ namespace See1
             {
                 if (EditorPrefs.HasKey(key))
                 {
-                    if (EditorUtility.DisplayDialog("Removing " + key + "?",
-                        "Are you sure you want to " +
-                        "delete the editor key " +
-                        key + "?, This action cant be undone",
-                        "Yes",
-                        "No"))
+                    if (EditorUtility.DisplayDialog("Removing " + key + "?", "Are you sure you want to " + "delete the editor key " + key + "?, This action cant be undone", "Yes", "No"))
                         EditorPrefs.DeleteKey(key);
                 }
                 else
                 {
-                    EditorUtility.DisplayDialog("Could not find " + key,
-                        "Seems that " + key +
-                        " does not exists or it has been deleted already, " +
-                        "check that you have typed correctly the name of the key.",
-                        "Ok");
+                    EditorUtility.DisplayDialog("Could not find " + key, "Seems that " + key + " does not exists or it has been deleted already, " + "check that you have typed correctly the name of the key.", "Ok");
                 }
             }
 
@@ -951,6 +944,94 @@ namespace See1
                 }
 
                 return canDuplicate;
+            }
+
+            static void ResetInputState()
+            {
+                isAddName = false;
+                isEditName = false;
+                inputStr = string.Empty;
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+
+            internal static void OnManageGUI()
+            {
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    int idx = instance.dataIndex;
+                    bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                    bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                    if (isAddName || isEditName)
+                    {
+                        GUI.SetNextControlName("input");
+                        inputStr = EditorGUILayout.TextField(inputStr);
+                        if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
+                        {
+                            if (CheckName(inputStr))
+                            {
+                                if (isAddName)
+                                {
+                                    instance.Add(inputStr);
+                                }
+
+                                if (isEditName)
+                                {
+                                    instance.current.name = inputStr;
+                                }
+                                ResetInputState();
+                            }
+                            else
+                            {
+                                ResetInputState();
+                            }
+                        }
+
+                        bool focusLost = GUI.GetNameOfFocusedControl() != "input";
+                        if (focusLost || escapePressed)
+                        {
+                            ResetInputState();
+                        }
+                    }
+                    else
+                    {
+                        instance.dataIndex = (int) EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup);
+                    }
+
+                    if (GUILayout.Button("+", EditorStyles.toolbarButton))
+                    {
+                        isAddName = true;
+                        inputStr = "New";
+                        UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        EditorGUI.FocusTextInControl("input");
+                    }
+
+                    using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
+                    {
+                        if (GUILayout.Button("-", EditorStyles.toolbarButton))
+                        {
+                            if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
+                            {
+                                instance.RemoveCurrent();
+                            }
+                        }
+                    }
+
+                    if (GUILayout.Button("=", EditorStyles.toolbarButton))
+                    {
+                        isEditName = true;
+                        inputStr = instance.current.name;
+                        UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        EditorGUI.FocusTextInControl("input");
+                    }
+
+                    if (check.changed)
+                    {
+                        if (idx != instance.dataIndex)
+                        {
+                            onDataChanged.Invoke();
+                        }
+                    }
+                }
             }
         }
 
@@ -2069,6 +2150,119 @@ namespace See1
             }
         }
 
+        public class SizePopup : PopupWindowContent
+        {    //Search results can be filtered by specifying a series of properties that sounds should match. 
+             //In other words, using the filter parameter you can specify the value that certain sound fields should have in order to be considered valid search results. 
+             //Filters are defined with a syntax like filter=fieldname:value fieldname:value (that is the Solr filter syntax). 
+             //Use double quotes for multi-word queries (filter=fieldname:"val ue"). Filter names can be any of the following:
+            public EditorWindow _caller;
+            private int x;
+            private int y;
+
+            public delegate void OnReceive(Vector2 v2);
+
+
+            private EditorWindow parent;
+            private OnReceive onReceive;
+            public bool isInitialized;
+
+            float width = 350;
+            float height = 200;
+
+            public SizePopup()
+            {
+                this.parent = parent;
+                this.onReceive = onReceive;
+                isInitialized = true;
+            }
+
+            Vector2 scrollPosition;
+            public override Vector2 GetWindowSize()
+            {
+                return (_caller) ? new Vector2(250, 450) : Vector2.zero;
+            }
+
+            public override void OnGUI(Rect rect)
+            {
+                if (_caller)
+                {
+                    EditorGUIUtility.labelWidth = 50;
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        GUILayout.Label("Add New viewport size", EditorStyles.whiteLargeLabel);
+                        if (GUILayout.Button("X", GUILayout.Width(40)))
+                            OnClose();
+                    }
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (new EditorGUILayout.VerticalScope())
+                        {
+                            EditorGUILayout.LabelField("Landscape", EditorStyles.miniLabel);
+                            DrawPresetButton(800, 600);
+                            DrawPresetButton(1280, 720);
+                            DrawPresetButton(1600, 900);
+                            DrawPresetButton(1920, 1080);
+                            DrawPresetButton(2560, 1440);
+                            DrawPresetButton(3840, 2160);
+                        }
+
+                        using (new EditorGUILayout.VerticalScope())
+                        {
+                            EditorGUILayout.LabelField("Portrait", EditorStyles.miniLabel);
+                            DrawPresetButton(600, 800);
+                            DrawPresetButton(720, 1280);
+                            DrawPresetButton(900, 1600);
+                            DrawPresetButton(1080, 1920);
+                            DrawPresetButton(1440, 2560);
+                            DrawPresetButton(2160, 3840);
+                        }
+
+                        using (new EditorGUILayout.VerticalScope())
+                        {
+                            EditorGUILayout.LabelField("POT", EditorStyles.miniLabel);
+                            DrawPresetButton(128, 128);
+                            DrawPresetButton(256, 256);
+                            DrawPresetButton(512, 512);
+                            DrawPresetButton(1024, 1024);
+                            DrawPresetButton(2048, 2048);
+                            DrawPresetButton(4096, 4096);
+                        }
+                    }
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (new EditorGUILayout.VerticalScope())
+                        {
+                            x = EditorGUILayout.IntSlider("Width", x, 128, 4096);
+                            y = EditorGUILayout.IntSlider("Height", y, 128, 4096);
+                        }
+
+                        if (GUILayout.Button("Add", GUILayout.Width(80), GUILayout.ExpandHeight(true)))
+                            if (onReceive != null)
+                                onReceive.Invoke(new Vector2(x, y));
+                    }
+                }
+            }
+
+            public override void OnOpen()
+            {
+                _caller = EditorWindow.GetWindow<EditorWindow>();
+            }
+            public override void OnClose()
+            {
+            }
+
+            void DrawPresetButton(int width, int height)
+            {
+
+                if (GUILayout.Button(string.Format("{0}x{1}", width, height), EditorStyles.miniButton))
+                {
+                    this.x = width;
+                    this.y = height;
+                }
+            }
+        }
         class Popup : EditorWindow
         {
             private int x;
@@ -4611,6 +4805,7 @@ namespace See1
         bool _shortcutEnabled;
         SidePanelMode panelMode = SidePanelMode.View;
         Popup _popup;
+        SizePopup _sizePopup;
         bool _guiEnabled = true;
         bool _overlayEnabled = true;
 
@@ -4666,8 +4861,8 @@ namespace See1
 
         //Vector2 _destLightRot = new Vector2(180, 0);
         Vector3 _destPivotPos;
-        float _destDistance = 1.0f;
-        float _dist = 1.0f;
+        float _destDistance = 1.0f; //destination distance
+        float _dist = 1.0f; //current distance
         float _maxDistance = 20.0f;
         float _minDistance = 1.0f;
 
@@ -4980,6 +5175,7 @@ namespace See1
                 ApplyModelCommandBuffers();
                 Repaint();
             }
+            if(isMain && settings.current.reframeToTarget) FitTargetToViewport(); 
         }
 
         void RemoveModel(GameObject instance)
@@ -5016,6 +5212,7 @@ namespace See1
             _rs.openLeft.target = false;
             _rs.openRight.target = true;
 
+            _sizePopup = new SizePopup();
             _preview = new PreviewRenderUtility(true, true);
             _camTr = _preview.camera.transform;
 
@@ -5477,6 +5674,10 @@ namespace See1
 
         private void ShowPopupWindow()
         {
+            //float width = 350;
+            //float height = 200;
+            //var rect = new Rect(position.x + (position.width - width) / 2, position.y + (position.height - height) / 2, width, height);
+            //PopupWindow.Show(rect, _sizePopup);
             _popup = ScriptableObject.CreateInstance<Popup>() as Popup;
             _popup.Init(this, v2 => { AddViewportSize(v2); }, () => { _guiEnabled = true; });
             _popup.ShowPopup();
@@ -5634,47 +5835,14 @@ namespace See1
 
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        if (GUILayout.Button("Render", EditorStyles.toolbarButton))
+                        if (GUILayout.Button("Save", EditorStyles.toolbarButton))
                         {
                             RenderAndSaveFile();
                         }
                     }
 
                     GUILayout.FlexibleSpace();
-
-                    int idx = See1ViewSettings.instance.dataIndex;
-                    using (var check = new EditorGUI.ChangeCheckScope())
-                    {
-                        settings.dataIndex = (int) EditorGUILayout.Popup(settings.dataIndex, See1ViewSettings.dataNames,
-                            EditorStyles.toolbarPopup);
-                        if (GUILayout.Button("+", EditorStyles.toolbarButton, GUILayout.Width(20)))
-                        {
-                            string newName = typeof(Data).Name;
-                            settings.Add(newName);
-                        }
-
-                        using (new EditorGUI.DisabledGroupScope(settings.dataList.Count == 1))
-                        {
-                            if (GUILayout.Button("-", EditorStyles.toolbarButton, GUILayout.Width(20)))
-                            {
-                                if (EditorUtility.DisplayDialog("Confirm",
-                                    string.Format("{0}{1}{2}", "Delete ", currentData.name, "?"), "Ok", "Cancel"))
-                                {
-                                    settings.RemoveCurrent();
-                                }
-                            }
-                        }
-
-                        if (check.changed)
-                        {
-                            if (idx != settings.dataIndex)
-                            {
-                                DataChanged();
-                                //SidebarChanged();
-                            }
-                        }
-                    }
-
+                    See1ViewSettings.OnManageGUI();
                 }
             }
         }
@@ -6004,7 +6172,7 @@ namespace See1
 
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        if (GUILayout.Button("Render", GUILayout.Width(60), GUILayout.Height(48)))
+                        if (GUILayout.Button("Save", GUILayout.Width(60), GUILayout.Height(48)))
                         {
                             RenderAndSaveFile();
                         }
@@ -6497,14 +6665,11 @@ namespace See1
             EditorHelper.IconLabel(typeof(Avatar), "Model");
             EditorHelper.FoldGroup.Do("Create Mode", true, () =>
             {
-                settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode,
-                    Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
+                settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
                 using (EditorHelper.Horizontal.Do())
                 {
-                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, "Reframe Target",
-                        EditorStyles.miniButtonLeft);
-                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, "Recalculate Bound",
-                        EditorStyles.miniButtonRight);
+                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, "Reframe Target", EditorStyles.miniButtonLeft);
+                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, "Recalculate Bound", EditorStyles.miniButtonRight);
                 }
 
                 switch (settings.current.modelCreateMode)
@@ -7136,39 +7301,6 @@ namespace See1
 
         #region Handle Input
 
-        void FitTargetToViewport()
-        {
-            if (_mainTarget)
-            {
-                CalcMinMaxDistance();
-                _destPivotPos = _targetInfo.bounds.center;
-                _destDistance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
-                ;
-            }
-        }
-
-        void CalcMinMaxDistance()
-        {
-            Vector3 size = _targetInfo.bounds.max - _targetInfo.bounds.min;
-            float largestSize = Mathf.Max(size.x, size.y, size.z);
-            float distance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
-            _minDistance = distance * 0.01f;
-            _maxDistance = largestSize * 100f;
-            SetClipPlane();
-        }
-
-        float GetFitDistanceOfCamera(Bounds targetBounds, Camera camera)
-        {
-            float cameraDistance = 1.0f; // 3.0f; // Constant factor
-            Vector3 size = targetBounds.max - targetBounds.min;
-            float largestSize = Mathf.Max(size.x, size.y, size.z);
-            float cameraView =
-                2.0f * Mathf.Tan(0.5f * Mathf.Deg2Rad * camera.fieldOfView); // Visible height 1 meter in front
-            float distance = cameraDistance * largestSize / cameraView; // Combined wanted distance from the object
-            distance += 0.1f * largestSize; // Estimated offset from the center to the outside of the object
-            return distance;
-        }
-
         void ProcessInput()
         {
             var axis0 = Vector2.zero;
@@ -7176,22 +7308,18 @@ namespace See1
             var axis2 = Vector2.zero;
             var zoom = 0.0f;
             var evt = Event.current;
-            Rect inputEnabledArea = new Rect(_rs.center.position,
-                new Vector2(_rs.center.width, _rs.center.height - _controlRect.height));
+            Rect inputEnabledArea = new Rect(_rs.center.position, new Vector2(_rs.center.width, _rs.center.height - _controlRect.height));
             var isLDragging = evt.type == EventType.MouseDrag && evt.button == 0 && _isStartDragValid;
             var isRDragging = evt.type == EventType.MouseDrag && evt.button == 1 && _isStartDragValid;
             var isMDragging = evt.type == EventType.MouseDrag && evt.button == 2 && _isStartDragValid;
             var isScrolling = evt.type == EventType.ScrollWheel && inputEnabledArea.Contains(evt.mousePosition);
-            var isLDoubleClicked = evt.isMouse && evt.type == EventType.MouseDown && evt.button == 0 &&
-                                   evt.clickCount == 2 && inputEnabledArea.Contains(evt.mousePosition);
-            var isRDoubleClicked = evt.isMouse && evt.type == EventType.MouseDown && evt.button == 1 &&
-                                   evt.clickCount == 2 && inputEnabledArea.Contains(evt.mousePosition);
+            var isLDoubleClicked = evt.isMouse && evt.type == EventType.MouseDown && evt.button == 0 && evt.clickCount == 2 && inputEnabledArea.Contains(evt.mousePosition);
+            var isRDoubleClicked = evt.isMouse && evt.type == EventType.MouseDown && evt.button == 1 && evt.clickCount == 2 && inputEnabledArea.Contains(evt.mousePosition);
 
             if (evt.type == EventType.MouseDown)
             {
                 GUI.FocusControl(null); //Text Field Defocus
-                _isStartDragValid = !_rs.right.Contains(evt.mousePosition) &&
-                                    inputEnabledArea.Contains(evt.mousePosition);
+                _isStartDragValid = !_rs.right.Contains(evt.mousePosition) && inputEnabledArea.Contains(evt.mousePosition);
             }
 
             if (evt.type == EventType.MouseUp)
@@ -7202,9 +7330,7 @@ namespace See1
                 _isStartDragValid = false;
             }
 
-            Vector2
-                input = evt.delta
-                    .normalized; // settings.mouseAccelerationEnabled ? evt.delta * 0.1f : evt.delta.normalized;
+            Vector2 input = evt.delta.normalized; // settings.mouseAccelerationEnabled ? evt.delta * 0.1f : evt.delta.normalized;
             if (isLDragging) axis0 = input;
             if (isRDragging) axis1 = input;
             if (isMDragging) axis2 = input;
@@ -7221,9 +7347,47 @@ namespace See1
             if (_shortcutEnabled && evt.isKey && evt.type == EventType.KeyDown && !EditorGUIUtility.editingTextField)
             {
                 Shortcuts.ProcessInput(evt.keyCode);
-
                 GUIUtility.ExitGUI();
             }
+        }
+        void FitTargetToViewport()
+        {
+            if (_mainTarget)
+            {
+                CalcMinMaxDistance();
+                _destPivotPos = _targetInfo.bounds.center;
+                _destDistance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
+            }
+        }
+
+        void CalcMinMaxDistance()
+        {
+            if (_mainTarget)
+            {
+                Vector3 size = _targetInfo.bounds.max - _targetInfo.bounds.min;
+                float largestSize = Mathf.Max(size.x, size.y, size.z);
+                float distance = GetFitDistanceOfCamera(_targetInfo.bounds, _preview.camera);
+                _minDistance = distance * 0.01f;
+                _maxDistance = largestSize * 100f;
+                SetClipPlane();
+            }
+        }
+
+        float GetFitDistanceOfCamera(Bounds targetBounds, Camera camera)
+        {
+            float cameraDistance = 1.0f; // 3.0f; // Constant factor
+            Vector3 size = targetBounds.max - targetBounds.min;
+            float largestSize = Mathf.Max(size.x, size.y, size.z);
+            float cameraView = 2.0f * Mathf.Tan(0.5f * Mathf.Deg2Rad * camera.fieldOfView); // Visible height 1 meter in front
+            float distance = cameraDistance * largestSize / cameraView; // Combined wanted distance from the object
+            distance += 0.1f * largestSize; // Estimated offset from the center to the outside of the object
+            return distance;
+        }
+
+        void SetClipPlane()
+        {
+            _preview.camera.nearClipPlane = _dist * 0.1f;
+            _preview.camera.farClipPlane = _maxDistance * 2;
         }
 
         void UpdateCamera(Vector2 axis0, Vector2 axis2, float wheel)
@@ -7276,12 +7440,6 @@ namespace See1
                 var lightTr = _preview.lights[i].transform;
                 lightTr.Rotate(angle, Space.World);
             }
-        }
-
-        void SetClipPlane()
-        {
-            _preview.camera.nearClipPlane = _dist * 0.1f;
-            _preview.camera.farClipPlane = _maxDistance * 2;
         }
 
         void ResetLight()
