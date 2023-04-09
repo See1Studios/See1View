@@ -101,8 +101,8 @@ namespace See1Studios.See1View.Editor
         public enum RenderPipelineMode
         {
             BuiltIn,
-            URP,
-            HDRP,
+            Universal,
+            HighDefinition,
         }
 
         #endregion
@@ -805,6 +805,7 @@ namespace See1Studios.See1View.Editor
             public List<Lighting> lightingList = new List<Lighting>();
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
+            public List<Steel> steelList = new List<Steel>();
             //Model
             public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
             public string lastTargetPath = string.Empty;
@@ -847,7 +848,7 @@ namespace See1Studios.See1View.Editor
                     if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
                 }
             }
-
+            //Default Post Process (BuiltIn)
             public string profilePath = string.Empty;
             private PostProcessProfile _postProcessProfile;
 
@@ -866,23 +867,23 @@ namespace See1Studios.See1View.Editor
                 }
             }
 
-
+            //Scriptable RenderPipeline Support.
             public string renderPipelinePath = string.Empty;
 
-
+            //Tells you the current render pipeline.
             public RenderPipelineMode renderPipelineMode
             {
                 get
                 {
                     RenderPipelineMode mode = RenderPipelineMode.BuiltIn;
-                    if (_renderPipelineAsset != null)
+                    if (renderPipelineAsset != null)
                     {
 #if URP
-                        if (_renderPipelineAsset is UniversalRenderPipelineAsset) mode = RenderPipelineMode.URP;
+                        if (renderPipelineAsset is UniversalRenderPipelineAsset) mode = RenderPipelineMode.Universal;
 #endif
 
 #if HDRP
-                        if(_renderPipelineAsset is HighDefinitionRenderPipelineAsset) mode = RenderPipelineMode.HDRP;
+                        if (renderPipelineAsset is HDRenderPipelineAsset) mode = RenderPipelineMode.HighDefinition;
 #endif
                     }
                     return mode;
@@ -950,7 +951,7 @@ namespace See1Studios.See1View.Editor
                 {
                     if (_list.Count > _maxSize)
                     {
-                        _list = _list.GetRange(1, _list.Count);
+                        _list = _list.GetRange(1, _list.Count-1);
                     }
                     _list.Add(path);
                 }
@@ -1275,6 +1276,7 @@ namespace See1Studios.See1View.Editor
                         if (idx != instance.dataIndex)
                         {
                             onDataChanged.Invoke();
+                            Notice.Log(string.Format("Data Chaneged to {0}", instance.current.name));
                         }
                     }
                 }
@@ -1373,6 +1375,35 @@ namespace See1Studios.See1View.Editor
             public Color ambientSkyColor = Color.gray;
             public string cubemapPath = string.Empty;
         }
+        // model animation frame information
+        [Serializable]
+        internal class Steel
+        {
+            public string clipPath;
+            public double time;
+            private AnimationClip _animationClip;
+            public AnimationClip animationClip
+            {
+                get
+                {
+                    if (!_animationClip)
+                        _animationClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+                    return _animationClip;
+                }
+                set
+                {
+                    _animationClip = value;
+                    clipPath = AssetDatabase.GetAssetPath(_animationClip);
+                }
+            }
+
+            public Steel(AnimationClip clip, double time)
+            {
+                this.animationClip = clip;
+                this.time = time;
+            }
+        }
+
         //view target object. model, particle, etc
         class TargetInfo
         {
@@ -2675,7 +2706,7 @@ namespace See1Studios.See1View.Editor
                 style.fontSize = 9;
             }
 
-            public static void Log(object message, bool debugOutput)
+            public static void Log(object message, bool debugOutput = false)
             {
                 _sb.Append(message);
                 _sb.Append("\n");
@@ -5157,10 +5188,17 @@ namespace See1Studios.See1View.Editor
         bool _autoRotateLight;
         int _cameraAutoRotationSpeed;
         int _lightAutoRotationSpeed;
-
-#if URP
+        
+        #if URP
         UniversalAdditionalCameraData _urpCamera;
-#endif
+        #endif
+        #if HDRP
+        HDAdditionalCameraData _hdrpCamera;
+        HDAdditionalLightData _hdrpLight0;
+        HDAdditionalLightData _hdrpLight1;
+        HDAdditionalReflectionData _hdrpReflection;
+        #endif
+
         Recent _recent;
         //Info
         GUIContent _viewInfo;
@@ -5460,7 +5498,7 @@ namespace See1Studios.See1View.Editor
                 Repaint();
             }
             if (isMain && settings.current.reframeToTarget) FitTargetToViewport();
-            _recent.Add(AssetDatabase.GetAssetPath(src));
+            _recent.Add(_targetInfo.assetPath);
         }
 
         void RemoveModel(GameObject instance)
@@ -5514,13 +5552,7 @@ namespace See1Studios.See1View.Editor
             _preview.ambientColor = Color.gray;
             _preview.camera.gameObject.layer = _previewLayer;
 
-#if URP
-            _urpCamera = _preview.camera.GetUniversalAdditionalCameraData();
-            _urpCamera.volumeLayerMask = ~_previewLayer;
-            _preview.camera.cameraType = currentData.cameraType;
-            //_urpRenderer = (UniversalRendererData)ScriptableObject.CreateInstance<UniversalRendererData>(); 
-#elif HDRP
-#endif
+
             _skyMaterial = new Material(FindShader("Skybox/Cubemap"));
 
             _colorCommandBuffer = new CommandBuffer();
@@ -5571,14 +5603,50 @@ namespace See1Studios.See1View.Editor
             InitTreeView();
             ResetLight();
             //Apply Settings From Data
+            InitializePipeline();
             InitPostProcess();
+            onChangeRenderPipeline.AddListener(InitializePipeline);
             onChangeRenderPipeline.AddListener(InitPostProcess);
+            See1ViewSettings.onDataChanged.AddListener(InitializePipeline);
+            See1ViewSettings.onDataChanged.AddListener(InitPostProcess);
+
             _prefab = currentData.lastTarget;
             AddModel(_prefab, true);
             ApplyView(settings.current.lastView);
             ApplyEnv();
             ApplyLighting(settings.current.lastLighting);
             _recent = new Recent(10);
+        }
+
+        private void InitializePipeline()
+        {
+            if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+            {
+
+            }
+#if URP
+            //if (_urpCamera) DestroyImmediate(_urpCamera); //여러 파이프라인이 사용 가능한 상황을 위해 기본적으로 제거하고 시작.
+            if (currentData.renderPipelineMode == RenderPipelineMode.Universal)
+            {
+                _urpCamera = _preview.camera.GetUniversalAdditionalCameraData();
+                _urpCamera.volumeLayerMask = ~_previewLayer;
+                _preview.camera.cameraType = currentData.cameraType;
+                //_urpRenderer = (UniversalRendererData)ScriptableObject.CreateInstance<UniversalRendererData>();                
+            }
+#endif
+#if HDRP            
+            if (currentData.renderPipelineMode == RenderPipelineMode.HighDefinition)
+            {
+                bool hdrpCamExists = _preview.camera.gameObject.TryGetComponent<HDAdditionalCameraData>(out _hdrpCamera);
+                if (!hdrpCamExists)
+                {
+                    _hdrpCamera = _preview.camera.gameObject.AddComponent<HDAdditionalCameraData>();
+                }
+                _hdrpCamera.volumeLayerMask = ~_previewLayer;
+                _preview.camera.cameraType = currentData.cameraType;
+            }
+#endif
+            Notice.Log(string.Format("{0} Render Pipeline Initialized", currentData.renderPipelineMode.ToString()));
         }
 
         void Cleanup()
@@ -5870,20 +5938,27 @@ namespace See1Studios.See1View.Editor
                     break;
                 case ViewMode.Normal:
                     _preview.camera.depthTextureMode = DepthTextureMode.DepthNormals;
-                    SetCameraTargetBlitBuffer(CameraEvent.BeforeImageEffects, _depthNormalCommandBuffer, _depthNormalMaterial,
-                        true);
+                    SetCameraTargetBlitBuffer(CameraEvent.BeforeImageEffects, _depthNormalCommandBuffer, _depthNormalMaterial, true);
                     break;
             }
         }
-        //포스트 프로세스 구현에 필요한 것들을 렌더 파이프라인에 따라 다르게 초기화..이거 뭔가 잘 안되고 있음...
-        //빌트인에서 나왔다 안나왔다 함.데이터를 변경하면 그제서야 적용되는데... 정작 DataChanged 에 리스너로 이걸 추가하면 안나옴...커맨드버퍼에 용량이 표시가 안됨. 뭔가 순서에 문제가 있는 것 같음.
-        //SRP 랑 섞어 쓰면 문제가 발생하네.
+
         void InitPostProcess()
         {
+            //Cleanup Firt.
+            var postLayer = _preview.camera.gameObject.GetComponent<PostProcessLayer>();
+            if (postLayer) DestroyImmediate(postLayer);
+            var postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
+            if (postVolume) DestroyImmediate(postVolume);
+#if URP || HDRP
+            var volume = _preview.camera.gameObject.GetComponent<Volume>();
+            if (volume) DestroyImmediate(volume);
+#endif
+            //Create by Context.
             if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
             {
-                var postLayer = _preview.camera.gameObject.GetComponent<PostProcessLayer>();
-                var postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
+                postLayer = _preview.camera.gameObject.GetComponent<PostProcessLayer>();
+                postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
 
                 if (currentData.enablePostProcess && currentData.profile)
                 {
@@ -5898,20 +5973,14 @@ namespace See1Studios.See1View.Editor
                     postLayer.fastApproximateAntialiasing.keepAlpha = true;
                     postVolume.isGlobal = true;
                     postVolume.profile = currentData.profile;
-                    //if (!_ppsEditor) _ppsEditor = Editor.CreateEditor(settings.profile);
-                }
-                else
-                {
-                    if (postVolume) DestroyImmediate(postVolume);
-                    if (postLayer) DestroyImmediate(postLayer);
-                    //if (_ppsEditor) DestroyImmediate(_ppsEditor);
+                    Notice.Log("Post Process Initialized");
                 }
             }
 
 #if URP || HDRP
             else
             {
-                var volume = _preview.camera.gameObject.GetComponent<Volume>();
+                volume = _preview.camera.gameObject.GetComponent<Volume>();
                 if (currentData.enablePostProcess && currentData.volumeProfile)
                 {
                     if (!volume) volume = _preview.camera.gameObject.AddComponent<Volume>();
@@ -5921,15 +5990,10 @@ namespace See1Studios.See1View.Editor
 #if URP
                     _urpCamera.renderPostProcessing = currentData.enablePostProcess;
 #endif
-                    Debug.Log("SRP Volume Initialized");
-                }
-                else
-                {
-                    if (volume) DestroyImmediate(volume);
+                    Notice.Log("Volume Initialized");
                 }
             }
 #endif
-            Debug.Log("PostProcessInitialized");
         }
 
         Texture2D RenderToTexture(int multiplyer = 1, bool alpha = false)
@@ -6023,9 +6087,9 @@ namespace See1Studios.See1View.Editor
             _guiEnabled = false;
         }
 
-#endregion
+        #endregion
 
-#region Animation
+        #region Animation
 
         public void SetAnimation(GameObject root, bool reset)
         {
@@ -6076,9 +6140,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-#endregion
+        #endregion
 
-#region GUIContents
+        #region GUIContents
 
         public class GUIContents
         {
@@ -6086,11 +6150,23 @@ namespace See1Studios.See1View.Editor
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
+
+            public static GUIContent reframeToTarget = new GUIContent("Reframe Target", "모델을 생성할 때 자동으로 뷰에 꽉 차도록 카메라의 거리를 조절합니다.");
+            public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
+
+            public class Tooltip
+            {
+                public static string createMode = "모델을 생성하는 방법을 선택합니다.";
+            }
+            public class Info
+            {
+                public static string assemblerInfo = "The assembler is a See1View Pro feature.\nNot implemented yet.";
+            }
         }
 
-#endregion
+        #endregion
 
-#region GUI
+        #region GUI
 
         void OnGUI_Top(Rect r)
         {
@@ -6822,34 +6898,35 @@ namespace See1Studios.See1View.Editor
                 }
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
-#if URP || HDRP
-
                     currentData.renderPipelineAsset = (RenderPipelineAsset)EditorGUILayout.ObjectField(GUIContents.currentPipeline.text, currentData.renderPipelineAsset, typeof(RenderPipelineAsset), false);
                     Tooltip.Generate(GUIContents.currentPipeline.tooltip);
-#if URP
-                    if (currentData.renderPipelineAsset is UniversalRenderPipelineAsset)
-                    {
-                        GUILayout.Label("Universal Render Pipeline", EditorStyles.boldLabel);
-                        currentData.urpData.antialiasing = EditorGUILayout.IntPopup(currentData.urpData.antialiasing, Enum.GetNames(typeof(AntialiasingMode)), (int[])Enum.GetValues(typeof(AntialiasingMode)), EditorStyles.miniButton);
-                        _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
-                        _urpCamera.dithering = currentData.urpData.dithering = GUILayout.Toggle(currentData.urpData.dithering, "Enable Dithering", EditorStyles.miniButton);
-                    }
-#endif
-#if HDRP
-                        if (currentData.currentPipeline is HDRenderPipelineAsset)
-                        {
-                            GUILayout.Label("High Definition Render Pipeline", EditorStyles.miniBoldLabel);
-                            //nothing yet
-                        }
-#endif
-
-
-#endif
                     if (check.changed)
                     {
                         onChangeRenderPipeline?.Invoke();
+                        Debug.Log("Pipeline Asset Chaned");
                     }
                 }
+#if URP
+                if (currentData.renderPipelineMode == RenderPipelineMode.Universal)
+                {
+                    GUILayout.Label("Universal Render Pipeline", EditorStyles.boldLabel);
+                    EditorGUILayout.HelpBox("Work in Progress", MessageType.Warning);
+                    currentData.urpData.antialiasing = EditorGUILayout.IntPopup(currentData.urpData.antialiasing, Enum.GetNames(typeof(AntialiasingMode)), (int[])Enum.GetValues(typeof(AntialiasingMode)), EditorStyles.miniButton);
+                    _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
+                    _urpCamera.dithering = currentData.urpData.dithering = GUILayout.Toggle(currentData.urpData.dithering, "Enable Dithering", EditorStyles.miniButton);
+                }
+#endif
+#if HDRP
+                if (currentData.renderPipelineMode == RenderPipelineMode.HighDefinition)
+                {
+                    GUILayout.Label("High Definition Render Pipeline", EditorStyles.miniBoldLabel);
+                    EditorGUILayout.HelpBox("Not Implemented Yet", MessageType.Error);
+                    currentData.hdrpData.antialiasing = EditorGUILayout.IntPopup(currentData.hdrpData.antialiasing, Enum.GetNames(typeof(HDAdditionalCameraData.AntialiasingMode)), (int[])Enum.GetValues(typeof(HDAdditionalCameraData.AntialiasingMode)), EditorStyles.miniButton);
+                    _hdrpCamera.antialiasing = (HDAdditionalCameraData.AntialiasingMode)currentData.hdrpData.antialiasing;
+                    _hdrpCamera.dithering = currentData.hdrpData.dithering = GUILayout.Toggle(currentData.hdrpData.dithering, "Enable Dithering", EditorStyles.miniButton);
+                }
+#endif
+
                 if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
                 {
                     GUILayout.Label("Builtin Render Features", EditorStyles.boldLabel);
@@ -7044,19 +7121,12 @@ namespace See1Studios.See1View.Editor
             EditorHelper.FoldGroup.Do("Create Mode", true, () =>
             {
                 settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
-                Tooltip.Generate("Default: 셀렉터를 통해 선택하여 생성\nPreview: Project 창에서 애셋을 선택하면 바로 생성\nAssembler : 다수의 GameObject를 조합하여 생성(미구현)");
-
-                using (EditorHelper.Horizontal.Do())
-                {
-                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, "Reframe Target", EditorStyles.miniButtonLeft);
-                    Tooltip.Generate("모델을 생성할 때 자동으로 뷰에 꽉 차도록 카메라의 거리를 조절합니다.");
-                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, "Recalculate Bound", EditorStyles.miniButtonRight);
-                    Tooltip.Generate("모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
-                }
+                Tooltip.Generate(GUIContents.Tooltip.createMode);
 
                 switch (settings.current.modelCreateMode)
                 {
                     case ModelCreateMode.Default:
+                        EditorGUILayout.HelpBox("Manually select the GameObject you want to create.", MessageType.None);
                         _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
                         Tooltip.Generate("생성할 모델을 선택하세요");
                         using (EditorHelper.Horizontal.Do())
@@ -7118,15 +7188,19 @@ namespace See1Studios.See1View.Editor
                         }
                         break;
                     case ModelCreateMode.Preview:
-                        EditorGUILayout.HelpBox("Select GameObject from Project View", MessageType.None);
+                        EditorGUILayout.HelpBox("GameObjects selected in the Project view are automatically created.", MessageType.None);
                         break;
                     case ModelCreateMode.Assembler:
-                        EditorGUILayout.HelpBox("The assembler is a See1View Pro feature and can assemble multiple part objects.", MessageType.None);
+                        EditorGUILayout.HelpBox(GUIContents.Info.assemblerInfo, MessageType.None);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-
+                using (EditorHelper.Horizontal.Do())
+                {
+                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, GUIContents.reframeToTarget, EditorStyles.miniButtonLeft);
+                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, GUIContents.recalculateBound, EditorStyles.miniButtonRight);
+                }
                 if (EditorGUIUtility.GetObjectPickerControlID() != 0) //어떤 object picker 가 안 열렸을 때 0
                 {
                     _tempPickedObject = EditorGUIUtility.GetObjectPickerObject() as GameObject;
@@ -7156,7 +7230,7 @@ namespace See1Studios.See1View.Editor
                 for (int i = _recent.size - 1; i > 0; --i)
                 {
                     {
-                        if (GUILayout.Button(new GUIContent(_recent.GetName(i), _recent.Get(i)),EditorStyles.miniButton, GUILayout.Width(246)))
+                        if (GUILayout.Button(new GUIContent(_recent.GetName(i), _recent.Get(i)), EditorStyles.miniButton, GUILayout.Width(246)))
                         {
                             var go = AssetDatabase.LoadAssetAtPath<GameObject>(_recent.Get(i));
                             if (go)
@@ -7254,6 +7328,41 @@ namespace See1Studios.See1View.Editor
                         break;
                 }
             }
+            EditorHelper.FoldGroup.Do("Steel", false, () =>
+            {
+                if (GUILayout.Button("Add Current"))
+                {
+                    if (_playerList.Count > 0)
+                    {
+                        var player = _playerList[0];
+                        if (player.playList.Count>0)
+                        {
+                            var steel = new Steel(player.currentClipInfo.clip, player.time);
+                            currentData.steelList.Add(steel);
+                        }
+                    }
+                }
+                if (GUILayout.Button("Clear"))
+                {
+                    currentData.steelList.Clear();
+                }
+                for (int i = 0; i < currentData.steelList.Count; i++)
+                {
+                    Steel steel = currentData.steelList[i];
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        if (GUILayout.Button(string.Format("{0}:{1}", steel.animationClip.name, steel.time.ToString("F")), EditorStyles.miniButton))
+                        {
+                            var player = _playerList[0];
+                        }
+                        if (GUILayout.Button("X",EditorStyles.miniButton, GUILayout.Width(30)))
+                        {
+                            currentData.steelList.Remove(steel);
+                        }
+                    }
+
+                }
+            });
         }
 
         void OnGUI_AnimationControl(Rect r)
@@ -7649,9 +7758,9 @@ namespace See1Studios.See1View.Editor
                 }
             }
         }
-#endregion
+        #endregion
 
-#region Gizmos
+        #region Gizmos
         void DrawWorldAxis()
         {
             Color color = Handles.color;
@@ -7713,9 +7822,9 @@ namespace See1Studios.See1View.Editor
             Handles.color = color;
         }
 
-#endregion
+        #endregion
 
-#region Input
+        #region Input
 
         void ProcessInput()
         {
@@ -7989,9 +8098,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-#endregion
+        #endregion
 
-#region Utils
+        #region Utils
 
         public static List<GameObject> FindAllObjectsInScene()
         {
@@ -8047,9 +8156,9 @@ namespace See1Studios.See1View.Editor
             Shader shader = Shader.Find(shaderName);
             if (!shader)
             {
-                string fallBackName = currentData.renderPipelineMode == RenderPipelineMode.URP ? "Universal Render Pipeline/Unlit" : "Unlit/Color";
+                string fallBackName = currentData.renderPipelineMode == RenderPipelineMode.Universal ? "Universal Render Pipeline/Unlit" : "Unlit/Color";
                 shader = Shader.Find(fallBackName);
-                Debug.Log(string.Format("{0} Shader not found. Fallback to {1}", shaderName, fallBackName));
+                Notice.Log(string.Format("{0} Shader not found. Fallback to {1}", shaderName, fallBackName));
             }
 
             return shader;
@@ -8230,18 +8339,18 @@ namespace See1Studios.See1View.Editor
             {
                 case RenderPipelineMode.BuiltIn:
                     return "Standard";
-                case RenderPipelineMode.URP:
+                case RenderPipelineMode.Universal:
                     return "Universal Render Pipeline/Lit";
-                case RenderPipelineMode.HDRP:
+                case RenderPipelineMode.HighDefinition:
                     return "HDRP/Lit";
                 default:
                     return string.Empty;
             }
         }
 
-#endregion
+        #endregion
 
-#region Reflection
+        #region Reflection
 
         private Scene GetPreviewScene()
         {
@@ -8262,7 +8371,7 @@ namespace See1Studios.See1View.Editor
             var flags = BindingFlags.Static | BindingFlags.NonPublic;
             var propInfo = typeof(Camera).GetProperty("PreviewCullingLayer", flags);
             _previewLayer = (int)propInfo.GetValue(null, new object[0]);
-            Debug.Log(string.Format("{0} : PreviewLayerID is {1}", this.GetType().Name,_previewLayer.ToString()));
+            Notice.Log(string.Format("{0} : PreviewLayerID is {1}", this.GetType().Name, _previewLayer.ToString()));
         }
 
         bool IsDocked()
@@ -8282,7 +8391,7 @@ namespace See1Studios.See1View.Editor
             return shader;
         }
 
-#endregion
+        #endregion
 
         [MenuItem("Tools/See1Studios/See1View/Open See1View", false, 0)]
         private static void Init()
