@@ -38,9 +38,12 @@ using UnityEngine.Assertions;
 using UnityEngine.Events;
 using UnityEngine.Networking;
 using UnityEngine.Rendering;
-using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
+
+#if UNITY_POST_PROCESSING_STACK_V2
+using UnityEngine.Rendering.PostProcessing;
+#endif
 #if URP
 using UnityEngine.Rendering.Universal;
 #endif
@@ -799,9 +802,9 @@ namespace See1Studios.See1View.Editor
             public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
             public Color ambientSkyColor = Color.gray;
             public ClearFlags clearFlag = ClearFlags.Color;
-            public View lastView;
+            public View lastView = new View(new Vector2(180f,0f), 0f, Vector3.zero, 30f);
             public List<View> viewList = new List<View>();
-            public Lighting lastLighting;
+            public Lighting lastLighting = new Lighting();
             public List<Lighting> lightingList = new List<Lighting>();
             public List<Vector2> viewportSizes = new List<Vector2>();
             public List<ModelGroup> modelGroupList = new List<ModelGroup>();
@@ -848,8 +851,10 @@ namespace See1Studios.See1View.Editor
                     if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
                 }
             }
-            //Default Post Process (BuiltIn)
             public string profilePath = string.Empty;
+
+            //Post Processing Stack
+#if UNITY_POST_PROCESSING_STACK_V2
             private PostProcessProfile _postProcessProfile;
 
             public PostProcessProfile profile
@@ -866,7 +871,8 @@ namespace See1Studios.See1View.Editor
                     profilePath = AssetDatabase.GetAssetPath(value);
                 }
             }
-
+            
+#endif
             //Scriptable RenderPipeline Support.
             public string renderPipelinePath = string.Empty;
 
@@ -1336,7 +1342,7 @@ namespace See1Studios.See1View.Editor
             public Vector2 rotation;
             public float distance;
             public Vector3 pivot;
-            public float fieldOfView;
+            public float fieldOfView = 30f;
 
             public View(Vector2 rotation, float distance, Vector3 pivot, float fieldOfView)
             {
@@ -1364,13 +1370,13 @@ namespace See1Studios.See1View.Editor
             [Serializable]
             public class LightInfo
             {
-                public Vector2 position;
-                public Quaternion rotation;
-                public Color lightColor;
-                public float intensity;
+                public Vector2 position = Vector2.zero;
+                public Quaternion rotation = Quaternion.identity;
+                public Color lightColor = Color.white;
+                public float intensity = 1;
             }
 
-            public string name;
+            public string name = string.Empty;
             public List<LightInfo> lightList = new List<LightInfo>();
             public Color ambientSkyColor = Color.gray;
             public string cubemapPath = string.Empty;
@@ -5594,12 +5600,12 @@ namespace See1Studios.See1View.Editor
 
             var lightPivotGo = EditorUtility.CreateGameObjectWithHideFlags("LightPivot", HideFlags.HideAndDontSave);
             _lightPivot = lightPivotGo.transform;
-            _preview.AddSingleGO(lightPivotGo);
-
-            _probe = _preview.camera.gameObject.AddComponent<ReflectionProbe>();
+            _probe = lightPivotGo.AddComponent<ReflectionProbe>();
             _probe.mode = ReflectionProbeMode.Custom;
             _probe.size = Vector3.one * 100;
             _probe.cullingMask = ~_previewLayer;
+
+            _preview.AddSingleGO(lightPivotGo);
             InitTreeView();
             ResetLight();
             //Apply Settings From Data
@@ -5613,7 +5619,8 @@ namespace See1Studios.See1View.Editor
             _prefab = currentData.lastTarget;
             AddModel(_prefab, true);
             ApplyView(settings.current.lastView);
-            ApplyEnv();
+            ApplyBackground();
+            ApplyReflectionEnvironment();
             ApplyLighting(settings.current.lastLighting);
             _recent = new Recent(10);
         }
@@ -5946,10 +5953,12 @@ namespace See1Studios.See1View.Editor
         void InitPostProcess()
         {
             //Cleanup Firt.
+#if UNITY_POST_PROCESSING_STACK_V2
             var postLayer = _preview.camera.gameObject.GetComponent<PostProcessLayer>();
             if (postLayer) DestroyImmediate(postLayer);
             var postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
             if (postVolume) DestroyImmediate(postVolume);
+#endif
 #if URP || HDRP
             var volume = _preview.camera.gameObject.GetComponent<Volume>();
             if (volume) DestroyImmediate(volume);
@@ -5957,6 +5966,7 @@ namespace See1Studios.See1View.Editor
             //Create by Context.
             if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
             {
+#if UNITY_POST_PROCESSING_STACK_V2
                 postLayer = _preview.camera.gameObject.GetComponent<PostProcessLayer>();
                 postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
 
@@ -5973,11 +5983,11 @@ namespace See1Studios.See1View.Editor
                     postLayer.fastApproximateAntialiasing.keepAlpha = true;
                     postVolume.isGlobal = true;
                     postVolume.profile = currentData.profile;
-                    Notice.Log("Post Process Initialized");
                 }
+                Notice.Log("Post Process Initialized");
+                #endif
             }
-
-#if URP || HDRP
+            #if URP || HDRP
             else
             {
                 volume = _preview.camera.gameObject.GetComponent<Volume>();
@@ -5986,14 +5996,13 @@ namespace See1Studios.See1View.Editor
                     if (!volume) volume = _preview.camera.gameObject.AddComponent<Volume>();
                     volume.isGlobal = true;
                     volume.profile = currentData.volumeProfile;
-
-#if URP
-                    _urpCamera.renderPostProcessing = currentData.enablePostProcess;
-#endif
-                    Notice.Log("Volume Initialized");
                 }
+                #if URP
+                _urpCamera.renderPostProcessing = currentData.enablePostProcess;
+                #endif
+                Notice.Log("Volume Initialized");
             }
-#endif
+            #endif
         }
 
         Texture2D RenderToTexture(int multiplyer = 1, bool alpha = false)
@@ -6087,9 +6096,9 @@ namespace See1Studios.See1View.Editor
             _guiEnabled = false;
         }
 
-        #endregion
+#endregion
 
-        #region Animation
+#region Animation
 
         public void SetAnimation(GameObject root, bool reset)
         {
@@ -6140,9 +6149,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region GUIContents
+#region GUIContents
 
         public class GUIContents
         {
@@ -6164,9 +6173,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region GUI
+#region GUI
 
         void OnGUI_Top(Rect r)
         {
@@ -6765,13 +6774,11 @@ namespace See1Studios.See1View.Editor
                     }
                 }
 
-                _probe.customBakedTexture = currentData.cubeMap =
-                    (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
+                currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
+                currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
 
-                currentData.CubeMapMipMapBias =
-                    EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
-
-                //settings.enableSRP = GUILayout.Toggle(settings.enableSRP, "Enable Scriptable Render Pipeline", EditorStyles.miniButton);
+                ApplyBackground();
+                ApplyReflectionEnvironment();
 
             });
 
@@ -6910,7 +6917,7 @@ namespace See1Studios.See1View.Editor
                 if (currentData.renderPipelineMode == RenderPipelineMode.Universal)
                 {
                     GUILayout.Label("Universal Render Pipeline", EditorStyles.boldLabel);
-                    EditorGUILayout.HelpBox("Work in Progress", MessageType.Warning);
+                    EditorGUILayout.HelpBox("Universal Render Pipeline Render Mode is work in progress.", MessageType.Warning);
                     currentData.urpData.antialiasing = EditorGUILayout.IntPopup(currentData.urpData.antialiasing, Enum.GetNames(typeof(AntialiasingMode)), (int[])Enum.GetValues(typeof(AntialiasingMode)), EditorStyles.miniButton);
                     _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
                     _urpCamera.dithering = currentData.urpData.dithering = GUILayout.Toggle(currentData.urpData.dithering, "Enable Dithering", EditorStyles.miniButton);
@@ -6986,21 +6993,21 @@ namespace See1Studios.See1View.Editor
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
                     currentData.enablePostProcess = GUILayout.Toggle(currentData.enablePostProcess, "Enable Post Processing", EditorStyles.miniButton);
-                    if (currentData.enablePostProcess)
+                    if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
                     {
-#if URP || HDRP
-                        if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
-                        {
+#if UNITY_POST_PROCESSING_STACK_V2
                             currentData.profile = (PostProcessProfile)EditorGUILayout.ObjectField("", currentData.profile, typeof(PostProcessProfile), false);
-                        }
-                        else
-                        {
-                            currentData.volumeProfile = (VolumeProfile)EditorGUILayout.ObjectField("", currentData.volumeProfile, typeof(VolumeProfile), false);
-                        }
 #else
-                        currentData.profile = (PostProcessProfile)EditorGUILayout.ObjectField("", currentData.profile, typeof(PostProcessProfile), false);
+                        EditorGUILayout.HelpBox("No Post Processing Feature found.", MessageType.None);
 #endif
                     }
+                    else
+                    {
+#if URP || HDRP
+                        currentData.volumeProfile = (VolumeProfile)EditorGUILayout.ObjectField("", currentData.volumeProfile, typeof(VolumeProfile), false);
+#endif
+                    }
+
                     if (check.changed)
                     {
                         InitPostProcess();
@@ -7355,7 +7362,7 @@ namespace See1Studios.See1View.Editor
                         {
                             var player = _playerList[0];
                         }
-                        if (GUILayout.Button("X",EditorStyles.miniButton, GUILayout.Width(30)))
+                        if (GUILayout.Button("-",EditorStyles.miniButton, GUILayout.Width(30)))
                         {
                             currentData.steelList.Remove(steel);
                         }
@@ -7758,9 +7765,9 @@ namespace See1Studios.See1View.Editor
                 }
             }
         }
-        #endregion
+#endregion
 
-        #region Gizmos
+#region Gizmos
         void DrawWorldAxis()
         {
             Color color = Handles.color;
@@ -7822,9 +7829,9 @@ namespace See1Studios.See1View.Editor
             Handles.color = color;
         }
 
-        #endregion
+#endregion
 
-        #region Input
+#region Input
 
         void ProcessInput()
         {
@@ -8046,7 +8053,13 @@ namespace See1Studios.See1View.Editor
             Notice.Log(message, false);
         }
 
-        void ApplyEnv()
+        void ApplyReflectionEnvironment()
+        {
+            _probe.customBakedTexture = currentData.cubeMap;
+            currentData.CubeMapMipMapBias = currentData.CubeMapMipMapBias;
+        }
+
+        private void ApplyBackground()
         {
             if (currentData.clearFlag == ClearFlags.Sky)
             {
@@ -8057,9 +8070,6 @@ namespace See1Studios.See1View.Editor
                 _preview.camera.backgroundColor = currentData.bgColor;
                 _preview.camera.clearFlags = CameraClearFlags.SolidColor;
             }
-
-            _probe.customBakedTexture = currentData.cubeMap;
-            currentData.CubeMapMipMapBias = currentData.CubeMapMipMapBias;
         }
 
         void ApplyLighting(Lighting lighting, string message = "")
@@ -8077,8 +8087,8 @@ namespace See1Studios.See1View.Editor
                 }
                 catch
                 {
-                    _preview.lights[i].color = Color.black;
-                    _preview.lights[i].intensity = 0;
+                    _preview.lights[i].color = Color.white;
+                    _preview.lights[i].intensity = 1;
                 }
             }
 
@@ -8098,9 +8108,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region Utils
+#region Utils
 
         public static List<GameObject> FindAllObjectsInScene()
         {
@@ -8348,9 +8358,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region Reflection
+#region Reflection
 
         private Scene GetPreviewScene()
         {
@@ -8391,7 +8401,7 @@ namespace See1Studios.See1View.Editor
             return shader;
         }
 
-        #endregion
+#endregion
 
         [MenuItem("Tools/See1Studios/See1View/Open See1View", false, 0)]
         private static void Init()

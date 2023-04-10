@@ -1,7 +1,7 @@
 {
     "dataList": [
         {
-            "name": "Universal",
+            "name": "Default",
             "reframeToTarget": true,
             "recalculateBound": true,
             "rotSpeed": 3,
@@ -13,7 +13,7 @@
             "alphaAppliedImage": true,
             "imageSizeMultiplier": 1,
             "cameraType": 1,
-            "viewportMultiplier": 1,
+            "viewportMultiplier": 2,
             "wireLineColor": {
                 "r": 1.0,
                 "g": 1.0,
@@ -49,12 +49,12 @@
             "urpData": {
                 "renderPostProcessing": true,
                 "dithering": true,
-                "antialiasing": 1
+                "antialiasing": 0
             },
             "hdrpData": {
                 "renderPostProcessing": true,
                 "dithering": true,
-                "antialiasing": 2
+                "antialiasing": 0
             },
             "bgColor": {
                 "r": 0.3215686082839966,
@@ -72,549 +72,60 @@
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": 184.4063262939453,
-                    "y": 3.8905067443847658
+                    "x": 180.0,
+                    "y": 0.0
                 },
-                "distance": 3.161613702774048,
+                "distance": 3.4796409606933595,
                 "pivot": {
                     "x": 0.0,
                     "y": 0.8849430084228516,
                     "z": 0.010344117879867554
                 },
-                "fieldOfView": 36.0
-            },
-            "viewList": [
-                {
-                    "name": "",
-                    "rotation": {
-                        "x": 150.9627227783203,
-                        "y": -0.6534034013748169
-                    },
-                    "distance": 3.2126314640045168,
-                    "pivot": {
-                        "x": 0.0650855153799057,
-                        "y": 0.871579110622406,
-                        "z": -0.18828995525836945
-                    },
-                    "fieldOfView": 67.9999771118164
-                },
-                {
-                    "name": "",
-                    "rotation": {
-                        "x": 194.50694274902345,
-                        "y": 5.319412708282471
-                    },
-                    "distance": 2.8239598274230959,
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.8849430084228516,
-                        "z": 0.010344117879867554
-                    },
-                    "fieldOfView": 36.99998092651367
-                },
-                {
-                    "name": "",
-                    "rotation": {
-                        "x": 119.42440795898438,
-                        "y": -1.0941200256347657
-                    },
-                    "distance": 2.640765905380249,
-                    "pivot": {
-                        "x": 0.058147069066762927,
-                        "y": 0.829990804195404,
-                        "z": -0.011382503435015679
-                    },
-                    "fieldOfView": 41.0
-                }
-            ],
-            "lastLighting": {
-                "name": "",
-                "lightList": [
-                    {
-                        "position": {
-                            "x": 0.0,
-                            "y": 0.0
-                        },
-                        "rotation": {
-                            "x": 0.81693035364151,
-                            "y": 0.5030727386474609,
-                            "z": -0.09128300100564957,
-                            "w": 0.26685214042663576
-                        },
-                        "lightColor": {
-                            "r": 1.0,
-                            "g": 0.95686274766922,
-                            "b": 0.8392156958580017,
-                            "a": 1.0
-                        },
-                        "intensity": 1.0199999809265137
-                    },
-                    {
-                        "position": {
-                            "x": 0.0,
-                            "y": 0.0
-                        },
-                        "rotation": {
-                            "x": 0.7939266562461853,
-                            "y": -0.4983425736427307,
-                            "z": 0.12074892222881317,
-                            "w": -0.3267337381839752
-                        },
-                        "lightColor": {
-                            "r": 0.0,
-                            "g": 0.0,
-                            "b": 0.0,
-                            "a": 1.0
-                        },
-                        "intensity": 0.44999998807907107
-                    }
-                ],
-                "ambientSkyColor": {
-                    "r": 0.5,
-                    "g": 0.5,
-                    "b": 0.5,
-                    "a": 1.0
-                },
-                "cubemapPath": ""
-            },
-            "lightingList": [
-                {
-                    "name": "",
-                    "lightList": [
-                        {
-                            "position": {
-                                "x": 0.0,
-                                "y": 0.0
-                            },
-                            "rotation": {
-                                "x": 0.8571076989173889,
-                                "y": 0.35226917266845705,
-                                "z": 0.192191481590271,
-                                "w": 0.32300978899002077
-                            },
-                            "lightColor": {
-                                "r": 1.0,
-                                "g": 0.95686274766922,
-                                "b": 0.8392156958580017,
-                                "a": 1.0
-                            },
-                            "intensity": 1.0199999809265137
-                        },
-                        {
-                            "position": {
-                                "x": 0.0,
-                                "y": 0.0
-                            },
-                            "rotation": {
-                                "x": 0.6526059508323669,
-                                "y": -0.43326428532600405,
-                                "z": 0.32916149497032168,
-                                "w": -0.5272952318191528
-                            },
-                            "lightColor": {
-                                "r": 0.0,
-                                "g": 0.0,
-                                "b": 0.0,
-                                "a": 1.0
-                            },
-                            "intensity": 0.44999998807907107
-                        }
-                    ],
-                    "ambientSkyColor": {
-                        "r": 0.5,
-                        "g": 0.5,
-                        "b": 0.5,
-                        "a": 1.0
-                    },
-                    "cubemapPath": ""
-                },
-                {
-                    "name": "",
-                    "lightList": [
-                        {
-                            "position": {
-                                "x": 0.0,
-                                "y": 3.0
-                            },
-                            "rotation": {
-                                "x": 0.4082178771495819,
-                                "y": -0.23456968367099763,
-                                "z": 0.10938163101673126,
-                                "w": 0.8754261136054993
-                            },
-                            "lightColor": {
-                                "r": 1.0,
-                                "g": 0.95686274766922,
-                                "b": 0.8392156958580017,
-                                "a": 1.0
-                            },
-                            "intensity": 1.0
-                        }
-                    ],
-                    "ambientSkyColor": {
-                        "r": 0.21199999749660493,
-                        "g": 0.22699999809265138,
-                        "b": 0.2590000033378601,
-                        "a": 1.0
-                    },
-                    "cubemapPath": ""
-                }
-            ],
-            "viewportSizes": [
-                {
-                    "x": 512.0,
-                    "y": 512.0
-                },
-                {
-                    "x": 1024.0,
-                    "y": 1024.0
-                }
-            ],
-            "modelGroupList": [],
-            "steelList": [
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                },
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                },
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                },
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                },
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                },
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                },
-                {
-                    "clipPath": "Assets/ThirdPerson/Character/Animations/Stand--Idle.anim.fbx",
-                    "time": 3.915651559829712
-                }
-            ],
-            "modelCreateMode": 1,
-            "lastTargetPath": "",
-            "_lastTarget": {
-                "instanceID": 0
-            },
-            "cubemapPath": "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipelineResources/Material/DefaultSkybox.exr",
-            "profilePath": "Assets/ThirdPerson/Scenes/PlaygroundHQ/PostProcess Profile.asset",
-            "renderPipelinePath": "Assets/See1ViewURP.asset"
-        },
-        {
-            "name": "Builtin",
-            "reframeToTarget": true,
-            "recalculateBound": true,
-            "rotSpeed": 3,
-            "zoomSpeed": 3,
-            "panSpeed": 3,
-            "smoothFactor": 3,
-            "imageSaveMode": 0,
-            "openSavedImage": true,
-            "alphaAppliedImage": true,
-            "imageSizeMultiplier": 1,
-            "cameraType": 1,
-            "viewportMultiplier": 2,
-            "wireLineColor": {
-                "r": 1.0,
-                "g": 1.0,
-                "b": 1.0,
-                "a": 1.0
-            },
-            "wireFillColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 1.0
-            },
-            "wireThickness": 0.10000000149011612,
-            "wireUseDiscard": 1.0,
-            "planeShadowColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "enablePlaneShadows": true,
-            "heightFogColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 0.5
-            },
-            "enableHeightFog": true,
-            "heightFogHeight": 1.0,
-            "enableShadows": true,
-            "shadowBias": 0.009999999776482582,
-            "enablePostProcess": true,
-            "urpData": {
-                "renderPostProcessing": true,
-                "dithering": true,
-                "antialiasing": 0
-            },
-            "hdrpData": {
-                "renderPostProcessing": true,
-                "dithering": true,
-                "antialiasing": 0
-            },
-            "bgColor": {
-                "r": 0.3215686082839966,
-                "g": 0.3215686082839966,
-                "b": 0.3215686082839966,
-                "a": 1.0
-            },
-            "ambientSkyColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "clearFlag": 0,
-            "lastView": {
-                "name": "",
-                "rotation": {
-                    "x": 213.03416442871095,
-                    "y": 0.21215438842773438
-                },
-                "distance": 2.5798583030700685,
-                "pivot": {
-                    "x": 0.035167209804058078,
-                    "y": 0.5823808908462524,
-                    "z": -0.22482579946517945
-                },
-                "fieldOfView": 36.0
-            },
-            "viewList": [
-                {
-                    "name": "",
-                    "rotation": {
-                        "x": 178.79151916503907,
-                        "y": 1.9695143699645997
-                    },
-                    "distance": 2.171415090560913,
-                    "pivot": {
-                        "x": 0.035167209804058078,
-                        "y": 0.5823808908462524,
-                        "z": -0.22482579946517945
-                    },
-                    "fieldOfView": 36.0
-                }
-            ],
-            "lastLighting": {
-                "name": "",
-                "lightList": [
-                    {
-                        "position": {
-                            "x": 0.0,
-                            "y": 0.0
-                        },
-                        "rotation": {
-                            "x": 0.8571076989173889,
-                            "y": 0.35226917266845705,
-                            "z": 0.192191481590271,
-                            "w": 0.32300978899002077
-                        },
-                        "lightColor": {
-                            "r": 1.0,
-                            "g": 0.95686274766922,
-                            "b": 0.8392156958580017,
-                            "a": 1.0
-                        },
-                        "intensity": 1.0199999809265137
-                    },
-                    {
-                        "position": {
-                            "x": 0.0,
-                            "y": 0.0
-                        },
-                        "rotation": {
-                            "x": 0.6526059508323669,
-                            "y": -0.43326428532600405,
-                            "z": 0.32916149497032168,
-                            "w": -0.5272952318191528
-                        },
-                        "lightColor": {
-                            "r": 0.0,
-                            "g": 0.0,
-                            "b": 0.0,
-                            "a": 1.0
-                        },
-                        "intensity": 0.44999998807907107
-                    }
-                ],
-                "ambientSkyColor": {
-                    "r": 0.5,
-                    "g": 0.5,
-                    "b": 0.5,
-                    "a": 1.0
-                },
-                "cubemapPath": ""
-            },
-            "lightingList": [
-                {
-                    "name": "",
-                    "lightList": [
-                        {
-                            "position": {
-                                "x": 0.0,
-                                "y": 0.0
-                            },
-                            "rotation": {
-                                "x": 0.8571076989173889,
-                                "y": 0.35226917266845705,
-                                "z": 0.192191481590271,
-                                "w": 0.32300978899002077
-                            },
-                            "lightColor": {
-                                "r": 1.0,
-                                "g": 0.95686274766922,
-                                "b": 0.8392156958580017,
-                                "a": 1.0
-                            },
-                            "intensity": 1.0199999809265137
-                        },
-                        {
-                            "position": {
-                                "x": 0.0,
-                                "y": 0.0
-                            },
-                            "rotation": {
-                                "x": 0.6526059508323669,
-                                "y": -0.43326428532600405,
-                                "z": 0.32916149497032168,
-                                "w": -0.5272952318191528
-                            },
-                            "lightColor": {
-                                "r": 0.0,
-                                "g": 0.0,
-                                "b": 0.0,
-                                "a": 1.0
-                            },
-                            "intensity": 0.44999998807907107
-                        }
-                    ],
-                    "ambientSkyColor": {
-                        "r": 0.5,
-                        "g": 0.5,
-                        "b": 0.5,
-                        "a": 1.0
-                    },
-                    "cubemapPath": ""
-                }
-            ],
-            "viewportSizes": [
-                {
-                    "x": 1024.0,
-                    "y": 1024.0
-                }
-            ],
-            "modelGroupList": [],
-            "steelList": [],
-            "modelCreateMode": 0,
-            "lastTargetPath": "",
-            "_lastTarget": {
-                "instanceID": 0
-            },
-            "cubemapPath": "",
-            "profilePath": "Assets/See1View.asset",
-            "renderPipelinePath": ""
-        },
-        {
-            "name": "Test",
-            "reframeToTarget": true,
-            "recalculateBound": true,
-            "rotSpeed": 3,
-            "zoomSpeed": 3,
-            "panSpeed": 3,
-            "smoothFactor": 3,
-            "imageSaveMode": 0,
-            "openSavedImage": true,
-            "alphaAppliedImage": true,
-            "imageSizeMultiplier": 1,
-            "cameraType": 1,
-            "viewportMultiplier": 2,
-            "wireLineColor": {
-                "r": 1.0,
-                "g": 1.0,
-                "b": 1.0,
-                "a": 1.0
-            },
-            "wireFillColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 1.0
-            },
-            "wireThickness": 0.10000000149011612,
-            "wireUseDiscard": 1.0,
-            "planeShadowColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "enablePlaneShadows": true,
-            "heightFogColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 0.5
-            },
-            "enableHeightFog": true,
-            "heightFogHeight": 1.0,
-            "enableShadows": true,
-            "shadowBias": 0.009999999776482582,
-            "enablePostProcess": true,
-            "urpData": {
-                "renderPostProcessing": true,
-                "dithering": true,
-                "antialiasing": 0
-            },
-            "hdrpData": {
-                "renderPostProcessing": true,
-                "dithering": true,
-                "antialiasing": 0
-            },
-            "bgColor": {
-                "r": 0.3215686082839966,
-                "g": 0.3215686082839966,
-                "b": 0.3215686082839966,
-                "a": 1.0
-            },
-            "ambientSkyColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "clearFlag": 0,
-            "lastView": {
-                "name": "",
-                "rotation": {
-                    "x": 0.0,
-                    "y": 0.0
-                },
-                "distance": 0.0,
-                "pivot": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0
-                },
-                "fieldOfView": 0.0
+                "fieldOfView": 30.0
             },
             "viewList": [],
             "lastLighting": {
                 "name": "",
-                "lightList": [],
+                "lightList": [
+                    {
+                        "position": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "rotation": {
+                            "x": 0.0,
+                            "y": -1.0,
+                            "z": 0.0,
+                            "w": -4.371138828673793e-8
+                        },
+                        "lightColor": {
+                            "r": 1.0,
+                            "g": 1.0,
+                            "b": 1.0,
+                            "a": 1.0
+                        },
+                        "intensity": 1.0
+                    },
+                    {
+                        "position": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "rotation": {
+                            "x": 0.3162142038345337,
+                            "y": -0.1725243479013443,
+                            "z": 0.9323148727416992,
+                            "w": 0.032140158116817477
+                        },
+                        "lightColor": {
+                            "r": 1.0,
+                            "g": 1.0,
+                            "b": 1.0,
+                            "a": 1.0
+                        },
+                        "intensity": 1.0
+                    }
+                ],
                 "ambientSkyColor": {
                     "r": 0.5,
                     "g": 0.5,
@@ -633,8 +144,8 @@
                 "instanceID": 0
             },
             "cubemapPath": "",
-            "profilePath": "",
-            "renderPipelinePath": ""
+            "profilePath": "Assets/ThirdPerson/Scenes/PlaygroundHQ/Global PostProcess Profile.asset",
+            "renderPipelinePath": "Assets/See1ViewURP.asset"
         }
     ]
 }

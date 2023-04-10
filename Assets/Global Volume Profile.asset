@@ -67,6 +67,7 @@ MonoBehaviour:
   components:
   - {fileID: -1389910281288698596}
   - {fileID: 7763668210606859797}
+  - {fileID: 2633347962184125375}
 --- !u!114 &2633347962184125375
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -87,7 +88,7 @@ MonoBehaviour:
     min: 0
     max: 360
   skyIntensityMode:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   exposure:
     m_OverrideState: 0
@@ -117,8 +118,8 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 0
   hdriSky:
-    m_OverrideState: 0
-    m_Value: {fileID: 0}
+    m_OverrideState: 1
+    m_Value: {fileID: 8900000, guid: 7e3f1677bc1aead4fb8791998078dcec, type: 3}
   enableBackplate:
     m_OverrideState: 0
     m_Value: 0
