@@ -43,6 +43,10 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
+using ICSharpCode.NRefactory.Ast;
+using static See1Studios.See1View.Editor.See1View.AnimationPlayer;
+using CodiceApp.EventTracking;
+using Codice.Client.BaseCommands.BranchExplorer;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -938,16 +942,18 @@ namespace See1Studios.See1View.Editor
         }
         // recent list
         [Serializable]
-        internal class Recent
+        internal class Recent<T> where T : UnityEngine.Object
         {
             private int _maxSize = 10;
             private List<string> _list = new List<string>();
             public int size { get { return _list.Count; } }
-            private string key = "see1view.recent";
+            private string key = "see1view.recent.";
+            public Action<T> onClickEvent;
 
             public Recent(int maxSize)
             {
                 this._maxSize = maxSize;
+                this.key += typeof(T).ToString().ToLower();
                 Load();
             }
 
@@ -964,13 +970,9 @@ namespace See1Studios.See1View.Editor
                 Save();
             }
 
-            public string Get(int index)
+            public T Get(int index)
             {
-                if (index < _list.Count)
-                {
-                    return _list[index];
-                }
-                return string.Empty;
+                return (T)AssetDatabase.LoadAssetAtPath<T>(_list[index]);
             }
 
             internal string GetName(int index)
@@ -1013,6 +1015,30 @@ namespace See1Studios.See1View.Editor
                 EditorPrefs.SetString(key, temp);
             }
 
+            public void OnGUI()
+            {
+                using (EditorHelper.Colorize.Do(Color.white, Color.red))
+                {
+                    if (GUILayout.Button("Clear", EditorStyles.miniButton))
+                    {
+                        Clear();
+                    }
+                }
+                for (int i =size - 1; i > 0; --i)
+                {
+                    {
+                        if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton, GUILayout.Width(246)))
+                        {
+                            var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
+                            if (obj)
+                            {
+                                onClickEvent?.Invoke(obj);
+                            }
+                        }
+                    }
+                }
+            }
+
         }
         // all configuration and settings
         [Serializable]
@@ -1049,7 +1075,7 @@ namespace See1Studios.See1View.Editor
 
             public static string path = "Assets/Editor/See1ViewSettings.json";
 
-            public static readonly string key = string.Format("{0}.{1}", "com.see1.See1View.settings", GetProjectName().ToLower());
+            public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view.settings", GetProjectName().ToLower());
             public static UnityEvent onDataChanged = new UnityEvent();
             static bool isAddName;
             static bool isEditName;
@@ -3562,14 +3588,7 @@ namespace See1Studios.See1View.Editor
                 {
                     if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
                     {
-                        foreach (var info in clipInfoList)
-                        {
-                            info.enabled = false;
-                        }
-
-                        clipInfoList[index].enabled = true;
-                        RefreshPlayList();
-                        Play();
+                        PlayInstant(index);
                     }
                     float rectWidth = position.width;
                     float rectHeight = position.height;
@@ -3650,6 +3669,33 @@ namespace See1Studios.See1View.Editor
                     reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
                 };
                 reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
+            }
+
+            public void PlayInstant(int index)
+            {
+                foreach (var info in clipInfoList)
+                {
+                    info.enabled = false;
+                }
+
+                clipInfoList[index].enabled = true;
+                RefreshPlayList();
+                Play();
+            }
+
+            public void PlayInstant(AnimationClip clip)
+            {
+                if(clipInfoList.Where(x=>x.clip == clip).Any())
+                {
+                    foreach (var info in clipInfoList)
+                    {
+                        info.enabled = false;
+                    }
+                    var index = clipInfoList.IndexOf(clipInfoList.Where(x => x.clip == clip).FirstOrDefault());
+                    clipInfoList[index].enabled = true;
+                    RefreshPlayList();
+                    Play();
+                }
             }
 
             void InitAnimatorAndClips(Animator animator)
@@ -5205,7 +5251,8 @@ namespace See1Studios.See1View.Editor
         HDAdditionalReflectionData _hdrpReflection;
         #endif
 
-        Recent _recent;
+        Recent<GameObject> _recentModel;
+        Recent<AnimationClip> _recentAnimation;
         //Info
         GUIContent _viewInfo;
         readonly StringBuilder _sb0 = new StringBuilder();
@@ -5464,6 +5511,10 @@ namespace See1Studios.See1View.Editor
         //                //_fade.target = false;
         //            }
         //        }
+        void AddModel(GameObject src)
+        {
+            AddModel(src, true);
+        }
 
         //메인오브젝트 이외에 하이어라키를 열어 강제로 오브젝트를 추가할 용도.
         void AddModel(GameObject src, bool isMain = true)
@@ -5499,12 +5550,12 @@ namespace See1Studios.See1View.Editor
                 }
 
                 Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? src.name : _targetInfo.assetPath, false);
-                SetAnimation(_mainTarget, true);
+                InitAnimation(_mainTarget, true);
                 ApplyModelCommandBuffers();
                 Repaint();
             }
             if (isMain && settings.current.reframeToTarget) FitTargetToViewport();
-            _recent.Add(_targetInfo.assetPath);
+            _recentModel.Add(_targetInfo.assetPath);
         }
 
         void RemoveModel(GameObject instance)
@@ -5523,9 +5574,24 @@ namespace See1Studios.See1View.Editor
             }
 
             Notice.Log(string.Format("{0} Removed", name), false);
-            SetAnimation(_mainTarget, true);
+            InitAnimation(_mainTarget, true);
             ApplyModelCommandBuffers();
             Repaint();
+        }
+        //Shortcut for add animation quickly
+        private void AddAnimationAndPlay(AnimationClip clip)
+        {
+
+            AddAnimation(clip,true);
+        }
+        private void AddAnimation(AnimationClip clip, bool instantPlay=false)
+        {
+            if (_playerList.Count > 0)
+            {
+                _playerList[0].AddClip(clip);
+                _recentAnimation.Add(AssetDatabase.GetAssetPath(clip));
+                if (instantPlay) _playerList[0].PlayInstant(clip);
+            }
         }
 
         void Create()
@@ -5622,7 +5688,10 @@ namespace See1Studios.See1View.Editor
             ApplyBackground();
             ApplyReflectionEnvironment();
             ApplyLighting(settings.current.lastLighting);
-            _recent = new Recent(10);
+            _recentModel = new Recent<GameObject>(10);
+            _recentModel.onClickEvent += AddModel;
+            _recentAnimation = new Recent<AnimationClip>(10);
+            _recentAnimation.onClickEvent += AddAnimationAndPlay;
         }
 
         private void InitializePipeline()
@@ -6100,7 +6169,7 @@ namespace See1Studios.See1View.Editor
 
 #region Animation
 
-        public void SetAnimation(GameObject root, bool reset)
+        public void InitAnimation(GameObject root, bool reset)
         {
             if (!root)
             {
@@ -6140,7 +6209,7 @@ namespace See1Studios.See1View.Editor
                 }
                 else
                 {
-                    //애니메이터가 없어도 기본 하나 만들어줌.
+                    //Create Default Animator Component
                     AnimationPlayer player = new AnimationPlayer();
                     player.AddActor(root, true);
                     player.onStopPlaying = onStopPlaying;
@@ -6173,9 +6242,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-#endregion
+        #endregion
 
-#region GUI
+        #region GUI
 
         void OnGUI_Top(Rect r)
         {
@@ -6269,6 +6338,50 @@ namespace See1Studios.See1View.Editor
                         menu.ShowAsContext();
                     }
 
+                    if (GUILayout.Button("Model", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Pick"), false,
+                            () =>
+                            {
+                                int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
+                                EditorGUIUtility.ShowObjectPicker<GameObject>(null, false, string.Empty, currentPickerWindow);
+                            });
+                        menu.AddSeparator("");
+                        for (var i = 0; i < _recentModel.size; i++)
+                        {
+                            var recent = _recentModel.Get(i);
+                            if (recent)
+                            {
+                                menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), recent.name)), false,
+                                    x => { AddModel(x as GameObject); }, recent);
+                            }
+                        }
+
+                        menu.ShowAsContext();
+                    }
+                    if (GUILayout.Button("Animation", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Pick"), false,
+                            () =>
+                            {
+                                int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
+                                EditorGUIUtility.ShowObjectPicker<AnimationClip>(null, false, string.Empty, currentPickerWindow);
+                            });
+                        menu.AddSeparator("");
+                        for (var i = 0; i < _recentAnimation.size; i++)
+                        {
+                            var recent = _recentAnimation.Get(i);
+                            if (recent)
+                            {
+                                menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), recent.name)), false,
+                                    x => { AddAnimationAndPlay(x as AnimationClip); }, recent);
+                            }
+                        }
+
+                        menu.ShowAsContext();
+                    }
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
                         if (GUILayout.Button("Save", EditorStyles.toolbarButton))
@@ -6276,13 +6389,32 @@ namespace See1Studios.See1View.Editor
                             RenderAndSaveFile();
                         }
                     }
+                    //Handle Picker
+                    if (Event.current.commandName == "ObjectSelectorUpdated")
+                    {
+                        var recentModel = EditorGUIUtility.GetObjectPickerObject() as GameObject;
+                        var recentAnimation = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
+                        if (recentModel)
+                        {
+                            AddModel(recentModel);
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
+                        }
+
+                        if (recentAnimation)
+                        {
+                            AddAnimationAndPlay(recentAnimation);
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+
+                        }
+                    }
                     GUILayout.Label(string.Format("{0}-{1}", PlayerSettings.colorSpace.ToString(), currentData.renderPipelineMode.ToString(), EditorStyles.miniLabel));
                     GUILayout.FlexibleSpace();
                     See1ViewSettings.OnManageGUI();
                 }
             }
         }
+        
 
         void OnGUI_Bottom(Rect r)
         {
@@ -7227,27 +7359,7 @@ namespace See1Studios.See1View.Editor
 
             EditorHelper.FoldGroup.Do("Recent", true, () =>
             {
-                using (EditorHelper.Colorize.Do(Color.white, Color.red))
-                {
-                    if (GUILayout.Button("Clear", EditorStyles.miniButton))
-                    {
-                        _recent.Clear();
-                    }
-                }
-                for (int i = _recent.size - 1; i > 0; --i)
-                {
-                    {
-                        if (GUILayout.Button(new GUIContent(_recent.GetName(i), _recent.Get(i)), EditorStyles.miniButton, GUILayout.Width(246)))
-                        {
-                            var go = AssetDatabase.LoadAssetAtPath<GameObject>(_recent.Get(i));
-                            if (go)
-                            {
-                                _prefab = go;
-                                AddModel(_prefab);
-                            }
-                        }
-                    }
-                }
+                _recentModel.OnGUI();
             });
 
             EditorHelper.FoldGroup.Do("Info", true, () =>
@@ -7335,6 +7447,10 @@ namespace See1Studios.See1View.Editor
                         break;
                 }
             }
+            EditorHelper.FoldGroup.Do("Recent", true, () =>
+            {
+                _recentAnimation.OnGUI();
+            });
             EditorHelper.FoldGroup.Do("Steel", false, () =>
             {
                 if (GUILayout.Button("Add Current"))
@@ -7371,6 +7487,8 @@ namespace See1Studios.See1View.Editor
                 }
             });
         }
+
+
 
         void OnGUI_AnimationControl(Rect r)
         {
