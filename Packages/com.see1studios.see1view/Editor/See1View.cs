@@ -802,7 +802,7 @@ namespace See1Studios.See1View.Editor
             public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
             public Color ambientSkyColor = Color.gray;
             public ClearFlags clearFlag = ClearFlags.Color;
-            public View lastView = new View(new Vector2(180f,0f), 0f, Vector3.zero, 30f);
+            public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
             public List<View> viewList = new List<View>();
             public Lighting lastLighting = new Lighting();
             public List<Lighting> lightingList = new List<Lighting>();
@@ -871,7 +871,7 @@ namespace See1Studios.See1View.Editor
                     profilePath = AssetDatabase.GetAssetPath(value);
                 }
             }
-            
+
 #endif
             //Scriptable RenderPipeline Support.
             public string renderPipelinePath = string.Empty;
@@ -959,7 +959,7 @@ namespace See1Studios.See1View.Editor
                 {
                     if (_list.Count > _maxSize)
                     {
-                        _list = _list.GetRange(1, _list.Count-1);
+                        _list = _list.GetRange(1, _list.Count - 1);
                     }
                     _list.Add(path);
                 }
@@ -1020,7 +1020,7 @@ namespace See1Studios.See1View.Editor
                         Clear();
                     }
                 }
-                for (int i =size - 1; i > 0; --i)
+                for (int i = size - 1; i > 0; --i)
                 {
                     {
                         if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton, GUILayout.Width(246)))
@@ -3681,7 +3681,7 @@ namespace See1Studios.See1View.Editor
 
             public void PlayInstant(AnimationClip clip)
             {
-                if(clipInfoList.Where(x=>x.clip == clip).Any())
+                if (clipInfoList.Where(x => x.clip == clip).Any())
                 {
                     foreach (var info in clipInfoList)
                     {
@@ -5236,16 +5236,16 @@ namespace See1Studios.See1View.Editor
         bool _autoRotateLight;
         int _cameraAutoRotationSpeed;
         int _lightAutoRotationSpeed;
-        
-        #if URP
+
+#if URP
         UniversalAdditionalCameraData _urpCamera;
-        #endif
-        #if HDRP
+#endif
+#if HDRP
         HDAdditionalCameraData _hdrpCamera;
         HDAdditionalLightData _hdrpLight0;
         HDAdditionalLightData _hdrpLight1;
         HDAdditionalReflectionData _hdrpReflection;
-        #endif
+#endif
 
         Recent<GameObject> _recentModel;
         Recent<AnimationClip> _recentAnimation;
@@ -5585,9 +5585,9 @@ namespace See1Studios.See1View.Editor
         private void AddAnimationAndPlay(AnimationClip clip)
         {
 
-            AddAnimation(clip,true);
+            AddAnimation(clip, true);
         }
-        private void AddAnimation(AnimationClip clip, bool instantPlay=false)
+        private void AddAnimation(AnimationClip clip, bool instantPlay = false)
         {
             if (_playerList.Count > 0)
             {
@@ -6080,9 +6080,9 @@ namespace See1Studios.See1View.Editor
                     postVolume.profile = currentData.profile;
                 }
                 Notice.Log("Post Process Initialized");
-                #endif
+#endif
             }
-            #if URP || HDRP
+#if URP || HDRP
             else
             {
                 volume = _preview.camera.gameObject.GetComponent<Volume>();
@@ -6092,12 +6092,12 @@ namespace See1Studios.See1View.Editor
                     volume.isGlobal = true;
                     volume.profile = currentData.volumeProfile;
                 }
-                #if URP
+#if URP
                 _urpCamera.renderPostProcessing = currentData.enablePostProcess;
-                #endif
+#endif
                 Notice.Log("Volume Initialized");
             }
-            #endif
+#endif
         }
 
         Texture2D RenderToTexture(int multiplyer = 1, bool alpha = false)
@@ -6191,9 +6191,9 @@ namespace See1Studios.See1View.Editor
             _guiEnabled = false;
         }
 
-#endregion
+        #endregion
 
-#region Animation
+        #region Animation
 
         public void InitAnimation(GameObject root, bool reset)
         {
@@ -6244,9 +6244,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-#endregion
+        #endregion
 
-#region GUIContents
+        #region GUIContents
 
         public class GUIContents
         {
@@ -6509,7 +6509,7 @@ namespace See1Studios.See1View.Editor
                 }
             }
         }
-        
+
 
         void OnGUI_Bottom(Rect r)
         {
@@ -7223,7 +7223,7 @@ namespace See1Studios.See1View.Editor
                     if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
                     {
 #if UNITY_POST_PROCESSING_STACK_V2
-                            currentData.profile = (PostProcessProfile)EditorGUILayout.ObjectField("", currentData.profile, typeof(PostProcessProfile), false);
+                        currentData.profile = (PostProcessProfile)EditorGUILayout.ObjectField("", currentData.profile, typeof(PostProcessProfile), false);
 #else
                         EditorGUILayout.HelpBox("No Post Processing Feature found.", MessageType.None);
 #endif
@@ -7559,7 +7559,7 @@ namespace See1Studios.See1View.Editor
                     if (_playerList.Count > 0)
                     {
                         var player = _playerList[0];
-                        if (player.playList.Count>0)
+                        if (player.playList.Count > 0)
                         {
                             var steel = new Steel(player.currentClipInfo.clip, player.time);
                             currentData.steelList.Add(steel);
@@ -7579,7 +7579,7 @@ namespace See1Studios.See1View.Editor
                         {
                             var player = _playerList[0];
                         }
-                        if (GUILayout.Button("-",EditorStyles.miniButton, GUILayout.Width(30)))
+                        if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.Width(30)))
                         {
                             currentData.steelList.Remove(steel);
                         }
@@ -7984,9 +7984,9 @@ namespace See1Studios.See1View.Editor
                 }
             }
         }
-#endregion
+        #endregion
 
-#region Gizmos
+        #region Gizmos
         void DrawWorldAxis()
         {
             Color color = Handles.color;
@@ -8048,9 +8048,9 @@ namespace See1Studios.See1View.Editor
             Handles.color = color;
         }
 
-#endregion
+        #endregion
 
-#region Input
+        #region Input
 
         void ProcessInput()
         {
@@ -8327,9 +8327,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-#endregion
+        #endregion
 
-#region Utils
+        #region Utils
 
         public static List<GameObject> FindAllObjectsInScene()
         {
@@ -8577,9 +8577,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-#endregion
+        #endregion
 
-#region Reflection
+        #region Reflection
 
         private Scene GetPreviewScene()
         {
@@ -8620,7 +8620,7 @@ namespace See1Studios.See1View.Editor
             return shader;
         }
 
-#endregion
+        #endregion
 
         [MenuItem("Tools/See1Studios/See1View/Open See1View", false, 0)]
         private static void Init()
