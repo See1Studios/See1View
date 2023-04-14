@@ -43,10 +43,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using ICSharpCode.NRefactory.Ast;
-using static See1Studios.See1View.Editor.See1View.AnimationPlayer;
-using CodiceApp.EventTracking;
-using Codice.Client.BaseCommands.BranchExplorer;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -5253,6 +5249,13 @@ namespace See1Studios.See1View.Editor
 
         Recent<GameObject> _recentModel;
         Recent<AnimationClip> _recentAnimation;
+        Recent<RenderPipelineAsset> _recentRPAsset;
+#if UNITY_POST_PROCESSING_STACK_V2
+        Recent<PostProcessProfile> _recentPostProcessProfile;
+#endif
+#if URP || HDRP
+        Recent<VolumeProfile> _recentVolumeProfile;
+#endif
         //Info
         GUIContent _viewInfo;
         readonly StringBuilder _sb0 = new StringBuilder();
@@ -5692,6 +5695,14 @@ namespace See1Studios.See1View.Editor
             _recentModel.onClickEvent += AddModel;
             _recentAnimation = new Recent<AnimationClip>(10);
             _recentAnimation.onClickEvent += AddAnimationAndPlay;
+#if UNITY_POST_PROCESSING_STACK_V2
+            _recentPostProcessProfile = new Recent<PostProcessProfile>(10);
+            _recentPostProcessProfile.onClickEvent += SetPostProcessProfile;
+#endif
+#if URP || HDRP
+            _recentVolumeProfile = new Recent<VolumeProfile>(10);
+            _recentVolumeProfile.onClickEvent += SetVolumeProfile;
+#endif
         }
 
         private void InitializePipeline()
@@ -6018,7 +6029,22 @@ namespace See1Studios.See1View.Editor
                     break;
             }
         }
-
+#if UNITY_POST_PROCESSING_STACK_V2
+        void SetPostProcessProfile(PostProcessProfile profile)
+        {
+            currentData.profile = profile;
+            InitPostProcess();
+            _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(profile));
+        }
+#endif
+#if URP || HDRP
+        void SetVolumeProfile(VolumeProfile profile)
+        {
+            currentData.volumeProfile = profile;
+            InitPostProcess();
+            _recentVolumeProfile.Add(AssetDatabase.GetAssetPath(profile));
+        }
+#endif
         void InitPostProcess()
         {
             //Cleanup Firt.
@@ -6382,9 +6408,61 @@ namespace See1Studios.See1View.Editor
 
                         menu.ShowAsContext();
                     }
+                    if (GUILayout.Button("Post Process", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Pick"), false,
+                            () =>
+                            {
+                                int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
+                                if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+                                {
+#if UNITY_POST_PROCESSING_STACK_V2
+                                    EditorGUIUtility.ShowObjectPicker<PostProcessProfile>(null, false, string.Empty, currentPickerWindow);
+#endif
+                                }
+                                else
+                                {
+#if URP || HDRP
+                                    EditorGUIUtility.ShowObjectPicker<VolumeProfile>(null, false, string.Empty, currentPickerWindow);
+#endif
+                                }
+                            });
+                        menu.AddSeparator("");
+
+                        if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+                        {
+#if UNITY_POST_PROCESSING_STACK_V2
+                            for (var i = 0; i < _recentPostProcessProfile.size; i++)
+                            {
+                                var recent = _recentPostProcessProfile.Get(i);
+                                if (recent)
+                                {
+                                    menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), recent.name)), false,
+                                        x => { SetPostProcessProfile((PostProcessProfile)x); }, recent);
+                                }
+                            }
+#endif
+                        }
+                        else
+                        {
+#if URP || HDRP
+                            for (var i = 0; i < _recentVolumeProfile.size; i++)
+                            {
+                                var recent = _recentVolumeProfile.Get(i);
+                                if (recent)
+                                {
+                                    menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), recent.name)), false,
+                                        x => { SetVolumeProfile((VolumeProfile)x); }, recent);
+                                }
+                            }
+#endif
+                        }
+                        menu.ShowAsContext();
+                    }
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        if (GUILayout.Button("Save", EditorStyles.toolbarButton))
+                        if (GUILayout.Button("Render", EditorStyles.toolbarButton))
                         {
                             RenderAndSaveFile();
                         }
@@ -6393,7 +6471,6 @@ namespace See1Studios.See1View.Editor
                     if (Event.current.commandName == "ObjectSelectorUpdated")
                     {
                         var recentModel = EditorGUIUtility.GetObjectPickerObject() as GameObject;
-                        var recentAnimation = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
                         if (recentModel)
                         {
                             AddModel(recentModel);
@@ -6401,11 +6478,29 @@ namespace See1Studios.See1View.Editor
 
                         }
 
+                        var recentAnimation = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
                         if (recentAnimation)
                         {
                             AddAnimationAndPlay(recentAnimation);
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
+                        }
+#if UNITY_POST_PROCESSING_STACK_V2
+                        var recentPostProfile = EditorGUIUtility.GetObjectPickerObject() as PostProcessProfile;
+                        if (recentPostProfile)
+                        {
+                            SetPostProcessProfile(recentPostProfile);
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+
+                        }
+#endif
+#if URP || HDRP
+                        var recentVolumeProfile = EditorGUIUtility.GetObjectPickerObject() as VolumeProfile;
+                        if (recentVolumeProfile)
+                        {
+                            SetVolumeProfile(recentVolumeProfile);
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+#endif
                         }
                     }
                     GUILayout.Label(string.Format("{0}-{1}", PlayerSettings.colorSpace.ToString(), currentData.renderPipelineMode.ToString(), EditorStyles.miniLabel));
@@ -6743,7 +6838,7 @@ namespace See1Studios.See1View.Editor
 
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        if (GUILayout.Button("Save", GUILayout.Width(60), GUILayout.Height(48)))
+                        if (GUILayout.Button("Render", GUILayout.Width(60), GUILayout.Height(48)))
                         {
                             RenderAndSaveFile();
                         }
@@ -7143,6 +7238,12 @@ namespace See1Studios.See1View.Editor
                     if (check.changed)
                     {
                         InitPostProcess();
+#if UNITY_POST_PROCESSING_STACK_V2
+                        _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(currentData.profile));
+#endif
+#if URP || HDRP
+                        _recentVolumeProfile.Add(AssetDatabase.GetAssetPath(currentData.volumeProfile));
+#endif
                     }
                 }
             });
