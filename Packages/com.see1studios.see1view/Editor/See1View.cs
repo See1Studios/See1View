@@ -43,6 +43,7 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
+using static See1Studios.See1View.Editor.See1View.Lighting;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -422,6 +423,11 @@ namespace See1Studios.See1View.Editor
             }
         }
 
+        public class CubeTextBuilder
+        {
+
+
+        }
         public class Shaders
         {
             private static Shader _heightFog;
@@ -1611,33 +1617,108 @@ namespace See1Studios.See1View.Editor
         // override rendersetting in scope
         class RenderSettingsOverrider : IDisposable
         {
-            private AmbientMode _ambientMode;
-            private Color _ambientSkyColor;
-            private Material _skybox;
-            Color _ambientEquatorColor;
-            Color _ambientGroundColor;
-            float _ambientIntensity;
-            Color _ambientLight;
-            SphericalHarmonicsL2 _ambientProbe;
-            Cubemap _customReflection;
-            DefaultReflectionMode _defaultReflectionMode;
-            int defaultReflectionResolution;
+            [Serializable]
+            public class RenderSettingsData
+            {
+                public bool fog = false;
+                public float fogStartDistance = 0f;
+                public float fogEndDistance = 300f;
+                public FogMode fogMode = FogMode.ExponentialSquared;
+                public Color fogColor = Color.gray;
+                public float fogDensity = 0.01f;
+                public AmbientMode ambientMode = AmbientMode.Skybox;
+                public Color ambientSkyColor = new Color(0.212f, 0.227f, 0.259f, 1.000f);
+                public Color ambientEquatorColor = new Color(0.114f, 0.125f, 0.133f, 1.000f);
+                public Color ambientGroundColor = new Color(0.047f, 0.043f, 0.035f, 1.000f);
+                public float ambientIntensity = 1f;
+                public Color ambientLight = new Color(0.212f, 0.227f, 0.259f, 1.000f);
+                public Color subtractiveShadowColor = new Color(0.420f, 0.478f, 0.627f, 1.000f);
+                public Material skybox =null;
+                public Light sun = null;
+                public SphericalHarmonicsL2 ambientProbe = new SphericalHarmonicsL2();
+                public Cubemap customReflection = null;
+                public float reflectionIntensity = 1f;
+                public int reflectionBounces = 1;
+                public DefaultReflectionMode defaultReflectionMode = DefaultReflectionMode.Skybox;
+                public int defaultReflectionResolution = 128;
+                public float haloStrength = 0.5f;
+                public float flareStrength = 1f;
+                public float flareFadeSpeed = 3f;
+
+                public void CopyToRenderSettings()
+                {
+                    RenderSettings.fog = fog;
+                    RenderSettings.fogDensity = fogDensity;
+                    RenderSettings.fogColor = fogColor;
+                    RenderSettings.skybox = skybox;
+                    RenderSettings.sun = sun;
+                    RenderSettings.ambientIntensity = ambientIntensity;
+                    RenderSettings.ambientLight = ambientLight;
+                    RenderSettings.ambientMode = ambientMode;
+                    RenderSettings.customReflection = customReflection;
+                    RenderSettings.fogMode = fogMode;
+                    RenderSettings.haloStrength = haloStrength;
+                    RenderSettings.reflectionBounces = reflectionBounces;
+                    RenderSettings.reflectionIntensity = reflectionIntensity;
+                    RenderSettings.ambientEquatorColor = ambientEquatorColor;
+                    RenderSettings.ambientGroundColor = ambientGroundColor;
+                    RenderSettings.ambientSkyColor = ambientSkyColor;
+                    RenderSettings.defaultReflectionMode = defaultReflectionMode;
+                    RenderSettings.defaultReflectionResolution = defaultReflectionResolution;
+                    RenderSettings.flareFadeSpeed = flareFadeSpeed;
+                    RenderSettings.fogEndDistance = fogEndDistance;
+                    RenderSettings.fogStartDistance = fogStartDistance;
+                    RenderSettings.subtractiveShadowColor = subtractiveShadowColor;
+                }
+
+                public void CopyFromRenderSettings()
+                {
+                    fog = RenderSettings.fog = fog;
+                    fogDensity = RenderSettings.fogDensity;
+                    fogColor =  RenderSettings.fogColor;
+                    skybox =  RenderSettings.skybox;
+                    sun =  RenderSettings.sun ;
+                    ambientIntensity =  RenderSettings.ambientIntensity ;
+                    ambientLight =  RenderSettings.ambientLight ;
+                    ambientMode =  RenderSettings.ambientMode ;
+                    customReflection =  (Cubemap)RenderSettings.customReflection ;
+                    fogMode =  RenderSettings.fogMode ;
+                    haloStrength =  RenderSettings.haloStrength ;
+                    reflectionBounces =  RenderSettings.reflectionBounces ;
+                    reflectionIntensity =  RenderSettings.reflectionIntensity ;
+                    ambientEquatorColor =  RenderSettings.ambientEquatorColor ;
+                    ambientGroundColor =  RenderSettings.ambientGroundColor ;
+                    ambientSkyColor =  RenderSettings.ambientSkyColor ;
+                    defaultReflectionMode =  RenderSettings.defaultReflectionMode ;
+                    defaultReflectionResolution =  RenderSettings.defaultReflectionResolution ;
+                    flareFadeSpeed =  RenderSettings.flareFadeSpeed ;
+                    fogEndDistance =  RenderSettings.fogEndDistance ;
+                    fogStartDistance =  RenderSettings.fogStartDistance ;
+                    subtractiveShadowColor =  RenderSettings.subtractiveShadowColor ;
+                }
+            }
+
+            RenderSettingsData savedRenderSettings = new RenderSettingsData();
 
             public RenderSettingsOverrider(AmbientMode ambientMode, Color ambientSkyColor, Material skybox)
             {
-                _ambientMode = RenderSettings.ambientMode;
-                _ambientSkyColor = RenderSettings.ambientSkyColor;
-                _skybox = RenderSettings.skybox;
+                savedRenderSettings.ambientMode = RenderSettings.ambientMode;
+                savedRenderSettings.ambientSkyColor = RenderSettings.ambientSkyColor;
+                savedRenderSettings.skybox = RenderSettings.skybox;
                 RenderSettings.skybox = skybox;
                 RenderSettings.ambientMode = AmbientMode.Flat;
                 RenderSettings.ambientSkyColor = ambientSkyColor;
             }
 
+            public RenderSettingsOverrider(RenderSettingsData c)
+            {
+                savedRenderSettings.CopyFromRenderSettings(); //backup
+                c.CopyToRenderSettings();
+            }
+
             public void Dispose()
             {
-                RenderSettings.ambientMode = _ambientMode;
-                RenderSettings.ambientSkyColor = _ambientSkyColor;
-                RenderSettings.skybox = _skybox;
+                savedRenderSettings.CopyToRenderSettings();
             }
         }
         // override renderpipeline in scope
@@ -6251,6 +6332,7 @@ namespace See1Studios.See1View.Editor
         public class GUIContents
         {
             internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
+            internal static GUIContent startUp = new GUIContent("See1View\nCopyright (c) 2020, See1Studios.\nsee1studios@gmail.com\nJongwoo Park");
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
@@ -7841,7 +7923,6 @@ namespace See1Studios.See1View.Editor
             //Render(updateFOV) 때문에 제 위치에 안나옴.PreviewRenderUtility.Render 에서 참조
             if (_mainTarget && (_gizmoMode != 0))
             {
-
                 if (Event.current.type == EventType.Repaint)
                 {
                     Rect gizmoRect = (currentData.viewportMultiplier > 1)
@@ -7981,6 +8062,18 @@ namespace See1Studios.See1View.Editor
                     //Restore FOV
                     _preview.camera.fieldOfView = fieldOfView;
                     GUIUtility.ExitGUI();
+                }
+            }
+            if (!_mainTarget)
+            {
+                if (Event.current.type == EventType.Repaint)
+                {
+                    Rect gizmoRect = (currentData.viewportMultiplier > 1)
+                        ? r
+                        : new RectOffset((int)(r.x / currentData.viewportMultiplier), 0, 0, 0)
+                            .Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
+
+                    Handles.Label(Vector3.zero +new Vector3(gizmoRect.width, gizmoRect.height,0)/2,GUIContents.startUp, "NotificationBackground");
                 }
             }
         }
