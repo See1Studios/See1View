@@ -6563,12 +6563,20 @@ namespace See1Studios.See1View.Editor
                             if (pipeline)
                             {
                                 menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), pipeline.name)), false,
-                                    x => { settings.current.renderPipelineAsset = ((RenderPipelineAsset)x); }, pipeline);
+                                    x =>
+                                    {
+                                        settings.current.renderPipelineAsset = ((RenderPipelineAsset)x);
+                                        InitializePipeline();
+                                    }, pipeline);
                             }
                         }
 #endif
                         menu.AddSeparator("");
-                        menu.AddItem(new GUIContent("Builtin"), false, () => { settings.current.renderPipelineAsset = null; });
+                        menu.AddItem(new GUIContent("Builtin"), false, () =>
+                        {
+                            settings.current.renderPipelineAsset = null;
+                            InitializePipeline();
+                        });
                         menu.ShowAsContext();
                     }
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
@@ -6616,6 +6624,7 @@ namespace See1Studios.See1View.Editor
                         if (pipeline)
                         {
                             settings.current.renderPipelineAsset = pipeline;
+                            InitializePipeline();
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
                         }
 #endif
