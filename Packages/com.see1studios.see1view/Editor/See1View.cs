@@ -6542,6 +6542,35 @@ namespace See1Studios.See1View.Editor
                         }
                         menu.ShowAsContext();
                     }
+                    if (GUILayout.Button("Pipeline", EditorStyles.toolbarDropDown))
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Pick"), false,
+                            () =>
+                            {
+#if URP || HDRP
+                                int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
+                                EditorGUIUtility.ShowObjectPicker<RenderPipelineAsset>(null, false, string.Empty, currentPickerWindow);
+#endif                                
+                            });
+                        menu.AddSeparator("");
+
+#if URP || HDRP
+                        var pipelines = AssetDatabase.FindAssets("t:RenderPipelineAsset").Select(x => AssetDatabase.GUIDToAssetPath(x)).ToList();
+                        for (var i = 0; i < pipelines.Count; i++)
+                        {
+                            var pipeline = (RenderPipelineAsset)AssetDatabase.LoadAssetAtPath(pipelines[i], typeof(RenderPipelineAsset));
+                            if (pipeline)
+                            {
+                                menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), pipeline.name)), false,
+                                    x => { settings.current.renderPipelineAsset = ((RenderPipelineAsset)x); }, pipeline);
+                            }
+                        }
+#endif
+                        menu.AddSeparator("");
+                        menu.AddItem(new GUIContent("Builtin"), false, () => { settings.current.renderPipelineAsset = null; });
+                        menu.ShowAsContext();
+                    }
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
                         if (GUILayout.Button("Render", EditorStyles.toolbarButton))
@@ -6552,40 +6581,45 @@ namespace See1Studios.See1View.Editor
                     //Handle Picker
                     if (Event.current.commandName == "ObjectSelectorUpdated")
                     {
-                        var recentModel = EditorGUIUtility.GetObjectPickerObject() as GameObject;
-                        if (recentModel)
+                        var model = EditorGUIUtility.GetObjectPickerObject() as GameObject;
+                        if (model)
                         {
-                            AddModel(recentModel);
+                            AddModel(model);
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
                         }
 
-                        var recentAnimation = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
-                        if (recentAnimation)
+                        var animation = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
+                        if (animation)
                         {
-                            AddAnimationAndPlay(recentAnimation);
+                            AddAnimationAndPlay(animation);
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
                         }
 #if UNITY_POST_PROCESSING_STACK_V2
-                        var recentPostProfile = EditorGUIUtility.GetObjectPickerObject() as PostProcessProfile;
-                        if (recentPostProfile)
+                        var postProfile = EditorGUIUtility.GetObjectPickerObject() as PostProcessProfile;
+                        if (postProfile)
                         {
-                            SetPostProcessProfile(recentPostProfile);
+                            SetPostProcessProfile(postProfile);
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
                         }
 #endif
 #if URP || HDRP
-                        var recentVolumeProfile = EditorGUIUtility.GetObjectPickerObject() as VolumeProfile;
-                        if (recentVolumeProfile)
+                        var volumeProfile = EditorGUIUtility.GetObjectPickerObject() as VolumeProfile;
+                        if (volumeProfile)
                         {
-                            SetVolumeProfile(recentVolumeProfile);
+                            SetVolumeProfile(volumeProfile);
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-#endif
                         }
+                        var pipeline = EditorGUIUtility.GetObjectPickerObject() as RenderPipelineAsset;
+                        if (pipeline)
+                        {
+                            settings.current.renderPipelineAsset = pipeline;
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        }
+#endif
                     }
-                    GUILayout.Label(string.Format("{0}-{1}", PlayerSettings.colorSpace.ToString(), currentData.renderPipelineMode.ToString(), EditorStyles.miniLabel));
                     GUILayout.FlexibleSpace();
                     See1ViewSettings.OnManageGUI();
                 }
@@ -7874,10 +7908,14 @@ namespace See1Studios.See1View.Editor
             var style = new GUIStyle(EditorStyles.miniLabel);
             style.alignment = TextAnchor.LowerLeft;
             style.normal.textColor = Color.white;
-            _sb0.Append(string.Format("{0}:{1}x{2}", "Viewport : ", _viewPortRect.width.ToString("0"),
-                _viewPortRect.height.ToString("0")));
+
+            _sb0.Append(string.Format("{0} : {1}({2})", "RenderPipeline",  currentData.renderPipelineAsset ? currentData.renderPipelineAsset.name : string.Empty, currentData.renderPipelineMode.ToString()));
             _sb0.AppendLine();
-            _sb0.Append(string.Format("{0}:{1}", "Distance : ", _dist.ToString("0.00")));
+            _sb0.Append(string.Format("{0} : {1}", "ColorSpace", PlayerSettings.colorSpace.ToString()));
+            _sb0.AppendLine();
+            _sb0.Append(string.Format("{0} : {1}x{2}", "Viewport", _viewPortRect.width.ToString("0"), _viewPortRect.height.ToString("0")));
+            _sb0.AppendLine();
+            _sb0.Append(string.Format("{0} : {1}", "Distance", _dist.ToString("0.00")));
             _sb0.AppendLine();
             _sb0.Append(FPS.GetString());
             //_sb0.Append(string.Format("{0}:{1}", "GetObjectPickerControlID : ", EditorGUIUtility.GetObjectPickerControlID().ToString()));
