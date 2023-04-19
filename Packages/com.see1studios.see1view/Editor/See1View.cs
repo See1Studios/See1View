@@ -5072,8 +5072,6 @@ namespace See1Studios.See1View.Editor
             //public static Texture2D playIcon;
             //public static Texture2D checkerIcon;
 
-            public static GUIStyle centeredMiniLabel;
-
             public static GUIStyle miniButton;
 
             public static GUIStyle transButton;
@@ -5082,25 +5080,28 @@ namespace See1Studios.See1View.Editor
 
             //public static GUIStyle tabToolBar;
 
-            public static GUIStyle centeredMinilabel;
+            public static GUIStyle centeredMiniLabel;
             public static GUIStyle centeredMiniBoldLabel;
 
-            public static GUIStyle rightAlignedMinilabel;
+            public static GUIStyle rightAlignedMiniLabel;
             //public static GUIStyle tabToolBar;
 
             static Styles()
             {
                 centeredBoldLabel = new GUIStyle("Label")
                 {
-                    alignment = TextAnchor.UpperCenter,
+                    alignment = TextAnchor.MiddleCenter,
                     fontStyle = FontStyle.Bold
                 };
 
-                centeredMiniLabel = new GUIStyle()
+                centeredMiniLabel = new GUIStyle(EditorStyles.miniLabel)
                 {
                     alignment = TextAnchor.UpperCenter
                 };
-
+                rightAlignedMiniLabel = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    alignment = TextAnchor.MiddleRight
+                };
                 header = new GUIStyle("ShurikenModuleTitle")
                 {
                     font = (new GUIStyle("Label")).font,
@@ -5169,12 +5170,12 @@ namespace See1Studios.See1View.Editor
                 ////tabToolBar.onNormal.textColor = Color.white;
                 //tabToolBar.fontSize = 9;
                 //tabToolBar.alignment = TextAnchor.MiddleCenter;
-                centeredMinilabel = new GUIStyle();
-                centeredMinilabel.alignment = TextAnchor.MiddleCenter;
-                centeredMiniBoldLabel = new GUIStyle();
-                centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
-                rightAlignedMinilabel = new GUIStyle();
-                rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
+                //centeredMiniLabel = new GUIStyle();
+                //centeredMiniLabel.alignment = TextAnchor.MiddleCenter;
+                //centeredMiniBoldLabel = new GUIStyle();
+                //centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
+                //rightAlignedMinilabel = new GUIStyle();
+                //rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
                 //tabToolBar = new GUIStyle("dragtab");
                 //tabToolBar.onNormal.textColor = Color.white;
                 //tabToolBar.fontSize = 9;
@@ -6332,7 +6333,7 @@ namespace See1Studios.See1View.Editor
         public class GUIContents
         {
             internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
-            internal static GUIContent startUp = new GUIContent("See1View\nCopyright (c) 2020, See1Studios.\nsee1studios@gmail.com\nJongwoo Park");
+            internal static GUIContent startUp = new GUIContent("See1View\nCopyright (c) See1Studios.\nsee1studios@gmail.com\nJongwoo Park");
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
@@ -6393,7 +6394,13 @@ namespace See1Studios.See1View.Editor
                     //        settings.current.modelCreateMode = ModelCreateMode.Preview;
                     //    }
                     //}
-
+                    using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
+                    {
+                        if (GUILayout.Button("Render", EditorStyles.toolbarButton))
+                        {
+                            RenderAndSaveFile();
+                        }
+                    }
                     if (GUILayout.Button("Size", EditorStyles.toolbarDropDown))
                     {
                         var menu = new GenericMenu();
@@ -6578,13 +6585,6 @@ namespace See1Studios.See1View.Editor
                             InitializePipeline();
                         });
                         menu.ShowAsContext();
-                    }
-                    using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
-                    {
-                        if (GUILayout.Button("Render", EditorStyles.toolbarButton))
-                        {
-                            RenderAndSaveFile();
-                        }
                     }
                     //Handle Picker
                     if (Event.current.commandName == "ObjectSelectorUpdated")
@@ -8119,8 +8119,8 @@ namespace See1Studios.See1View.Editor
                         ? r
                         : new RectOffset((int)(r.x / currentData.viewportMultiplier), 0, 0, 0)
                             .Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
-
-                    Handles.Label(Vector3.zero +new Vector3(gizmoRect.width, gizmoRect.height,0)/2,GUIContents.startUp, "NotificationBackground");
+                    //Handles.Label(Vector3.zero +new Vector3(gizmoRect.width, gizmoRect.height,0)/2,GUIContents.startUp,Styles.centeredBoldLabel);
+                    EditorGUI.DropShadowLabel(new Rect(gizmoRect.position.x,gizmoRect.y+gizmoRect.height/2,gizmoRect.size.x, gizmoRect.size.y), GUIContents.startUp, Styles.centeredMiniLabel);
                 }
             }
         }
