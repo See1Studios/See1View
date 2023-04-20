@@ -5058,6 +5058,7 @@ namespace See1Studios.See1View.Editor
 
         class Styles
         {
+            public static GUIStyle centeredBigLabel;
             public static GUIStyle centeredBoldLabel;
 
             public static GUIStyle header;
@@ -5088,9 +5089,15 @@ namespace See1Studios.See1View.Editor
 
             static Styles()
             {
-                centeredBoldLabel = new GUIStyle("Label")
+                centeredBigLabel = new GUIStyle(EditorStyles.label)
                 {
-                    alignment = TextAnchor.MiddleCenter,
+                    alignment = TextAnchor.UpperCenter,
+                    fontStyle = FontStyle.Bold,
+                    fontSize = 24
+                };
+                centeredBoldLabel = new GUIStyle(EditorStyles.label)
+                {
+                    alignment = TextAnchor.UpperCenter,
                     fontStyle = FontStyle.Bold
                 };
 
@@ -5456,6 +5463,19 @@ namespace See1Studios.See1View.Editor
                         EditorGUI.DrawRect(_controlRect, Color.black * 0.1f);
 
                     OnGUI_Gizmos(_viewPortRect);
+
+                    if (!_mainTarget)
+                    {
+                        Rect logoRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.5f, _viewPortRect.size.y * 0.5f), new Vector2(128f, 128f));
+                        
+                        GUI.DrawTexture(logoRect, EditorGUIUtility.IconContent("d_SceneAsset Icon").image);
+                        Rect titleRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.45f, _viewPortRect.size.y * 0.5f), GUILayoutUtility.GetRect(GUIContents.title, Styles.centeredBigLabel, GUILayout.Width(160)).size);
+                        EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
+                        Rect copyrightRect = new Rect(new Vector2(_viewPortRect.position.x + _viewPortRect.size.x * 0.45f, titleRect.y + titleRect.height), GUILayoutUtility.GetRect(GUIContents.copyright, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
+                        EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
+                        //EditorGUI.DrawRect(copyrightRect, Color.red * 0.5f);
+
+                    }
                 }
             }
         }
@@ -6333,7 +6353,8 @@ namespace See1Studios.See1View.Editor
         public class GUIContents
         {
             internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
-            internal static GUIContent startUp = new GUIContent("See1View\nCopyright (c) See1Studios.\nsee1studios@gmail.com\nJongwoo Park");
+            internal static GUIContent startup = new GUIContent("See1View");
+            internal static GUIContent copyright = new GUIContent("Copyright (c) See1Studios.\nsee1studios@gmail.com\nJongwoo Park");
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
@@ -6357,8 +6378,8 @@ namespace See1Studios.See1View.Editor
 
         void OnGUI_Top(Rect r)
         {
-            //if (IsDocked())
-            //    EditorGUI.DrawRect(r, GetGrayscaleInverted(_preview.camera.backgroundColor) * 0.5f);
+            if (IsDocked())
+                EditorGUI.DrawRect(r, GetGrayscaleInverted(_preview.camera.backgroundColor) * 0.5f);
             //Open Settings Button
 
             //GUIStyle style = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleCenter, fontSize = 16 };
@@ -8109,18 +8130,6 @@ namespace See1Studios.See1View.Editor
                     //Restore FOV
                     _preview.camera.fieldOfView = fieldOfView;
                     GUIUtility.ExitGUI();
-                }
-            }
-            if (!_mainTarget)
-            {
-                if (Event.current.type == EventType.Repaint)
-                {
-                    Rect gizmoRect = (currentData.viewportMultiplier > 1)
-                        ? r
-                        : new RectOffset((int)(r.x / currentData.viewportMultiplier), 0, 0, 0)
-                            .Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
-                    //Handles.Label(Vector3.zero +new Vector3(gizmoRect.width, gizmoRect.height,0)/2,GUIContents.startUp,Styles.centeredBoldLabel);
-                    EditorGUI.DropShadowLabel(new Rect(gizmoRect.position.x,gizmoRect.y+gizmoRect.height/2,gizmoRect.size.x, gizmoRect.size.y), GUIContents.startUp, Styles.centeredMiniLabel);
                 }
             }
         }
