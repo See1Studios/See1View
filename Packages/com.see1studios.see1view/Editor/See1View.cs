@@ -44,6 +44,7 @@ using Object = UnityEngine.Object;
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
 using static See1Studios.See1View.Editor.See1View.Lighting;
+using NUnit;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -744,6 +745,7 @@ namespace See1Studios.See1View.Editor
                 this.rightTargetWidth = rightWidth;
             }
         }
+
         // unique data for URP
         [Serializable]
         internal class URPData : ICloneable
@@ -5262,6 +5264,7 @@ namespace See1Studios.See1View.Editor
         SizePopup _sizePopup;
         bool _guiEnabled = true;
         bool _overlayEnabled = true;
+        AnimBoolS logoEnabled = new AnimBoolS(true);
 
         //Camera & Render
         public UnityEvent onChangeRenderPipeline = new UnityEvent();
@@ -5464,18 +5467,23 @@ namespace See1Studios.See1View.Editor
 
                     OnGUI_Gizmos(_viewPortRect);
 
-                    if (!_mainTarget)
-                    {
-                        Rect logoRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.5f, _viewPortRect.size.y * 0.5f), new Vector2(128f, 128f));
-                        
-                        GUI.DrawTexture(logoRect, EditorGUIUtility.IconContent("d_SceneAsset Icon").image);
-                        Rect titleRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.45f, _viewPortRect.size.y * 0.5f), GUILayoutUtility.GetRect(GUIContents.title, Styles.centeredBigLabel, GUILayout.Width(160)).size);
-                        EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
-                        Rect copyrightRect = new Rect(new Vector2(_viewPortRect.position.x + _viewPortRect.size.x * 0.45f, titleRect.y + titleRect.height), GUILayoutUtility.GetRect(GUIContents.copyright, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
-                        EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
-                        //EditorGUI.DrawRect(copyrightRect, Color.red * 0.5f);
+                    logoEnabled.target = !_mainTarget;
 
+                    using (EditorHelper.Colorize.Do(Color.white * logoEnabled.faded, Color.white * logoEnabled.faded))
+                    {
+                        //var logo = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
+                        var logo = GUIContents.logoTexture;
+                        Rect logoRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.5f, _viewPortRect.size.y * 0.5f) - new Vector2(80f, 80f), new Vector2(160f, 160f));
+                        GUI.DrawTexture(logoRect, logo, ScaleMode.StretchToFill, true, 1, Color.white * logoEnabled.faded, 0, 0);
+                        Rect titleRect = new Rect(logoRect.position + new Vector2(0, logoRect.size.y), GUILayoutUtility.GetRect(GUIContents.title, Styles.centeredBigLabel, GUILayout.Width(160)).size);
+                        EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
+                        Rect copyrightRect = new Rect(titleRect.position + new Vector2(0, titleRect.size.y), GUILayoutUtility.GetRect(GUIContents.copyright, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
+                        EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
                     }
+                    //EditorGUI.DrawRect(logoRect, Color.red * 0.5f);
+                    //EditorGUI.DrawRect(titleRect, Color.green * 0.5f);
+                    //EditorGUI.DrawRect(copyrightRect, Color.blue * 0.5f);
+
                 }
             }
         }
@@ -5781,11 +5789,11 @@ namespace See1Studios.See1View.Editor
             ResetLight();
             //Apply Settings From Data
             InitializePipeline();
-            InitPostProcess();
+            InitializePostProcess();
             onChangeRenderPipeline.AddListener(InitializePipeline);
-            onChangeRenderPipeline.AddListener(InitPostProcess);
+            onChangeRenderPipeline.AddListener(InitializePostProcess);
             See1ViewSettings.onDataChanged.AddListener(InitializePipeline);
-            See1ViewSettings.onDataChanged.AddListener(InitPostProcess);
+            See1ViewSettings.onDataChanged.AddListener(InitializePostProcess);
 
             _prefab = currentData.lastTarget;
             AddModel(_prefab, true);
@@ -6135,7 +6143,7 @@ namespace See1Studios.See1View.Editor
         void SetPostProcessProfile(PostProcessProfile profile)
         {
             currentData.profile = profile;
-            InitPostProcess();
+            InitializePostProcess();
             _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(profile));
         }
 #endif
@@ -6143,11 +6151,11 @@ namespace See1Studios.See1View.Editor
         void SetVolumeProfile(VolumeProfile profile)
         {
             currentData.volumeProfile = profile;
-            InitPostProcess();
+            InitializePostProcess();
             _recentVolumeProfile.Add(AssetDatabase.GetAssetPath(profile));
         }
 #endif
-        void InitPostProcess()
+        void InitializePostProcess()
         {
             //Cleanup Firt.
 #if UNITY_POST_PROCESSING_STACK_V2
@@ -6352,6 +6360,7 @@ namespace See1Studios.See1View.Editor
 
         public class GUIContents
         {
+            internal static string logoTextureStr = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAY60lEQVR4Ae2cCZQV1Z2H3UEEjAvKIksjiPvRGBWXCOIe97hGzcTJxIk6JpNRk+iYRE2ijo7G48Rl1BN3jRo1xy3uDhi3GPcoAgLdDQiIKMrihsJ8X/MKq4u3VL2qev0a3u+cr2u7W937v/9761b1W3nx4sUrLSdag/v4GvSEdWEgDIUNYRPoButDf1gNFkFUq3BiDkyBT2EmTILpMAHehQ/hI5gLnV4rd3ID6E0LDIHBMKyA+zb+OhDVytETJY6L9YrPCTsDJsNEGA8aRTN47hPodOpsBmAP7Qs7ww6wBWgAA0APUGu9R4YtoDG8Cs/Aa6D3KGZEnK4vdQYD0F3bm23wgwtbjaAX1JP0AA4ZeodH4UFohY+hblXPBtCdWrN37wNHQjCO6wXqXZ9RwA9gNNwBr8AUqDvVowE4iRsJNvxB0A/ijt0ErTs5HDwH98Lj8CbUjerJANaiVvYFe/vuUG8uniKlkk8degKHhtvAeUOHqx4MYE1qwUndKbAr+Ki2POsLbu4tcGi4Ed6BDpswdqQBrMqNO4s/GY4Cn+FXJH3OzY6F38HD4BNFzdVRBtCHO/0OnAQbQ2ce4yl+Kvn04LBwFYyBL6FmqrUB2OtHwU9gD+gCDS2pAReUboYrYNaSU/n/raUBrM3t6O5/CAPzv7VOmcNCSj0afgtPgxPHXFUrA9iWu/gl7A9r5HpHy0fiLdzGRaBHmA+5qRYGcBilPxO2y+0uls+EnRtcB5eAw0MuytMAfK7X3Z8KLuY0VF0NOEH8DfytuujlY+VlAL3I9gw4EbqVL0LjaowaeIkwP4cnYoRNFCQPA2iiBL+GY2CVRKVpBC5XA61c/BncBZlNDrM2AD/AOA8OhxX52Z7bz0W+bXQ+dSv4xJBaWRrAppTmAjgkdamWLI36xc04cAI0BzwOXg1vyP7m0L9wjs0KI1cMfaK6HlxNTKWsDMCefyEcmqo0S27obdL4EzwJ02AefAberEOKi0drwrqwJehtXFzyeEXRbG7UOdYN8CVUrSwMYBC5+8x6RNWlWBJxMhsfe8QbjOvifNr4BvwH7AUryqRzFvd6KvhmcTFUpbQGsD65Xgz/BNWO+Tb0Q3A+vADV3owrjf8MP4YmWBE0hZv0UduXSdXJj0KrpBvxLoAvoFp9RsSrYABUW45ovINJ61VYUfQKN7oLROsh1nGax7TvYnI+569anemt5HtxlzrPAS05K/nlzVkwIasE6zydbSjf2eAkPLGqNYD9ycln0jTv8HVbrnC9C1kpGIZcPfOJ5P2sEq7zdJz7OCl0SE6kagzAmbc9bHCinNoHbuHwUmhtfzr1UXj+cCep3QOLUqfaORI4mmI6B0rkkZMagDPu02EnqFZO+nzM83VnnvqYxC+DiXlmUkdp+3jsBHifJGVKYgBalrP9byfJoEjYKZy7G1IvYhRJO3rKeYBeIOwZomGWp+ONuJlfwJC4N5XEAHYgUZ+1e8RNvEg4G+J58OVGLaS3cVKY5TyjFuVOk4ft5KNhrO8u4hrAOiTojN8VvzT6lMijIdXqVcIC6HFeThinMwfXUx8LB8a5iTgGYBhX+Q6Nk2CFMI7LNkYtXfIH5De2QrmWt8t9uCG9gENCWcUxgI1J4fuQxvUHhXD5cmpwUKOtXifrp40aFT1VNrsR2yeD1cqlUskAjOyCj2vtWeh9EqnF5C9aVg1vQfTkcn7sU4FeYFi5+6xkAFsQ+ThwXMlCNkIt3X9QZt8myoqmJm74JNAYiqqcAdj7T4ABRWNWd9J1hJWri5oq1urElhVNdtz9wSeDoipnAMOJsR9k1fstgE8TZcckA+Ugl0i755BuZ0hyEIV0GF+zWGFLGYC95XDQhWSp3iRWcWaaZYakpfsbBB3heci2LjSKUhT1AqUM4OtE2AeyrjSt0LdXtZReZ7NaZliHeW1MmQ6AZbxAMQOw9+8Jm0DW6kqCIyHLYaVSGQcSIKunmEp51fP1/SjcoGgBixmAk76DoNi1aPykx6bp3MKni1pIY9aTOfSs6BpGBVgX7TpftJF1+TaQQ0BeGkzC/rtYNO888tOYj6pRXnmUP8s0nXy7mtvuG45oIzhGOFbkOVP3JYWNsgvkqW4k/u+Qx1CWZ7nzTNv5V7vJYNQArCyXEPOW7ujH4Pf9ecmXIcdAnsacV9nzStd1GOtlabsv3SnkuBdbn5lrIT3NT6FnDpnpXc6A9XJIuzMn6fi/MwwKbiJsALr/kaCLroV8IjgJ/IAhy4YaQXqXQK0fN8myU8h1GOd5bQobwFac2bRwvlYbx+kfgQ22ecpMXenzvcXVsGPKtJbn6HY266et7cPj43ac7NUBd64n+B74aHgj/BF8hx/3pZFuzbL/AI4E/0GkofI1sDWX+0NrYAC6fWeHPSD4Wqfd8yLn85aLNXqgo+F++AtMBV8fW6ZFoCyX5bbHG+cwcOLaBD7GNlS6Br7gknU3FIZAa/CvYVb8H0ADGANWsgbhOFprQyDLtle3c9lOhPEwEzy28BuA45geozc4sw0PZRw2FKkB6+95mASDwYngxXCJFapcHLDhrwMrXRnwFPg+1NqtdiFPhyNZOmFhP1Cjpwc1UXn7LEH+Gx4Cv4mwbvWyPoL3DDyAj2K6h48hLAM7SfsV6B0a6lw1YKc+FV6OFNslcl+SfRgYQOR6u0MbXnfxr6CRvAevwWzQcFw21hUH3oTdhmpUA/PIZyzo2h2qh4Fje3doBSfXGkFJBY2mSy016zaTm8CEX4drYBo4KTNeP9BLHAe1HirIcoWUk+K/w6XwOASfu3VlfxQ4dI8Gw5RVHA9gAmuB4/G78AlEZcYawS+hMVREayf74ydI8t/ACXIxOVG2c/oxbKmO3RYvrgG0Ba7wxzFFT3FAhXCNy+lqwKHXHn5HumSWxF6lkIjWklZzSOBeKOYh0qbdiP9VDYxj98mvDtPtBQZQ1k0kyGIMYbXQhvKpgYUk+1fIrI41AGfyrgRmIecIzkobyqcGnOy9All12B4awCgYAFnI2alDQUP51IBPXu9nlLTD/nANwFUhn+WzUOBRskirkcayNWD9rr3s6arOtH0vaYJbwU5VJbFspKZCesteaZzJogZ83B4BNl5abUEC+2kALvRsCf0hjZxL+HjSN00ijbhla8CFu0Mhi+8p9yCdwRqAj22+Vt0VqpXjiUPJkdARbw+rLXdnjOd87TQYlKLwLhTtDl01AGeUvg08GJJ8D2ijBzLuGZDV+BSk29gWr4F9OX02uAxfjYYTaXv4RAMItB87XogrDcex6Fj4PTRBQ7WpAYcC6/0SGJwwy/UIfwy4tL8oMAAb0zH85MIFNhWlG/FV42WwUcXQjQBZ14Cd73C4AvzAI65GEFAP0qbAAILjkewcBGH3HlwLto7xJmLG54IWVUxvc/JyaCl2sXEuVg18Tqh74G74okgM28LGvB5+BqXagktt6sPfn8BXQzU/Mvw4LIJAL7OzDUR/bHgVzvWBc6EFymkGF4+DNWAkPAFpflSa6CucZnPHv4LeMAgegHJawMVHYE/wh7yj7bc6584Cf6A70HwD3QJhA/DibbAOeN03hhbgX8Bf4f4cysnr58NqEBSiH/vnQTM0VL4GbEg75T4QrsMdOX4TKknDuRb8BfG1IWiDw9h/B8Kab+NegEv4OYTd/kcc676fBtcIHGu2AycflfQyAZxkRN9VO9z4qPld0G015g1UQkgL2ff7PV3+nTATlO3iHM3tmXA2xHl38x7h7oPHwPinwQ4Q1gKt4xyIegCt5BOY5U4C6V5+AYHVFds6LOwLd4LW3tDixROohNOhCYrVWXBuCNffgCSaT+D3oVgbz7NHT4HAwsLW0ZUDSaJmAt9eIYITm4fhJbgVDoQR4ASlG4Q9EYfLpayD+fAGPAiPwJtQbKLH6aVqYU/vcDZEJ/CcKiq/5pJimqIBTAULlLSxiyX4Z05qUHGki/IDkkdhfdgFXIvYFlyWdnFqeZIufgZMgtFgJ5gAGkKlhidImwxnHR8HQ9vOVP/HTj9dA/Ad/ixI+0rYBvWmNKYkcilaI9RzaN0DYSTsBJuCx70hzrhHsLrSB5RmOkwGPd4YeBE+BhugGrUS6UlIawDmPVkDmAcWMq0BeHNjIY0WEbm5wM1sbXyxbFvAVtAEDhfdQa28ZNNhf4OG/JISzAY94HjwC2p7uHXrPb0PWWguiWgAR0FaLzkxMACtajhUK13T/4FeII5sNPPWLZaSaeouRa0J60JPcMgYApvAIOgFLoL0hS7gAkkwRrpvXjaU+3EMxsZUxrGMbsXzMgdsWJ+WpsJksNHd99yHYO+PK8tl+naAONKb/AO+GSdwiTB66vGBAbSUCBT39EQCvhw3MOE2hG/DNHgeHIICadWbQxPoKlvByl0A7xRgs9IzsDp4D1ag+xrGOtAPeoBGYF56DCvXa4NBaQhWgg28FtgApmVPbQGPP4VmsBw2fDBcauiO3aapoZqG26gGcmIIbACWfxxYV0FDr8H+ZrA7WH9PQRxZJo1gV/A+qtFMIjV7w5+BhbIyLFA1eotIExJEdEw/AYbCw/BIARv/R3AI2KOVlX49XA72ukBWomWXQDZeoGIVo6F0LQTwumnYsBrPYtBgbEwbvpgME0em9y04DYaD9Ww+DgtXwH3g+srecBA4vP0SngHDVZLltuMcC3q/ajSZSB8Fz5cjeE6cDNVoIZFcHg7SirPtQfgbQ5l9yr7LxS+EzoV3XUa+CIwXJ/2ODrMz5ZwIxeQz+X3QHLroCt23IEm5NyX8W6E0ku5eToTuWryaVqDtIOEfx8M3EsaZR/iboKUQz3F7FGxfOI5u7LknwIjohTo81nOdCBuXKJvzmANhUOG6XsVHu9GF47ibZgLai6uRHkSvPT8wgKkcOAxUIyc9b1cRcQxxroS5MeM6PDg0OBmsZw2jcPslKOCzhL0anGckkUO2jfhFkkiFsHb4ce4HBmBifwd7ZlI57ppgUlnw38M14LgbR7sSyB5Wr3Ks3wXilnEsYc+Ef0A1stPGrbtw+noO4y41APdfAme3SWXjf5g0UiG8k61rIe4Q0pewTp7qVU4wHcaKTUCjZdb13wh6gGpkfIcBO1JSORnV67czAK2wzS14Iaacsc6EODPXUknq+uI+M69B2G0hTgWXyi/P82uT+DYxM7ABrTvH42rl43NSD6DH/hu05RsMARbgExgNDgdxZcNPjxu4RDh7jeN7HOli+0G9GkAfyrZ+nBsp3INhneBWKw3IBk0iPfbzQYSwAXjuMXA5M660onlxA5cIZxl8bo4jK2so6AnqUU0UKu69WH6NP40x22mT1L8d9llogTZFDWACZ58qXIuz0QCSzl7jpFsujE8BeoJ6kw1p46dp0GruKYnHXkAG98PSYSdqAFrUAxB3YqFFzQDHs1rJvGqZX5L7WlqxMSOlvQ/byfqPq1cJ+EI4cNQALJDjQ9x1fcMnscBw3sG+aSSZRNrL6nUI6EbZkngA7zuNESSpf43FBad2T2xRA+B62+tM16rjWLNjsitbaWQ+SQzAmXbaPNOUt1zc3lxMMqnzPUYaAzCvuO8CxhP2EWhX18UMwMeKx8H5QCVp7Y7JSaw+mqZrAUlmsnMTho/ml+fxOyTeroLLZGbD+/gbp6OVSsb2W6vUxcj5hzhuiZxrtw4QvuYQoLVUsk4bXreXRkkNwHlK2mEnTXnLxXVCXKnOgvgaigtvccMH8aLbOB5nEpGc21l37VTMAxhAL3AXNHtQRkkssFQyVkDcXmBYJz0aTb3Jsr0LcSfQ3nPcsKXu1aehOB3wScK1m/wFCZYyAK87GdRtlHNpWt+GkEY2Zty1Bw3TocnKrkdNplBxhzPDzUl5E47/61VIo5Xrt8Ayvd945QxA67wWphiwhAIDSDMH0G2OgzheoN4NwPlJc4m6ip7WLcc1/Gjc4NjGdzGplOy8D4JLv0VVzgCM8CZoPaW8gA3fF5wIptE0IsfpOVrx2DQZ5RzXuckbMfOwZyZZxSuW7EacdBgoJY3xSvBpo6gqGYBe4GZ4sWjsJSc3YJP2sUwPIJWkQVpx9Sor2t5WaWzXkxku7kswgi4jO18/KDUJtCzXwHgoqUoGYERd1XVQylqdhKSdBzh2Pg2lPA2X2oaIR9gu8KBO5dzEJ6i3KpRPL+b9plV/Eij17uEprv0RyhpjHANwbP4TuIpUTD04ObDYhQTnrLg7oZwXcBnzPrD31LPsMDeBw0Ex2TO9j7RDmauhg6GYB/BJ6WpwaC2rOAZgAs5W/xfe9iAiX+UOi5yr5vB1Iv0OZkUiaxy6sd9A2kqLJJ3LoT3uBrgVojNvG/9+uBJKGQiXYmkAoZqKhNSL3gLmU1GrVQzxVQCfIy+FC8FeH0hLHA69oJovioJ09DQW3DH+BzAUHOecf1wLulaNod5lmZ3dnwqO80fCujAXHgbvJe3snyTavjzq405E5unYH8/A+DQ4yafIaxH+hiLfH7dwbmTCtMrl669ZrAvrQfhHEsrFqcdr/v6CdbZBYetxFuX0X+yvgqimciLR5+Vxh4DAyJyAXQzPBScKW93RbpDVWzrHeWfIPhqWncRwvZ6lx7LOHNbcZuXBtiStnSEsh5fL4JHwyUr7SQ3A9HzOPQ8me1CQbu9AGBicaGxzqwHbbA/QCMK6nYMboNyTVDh82341BmDEB+EiCL9b3oZjvUC1aRK1oRg10I8w+0K4nh/j+L8g8dwinAjxE+lmQvtkEFicE0onPP4DZkP51ICedifYMZS8j8fnwrjQudi7aQzgY3K5BJy5B2Ob49Ke0FA+NbA2yR4PwTcAU9g/E56BqpTGAMxQl3MO3AWqO5wCTgrrSfacalRtvGryqhTHtjoKvlkI6MTSxvfRsmqlNQAzboGzIFgpHM6+RtAFVEdWos/fB8Cx0B/iyqeZkXA8bA5Z1BPJpJINfzrYyWbDf8IdkE48N2bxXGoa/rvyn0H5L9A/hS6QVfpJ0+lK3heCP13nv5dfAeEfTiyXnj/SGPy7/Evs7wDlwud9zV9ufQrULPghuBaQOt/UCUQKMZTjO0H5i5XngAshWecTJz0brRkCTWfH/9uvFLc7YTSWsC7jYFWoFDfr6y4cjYDnQc2A48GFskzyyiSRSGGaOL4Z1MfwP+CqXh55lUvzEPKcCYEWsXMblCuLFX4EaLxh3cWBhlEuv6yvuQKqJxoHqgWOBH+zObO8MksoUqheHF8CGsCXcDdsB3nlVyxd84v+Soe/RGLv9geYo3GCCp/EtbA0nIshGj7P457kdzJMAfUi7AGZ55l5gqFC6vpPhWmgXofvQRfIM98g7TXJ5yawAcPSCJyr6CEGgMb6dTgTWiAqh469IUg37+2W5PUH8Cde1QPgD0Xnkm8uiUYK669Ua8FqDlwKA6EWeW9LPq9BMc3mpL9LZAVrnE4Uo3IC6URSY8q7vLr2g+FZUHpPf8dnMOSWd24JRwptQ9wD/qCUehxGQC3e9Ok6x0JS2fg2gB4i73rqSx6/Br2NaoaToDvkmneuiUcKvzbHutlWUE7Q7F1bQd6GMII8/gpx9QEBz4f1Ic86Mv0jYAw4VOmFHoXdQI+QZ95taeeeQeQmVuV4L/gLOBarCXAWbA15lmdz0nf4iU4MObVUC9izbMdAnm5/HdI/FO4APY1qhnNhA8izHtql7WNPupWk6mL3Idp34ETwyx8L4UsN32rdDX79E/4OwNXELApqOruC7yzWh8/BfLoV9v2Y8wmYAVnLvHvB/uCr85HgizM/G/Pt6lUwBr6EmqmjDMAbXBW2gJPhaPBFh/I7g5fgNvAlx0dgQ2UpG8Ol6kWgYVkW97POxyXkrtAEvindBzYF73UhvAl+B+l6fprP6YhenTrSAIISr8mOPdL3B/ZOe6aaD2/DQ2CvnADTwYaqd/WkgBvB9uC7CO/P3r86WP6xcDvcCO9AFt6NZJKrHgwgKLWvOPcFe8ruYIUF8oPKF0BDcPsKzIF6kr3d4cxG15BHwWDQuygb3nI/CHq38dDhqicDCCrD3jMSdJcHQT/QZQdqZcch4kV4A6zId8HvExzP8+5NQVl07bryQbA5fAO2ha2hGwT6lJ3n4F54HN6EulE9GkBQOd3ZGQJ7g15hGFix9jTleP0++Fma84QW0BgcNmQqLACNwt7n5ErCBrIax6YXhGG3zdhsZK8FWxvbV8sbwyaF7WZse0EPWA80hkCfsfMBjAZf2drzp0DdqZ4NIKgsG2Id2BH0CDtAX7Dyw7JhF4ZwUjUNJoG9cCZ4TsMJ1JsdDc1wzsaVLtvhaCB0gT7QVNga1nFcAtfObpvMYwZMhEfhQWgFPVPdqjMYQLjy7K02/s6gIeh6HXcHwBpQTOEe7/XwsT08UKnz4TBB2GCrQbWAnsfH2GfgNdAYwulxWJ/qbAYQrcUNOaEBDIZhBdwfCHqNqMo1ZjhsscbTc9jDJ4O93EafAM3gucCDsNt51NkNIFzTeoCvQU9wvNYINA6NxHHb+YOPmP3BYcV5QVR6mDkwBYJhwyFkOtjYTjaDOYdPJp1e/w/YK2E8PZbOmAAAAABJRU5ErkJggg==";
             internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
             internal static GUIContent startup = new GUIContent("See1View");
             internal static GUIContent copyright = new GUIContent("Copyright (c) See1Studios.\nsee1studios@gmail.com\nJongwoo Park");
@@ -6361,6 +6370,17 @@ namespace See1Studios.See1View.Editor
 
             public static GUIContent reframeToTarget = new GUIContent("Reframe Target", "모델을 생성할 때 자동으로 뷰에 꽉 차도록 카메라의 거리를 조절합니다.");
             public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
+
+            public static Texture2D logoTexture
+            {
+                get
+                {
+                    byte[] bytes = System.Convert.FromBase64String(logoTextureStr);
+                    var tex = new Texture2D(1, 1);
+                    tex.LoadImage(bytes);
+                    return tex;
+                }
+            }
 
             public class Tooltip
             {
@@ -6493,7 +6513,18 @@ namespace See1Studios.See1View.Editor
                                     x => { AddModel(x as GameObject); }, recent);
                             }
                         }
-
+                        menu.AddSeparator("");
+                        menu.AddItem(new GUIContent("Clear"), false,
+                            () =>
+                            {
+                                foreach (var target in _targetDic.ToArray())
+                                {
+                                    if (target.Key)
+                                    {
+                                        RemoveModel(target.Value);
+                                    }
+                                }
+                            });
                         menu.ShowAsContext();
                     }
                     if (GUILayout.Button("Animation", EditorStyles.toolbarDropDown))
@@ -6568,6 +6599,18 @@ namespace See1Studios.See1View.Editor
                             }
 #endif
                         }
+                        menu.AddSeparator(""); 
+                        menu.AddItem(new GUIContent("Clear"), false, () =>
+                        {
+
+#if UNITY_POST_PROCESSING_STACK_V2
+                            settings.current.profile = null;
+#endif
+#if URP || HDRP
+                            settings.current.volumeProfile = null;
+#endif
+                            InitializePostProcess();
+                        });
                         menu.ShowAsContext();
                     }
                     if (GUILayout.Button("Pipeline", EditorStyles.toolbarDropDown))
@@ -6886,10 +6929,6 @@ namespace See1Studios.See1View.Editor
 
         void OnGUI_View()
         {
-            //using (EditorHelper.FoldGroup2.Do("About", true))
-            //{
-            //    EditorGUILayout.LabelField("About");
-            //}
             EditorHelper.IconLabel(typeof(Camera), "View");
 
             EditorHelper.FoldGroup.Do("Control", true, () =>
@@ -7383,7 +7422,7 @@ namespace See1Studios.See1View.Editor
 
                     if (check.changed)
                     {
-                        InitPostProcess();
+                        InitializePostProcess();
 #if UNITY_POST_PROCESSING_STACK_V2
                         _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(currentData.profile));
 #endif
