@@ -5264,7 +5264,8 @@ namespace See1Studios.See1View.Editor
         SizePopup _sizePopup;
         bool _guiEnabled = true;
         bool _overlayEnabled = true;
-        AnimBoolS logoEnabled = new AnimBoolS(false);
+        AnimBoolS splashEnabled = new AnimBoolS(false);
+        AnimBoolS helpEnabled = new AnimBoolS(false);
 
         //Camera & Render
         public UnityEvent onChangeRenderPipeline = new UnityEvent();
@@ -5467,27 +5468,57 @@ namespace See1Studios.See1View.Editor
 
                     OnGUI_Gizmos(_viewPortRect);
 
-                    logoEnabled.target = !_mainTarget;
+                    //Splash
+                    splashEnabled.target = !_mainTarget;
 
-                    using (EditorHelper.Colorize.Do(Color.white * logoEnabled.faded, Color.white * logoEnabled.faded))
+                    using (EditorHelper.Colorize.Do(Color.white * splashEnabled.faded, Color.white * splashEnabled.faded))
                     {
-                        //var logo = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
                         var logo = GUIContents.logoTexture;
                         Rect logoRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.5f, _viewPortRect.size.y * 0.5f) - new Vector2(80f, 64f), new Vector2(160f, 128f));
-                        GUI.DrawTexture(logoRect, logo, ScaleMode.ScaleToFit, true, 1, new Color(0.85f,0.85f,0.85f) * logoEnabled.faded, 0, 0);
                         Rect titleRect = new Rect(logoRect.position + new Vector2(0, logoRect.size.y), GUILayoutUtility.GetRect(GUIContents.title, Styles.centeredBigLabel, GUILayout.Width(160)).size);
-                        EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
                         Rect copyrightRect = new Rect(titleRect.position + new Vector2(0, titleRect.size.y), GUILayoutUtility.GetRect(GUIContents.copyright, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
-                        EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
-                    }
-                    //EditorGUI.DrawRect(logoRect, Color.red * 0.5f);
-                    //EditorGUI.DrawRect(titleRect, Color.green * 0.5f);
-                    //EditorGUI.DrawRect(copyrightRect, Color.blue * 0.5f);
+                        Rect btnRect = new Rect(copyrightRect.position + new Vector2(55f, copyrightRect.size.y + 10f), new Vector2(50f, 20f));
+                        var logoFaded = (1 - helpEnabled.faded) * splashEnabled.faded;
 
+                        using (EditorHelper.Colorize.Do(Color.white * logoFaded, Color.white * logoFaded))
+                        {
+                            using(new EditorGUI.DisabledScope(helpEnabled.target))
+                            {
+                                //var logo = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
+                                GUI.DrawTexture(logoRect, logo, ScaleMode.ScaleToFit, true, 1, new Color(0.85f, 0.85f, 0.85f) * logoFaded, 0, 0);
+                                EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
+                                EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
+                                if (GUI.Button(btnRect, "Help", EditorStyles.miniButton))
+                                {
+                                    helpEnabled.target = true;
+                                }
+                            }
+   
+                        }
+                        var helpFaded = helpEnabled.faded * splashEnabled.faded;
+
+                        using (EditorHelper.Colorize.Do(Color.white * helpFaded, Color.white * helpFaded))
+                        {
+                            using (new EditorGUI.DisabledScope(!helpEnabled.target))
+                            {
+                                Rect helpRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.5f, _viewPortRect.size.y * 0.5f) - new Vector2(200f, 200f), new Vector2(400f, 400f));
+
+                                EditorGUILayout.LabelField("Help");
+                                if (GUI.Button(btnRect, "Back", EditorStyles.miniButton))
+                                {
+                                    helpEnabled.target = false;
+                                }
+                                EditorGUI.DrawRect(helpRect, Color.black * 0.5f);
+                            }
+                            //EditorGUI.DrawRect(logoRect, Color.red * 0.5f);
+                            //EditorGUI.DrawRect(titleRect, Color.green * 0.5f);
+                            //EditorGUI.DrawRect(copyrightRect, Color.blue * 0.5f);
+                            //EditorGUI.DrawRect(helpRect, Color.black * 0.5f);
+                        }
+                    }
                 }
             }
         }
-
         void OnSelectionChange()
         {
             if (!(currentData.modelCreateMode == ModelCreateMode.Preview)) return;
