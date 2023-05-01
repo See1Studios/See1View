@@ -43,8 +43,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using static See1Studios.See1View.Editor.See1View.Lighting;
-using NUnit;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -53,2673 +51,2558 @@ using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.HighDefinition;
 #endif
 
-namespace See1Studios.See1View.Editor
+namespace See1Studios.See1View
 {
-    public class See1View : EditorWindow
+    #region Enum & Flags
+
+    [Flags]
+    public enum GizmoMode
     {
-        #region Enum & Flags
+        //None = (1<<0),
+        Info = (1 << 1),
+        Light = (1 << 2),
+        Bound = (1 << 3),
+        Bone = (1 << 4)
+    }
 
-        [Flags]
-        public enum GizmoMode
+    public enum ModelCreateMode
+    {
+        Default,
+        Preview,
+#if SEE1VIEWPLUS
+        Assembler
+#endif
+    }
+
+    public enum SidePanelMode
+    {
+        View,
+        Model,
+        Animation,
+        Misc
+    }
+
+    public enum ClearFlags
+    {
+        Color,
+        Sky
+    }
+
+    public enum ImageSaveMode
+    {
+        Overwrite,
+        Incremental
+    }
+
+    public enum ViewMode
+    {
+        None,
+        Depth,
+        Normal
+    }
+
+    public enum RenderPipelineMode
+    {
+        BuiltIn,
+        Universal,
+        HighDefinition,
+    }
+
+    #endregion
+
+    #region Classes
+
+    [InitializeOnLoad]
+    public static class Initializer
+    {
+        // 클래스가 초기화되는 즉시 정적 생성자 호출됨.
+        static Initializer()
         {
-            //None = (1<<0),
-            Info = (1 << 1),
-            Light = (1 << 2),
-            Bound = (1 << 3),
-            Bone = (1 << 4)
-        }
-
-        public enum ModelCreateMode
-        {
-            Default,
-            Preview,
-            Assembler
-        }
-
-        public enum SidePanelMode
-        {
-            View,
-            Model,
-            Animation,
-            Misc
-        }
-
-        public enum ClearFlags
-        {
-            Color,
-            Sky
-        }
-
-        public enum ImageSaveMode
-        {
-            Overwrite,
-            Incremental
-        }
-
-        public enum ViewMode
-        {
-            None,
-            Depth,
-            Normal
-        }
-
-        public enum RenderPipelineMode
-        {
-            BuiltIn,
-            Universal,
-            HighDefinition,
-        }
-
-        #endregion
-
-        #region Inner Classes
-
-        public class EditorCoroutine
-        {
-            public class EditorWaitForSeconds
+            var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup);
+            var define = defines.Split(';').ToList();
+            bool isExtensionExists = File.Exists(ScriptPath.Replace(".cs", "Extension.cs"));
+            if (isExtensionExists)
             {
-                public double WaitTime { get; set; }
-
-                public EditorWaitForSeconds(float time)
+                // Add Define Symbol
+                if (!define.Contains("SEE1VIEWPLUS"))
                 {
-                    WaitTime = time;
+                    defines += ";SEE1VIEWPLUS";
+                    Debug.Log("Define Added");
                 }
+                Debug.Log("Extension Initialized");
+            }
+            else
+            {
+                //Remove Define Symbol
+                if (define.Contains("SEE1VIEWPLUS"))
+                {
+                    //defines.Replace(";SEE1VIEWPLUS", "");
+                    defines = string.Empty;
+                    Debug.Log("Define Removed");
+                }
+                Debug.Log("There is no Extension");
             }
 
-            private struct YieldProcessor
+            // Write Define Symbol
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup, defines);
+            Debug.Log(defines);
+        }
+        public static string ScriptPath
+        {
+            get
             {
-                enum DataType : byte
-                {
-                    None = 0,
-                    WaitForSeconds = 1,
-                    EditorCoroutine = 2,
-                    AsyncOP = 3,
-                }
+                var g = AssetDatabase.FindAssets($"t:Script {nameof(See1View)}");
+                string absolute = Path.GetFullPath(AssetDatabase.GUIDToAssetPath(g[0]));
+                return absolute;
+            }
+        }
+    }
 
-                struct ProcessorData
-                {
-                    public DataType type;
-                    public double targetTime;
-                    public object current;
-                }
+    public class EditorCoroutine
+    {
+        public class EditorWaitForSeconds
+        {
+            public double WaitTime { get; set; }
 
-                ProcessorData data;
+            public EditorWaitForSeconds(float time)
+            {
+                WaitTime = time;
+            }
+        }
 
-                public void Set(object yield)
-                {
-                    if (yield == data.current)
-                        return;
-
-                    var type = yield.GetType();
-                    var dataType = DataType.None;
-                    double targetTime = -1;
-                    if (type == typeof(EditorWaitForSeconds))
-                    {
-                        targetTime = EditorApplication.timeSinceStartup + (yield as EditorWaitForSeconds).WaitTime;
-                        dataType = DataType.WaitForSeconds;
-                    }
-                    else if (type == typeof(EditorCoroutine))
-                    {
-                        dataType = DataType.EditorCoroutine;
-                    }
-                    else if (type == typeof(AsyncOperation))
-                    {
-                        dataType = DataType.AsyncOP;
-                    }
-
-                    data = new ProcessorData { current = yield, targetTime = targetTime, type = dataType };
-                }
-
-                public bool MoveNext(IEnumerator enumerator)
-                {
-                    bool advance = false;
-                    switch (data.type)
-                    {
-                        case DataType.WaitForSeconds:
-                            advance = data.targetTime <= EditorApplication.timeSinceStartup;
-                            break;
-                        case DataType.EditorCoroutine:
-                            advance = (data.current as EditorCoroutine).m_IsDone;
-                            break;
-                        case DataType.AsyncOP:
-                            advance = (data.current as AsyncOperation).isDone;
-                            break;
-                        default:
-                            advance = data.current ==
-                                      enumerator
-                                          .Current; //a IEnumerator or a plain object was passed to the implementation
-                            break;
-                    }
-
-                    if (advance)
-                    {
-                        data = default(ProcessorData);
-                        return enumerator.MoveNext();
-                    }
-
-                    return true;
-                }
+        private struct YieldProcessor
+        {
+            enum DataType : byte
+            {
+                None = 0,
+                WaitForSeconds = 1,
+                EditorCoroutine = 2,
+                AsyncOP = 3,
             }
 
-            internal WeakReference m_Owner;
-            IEnumerator m_Routine;
-            YieldProcessor m_Processor;
-
-            bool m_IsDone;
-
-            internal EditorCoroutine(IEnumerator routine)
+            struct ProcessorData
             {
-                m_Owner = null;
-                m_Routine = routine;
-                EditorApplication.update += MoveNext;
+                public DataType type;
+                public double targetTime;
+                public object current;
             }
 
-            internal EditorCoroutine(IEnumerator routine, object owner)
-            {
-                m_Processor = new YieldProcessor();
-                m_Owner = new WeakReference(owner);
-                m_Routine = routine;
-                EditorApplication.update += MoveNext;
-            }
+            ProcessorData data;
 
-            internal void MoveNext()
+            public void Set(object yield)
             {
-                if (m_Owner != null && !m_Owner.IsAlive)
-                {
-                    EditorApplication.update -= MoveNext;
+                if (yield == data.current)
                     return;
+
+                var type = yield.GetType();
+                var dataType = DataType.None;
+                double targetTime = -1;
+                if (type == typeof(EditorWaitForSeconds))
+                {
+                    targetTime = EditorApplication.timeSinceStartup + (yield as EditorWaitForSeconds).WaitTime;
+                    dataType = DataType.WaitForSeconds;
+                }
+                else if (type == typeof(EditorCoroutine))
+                {
+                    dataType = DataType.EditorCoroutine;
+                }
+                else if (type == typeof(AsyncOperation))
+                {
+                    dataType = DataType.AsyncOP;
                 }
 
-                bool done = ProcessIEnumeratorRecursive(m_Routine);
-                m_IsDone = !done;
-
-                if (m_IsDone)
-                    EditorApplication.update -= MoveNext;
+                data = new ProcessorData { current = yield, targetTime = targetTime, type = dataType };
             }
 
-            static Stack<IEnumerator> kIEnumeratorProcessingStack = new Stack<IEnumerator>(32);
-
-            private bool ProcessIEnumeratorRecursive(IEnumerator enumerator)
+            public bool MoveNext(IEnumerator enumerator)
             {
-                var root = enumerator;
-                while (enumerator.Current as IEnumerator != null)
+                bool advance = false;
+                switch (data.type)
                 {
-                    kIEnumeratorProcessingStack.Push(enumerator);
-                    enumerator = enumerator.Current as IEnumerator;
+                    case DataType.WaitForSeconds:
+                        advance = data.targetTime <= EditorApplication.timeSinceStartup;
+                        break;
+                    case DataType.EditorCoroutine:
+                        advance = (data.current as EditorCoroutine).m_IsDone;
+                        break;
+                    case DataType.AsyncOP:
+                        advance = (data.current as AsyncOperation).isDone;
+                        break;
+                    default:
+                        advance = data.current ==
+                                  enumerator
+                                      .Current; //a IEnumerator or a plain object was passed to the implementation
+                        break;
                 }
 
-                //process leaf
-                m_Processor.Set(enumerator.Current);
-                var result = m_Processor.MoveNext(enumerator);
-
-                while (kIEnumeratorProcessingStack.Count > 1)
+                if (advance)
                 {
-                    if (!result)
-                    {
-                        result = kIEnumeratorProcessingStack.Pop().MoveNext();
-                    }
-                    else
-                        kIEnumeratorProcessingStack.Clear();
+                    data = default(ProcessorData);
+                    return enumerator.MoveNext();
                 }
 
-                if (kIEnumeratorProcessingStack.Count > 0 && !result && root == kIEnumeratorProcessingStack.Pop())
-                {
-                    result = root.MoveNext();
-                }
-
-                return result;
+                return true;
             }
+        }
 
-            internal void Stop()
+        internal WeakReference m_Owner;
+        IEnumerator m_Routine;
+        YieldProcessor m_Processor;
+
+        bool m_IsDone;
+
+        internal EditorCoroutine(IEnumerator routine)
+        {
+            m_Owner = null;
+            m_Routine = routine;
+            EditorApplication.update += MoveNext;
+        }
+
+        internal EditorCoroutine(IEnumerator routine, object owner)
+        {
+            m_Processor = new YieldProcessor();
+            m_Owner = new WeakReference(owner);
+            m_Routine = routine;
+            EditorApplication.update += MoveNext;
+        }
+
+        internal void MoveNext()
+        {
+            if (m_Owner != null && !m_Owner.IsAlive)
             {
-                m_Owner = null;
-                m_Routine = null;
                 EditorApplication.update -= MoveNext;
+                return;
             }
+
+            bool done = ProcessIEnumeratorRecursive(m_Routine);
+            m_IsDone = !done;
+
+            if (m_IsDone)
+                EditorApplication.update -= MoveNext;
         }
-        //saved parameters from URP GUI
-        class SavedParameter<T>
-    where T : IEquatable<T>
+
+        static Stack<IEnumerator> kIEnumeratorProcessingStack = new Stack<IEnumerator>(32);
+
+        private bool ProcessIEnumeratorRecursive(IEnumerator enumerator)
         {
-            internal delegate void SetParameter(string key, T value);
-            internal delegate T GetParameter(string key, T defaultValue);
-
-            readonly string m_Key;
-            bool m_Loaded;
-            T m_Value;
-
-            readonly SetParameter m_Setter;
-            readonly GetParameter m_Getter;
-
-            public SavedParameter(string key, T value, GetParameter getter, SetParameter setter)
+            var root = enumerator;
+            while (enumerator.Current as IEnumerator != null)
             {
-                Assert.IsNotNull(setter);
-                Assert.IsNotNull(getter);
+                kIEnumeratorProcessingStack.Push(enumerator);
+                enumerator = enumerator.Current as IEnumerator;
+            }
 
-                m_Key = key;
-                m_Loaded = false;
+            //process leaf
+            m_Processor.Set(enumerator.Current);
+            var result = m_Processor.MoveNext(enumerator);
+
+            while (kIEnumeratorProcessingStack.Count > 1)
+            {
+                if (!result)
+                {
+                    result = kIEnumeratorProcessingStack.Pop().MoveNext();
+                }
+                else
+                    kIEnumeratorProcessingStack.Clear();
+            }
+
+            if (kIEnumeratorProcessingStack.Count > 0 && !result && root == kIEnumeratorProcessingStack.Pop())
+            {
+                result = root.MoveNext();
+            }
+
+            return result;
+        }
+
+        internal void Stop()
+        {
+            m_Owner = null;
+            m_Routine = null;
+            EditorApplication.update -= MoveNext;
+        }
+    }
+    //saved parameters from URP GUI
+    class SavedParameter<T>
+where T : IEquatable<T>
+    {
+        internal delegate void SetParameter(string key, T value);
+        internal delegate T GetParameter(string key, T defaultValue);
+
+        readonly string m_Key;
+        bool m_Loaded;
+        T m_Value;
+
+        readonly SetParameter m_Setter;
+        readonly GetParameter m_Getter;
+
+        public SavedParameter(string key, T value, GetParameter getter, SetParameter setter)
+        {
+            Assert.IsNotNull(setter);
+            Assert.IsNotNull(getter);
+
+            m_Key = key;
+            m_Loaded = false;
+            m_Value = value;
+            m_Setter = setter;
+            m_Getter = getter;
+        }
+
+        void Load()
+        {
+            if (m_Loaded)
+                return;
+
+            m_Loaded = true;
+            m_Value = m_Getter(m_Key, m_Value);
+        }
+
+        public T value
+        {
+            get
+            {
+                Load();
+                return m_Value;
+            }
+            set
+            {
+                Load();
+
+                if (m_Value.Equals(value))
+                    return;
+
                 m_Value = value;
-                m_Setter = setter;
-                m_Getter = getter;
+                m_Setter(m_Key, value);
+            }
+        }
+    }
+
+    sealed class SavedBool : SavedParameter<bool>
+    {
+        public SavedBool(string key, bool value)
+            : base(key, value, EditorPrefs.GetBool, EditorPrefs.SetBool) { }
+    }
+
+    sealed class SavedInt : SavedParameter<int>
+    {
+        public SavedInt(string key, int value)
+            : base(key, value, EditorPrefs.GetInt, EditorPrefs.SetInt) { }
+    }
+
+    sealed class SavedFloat : SavedParameter<float>
+    {
+        public SavedFloat(string key, float value)
+            : base(key, value, EditorPrefs.GetFloat, EditorPrefs.SetFloat) { }
+    }
+
+    sealed class SavedString : SavedParameter<string>
+    {
+        public SavedString(string key, string value)
+            : base(key, value, EditorPrefs.GetString, EditorPrefs.SetString) { }
+    }
+
+    public static class EditorCoroutineUtility
+    {
+        public static EditorCoroutine StartCoroutine(IEnumerator routine, object owner)
+        {
+            return new EditorCoroutine(routine, owner);
+        }
+
+        public static EditorCoroutine StartCoroutineOwnerless(IEnumerator routine)
+        {
+            return new EditorCoroutine(routine);
+        }
+
+        public static void StopCoroutine(EditorCoroutine coroutine)
+        {
+            if (coroutine == null)
+            {
+                Debug.LogAssertion("EditorCoroutine handle is null.");
+                return;
             }
 
-            void Load()
-            {
-                if (m_Loaded)
-                    return;
+            coroutine.Stop();
+        }
+    }
 
-                m_Loaded = true;
-                m_Value = m_Getter(m_Key, m_Value);
+    public static class EditorWindowControl
+    {
+        public enum SelectWindowType
+        {
+            Inspector,
+            ProjectBrowser,
+            Game,
+            Console,
+            Hierarchy,
+            Scene
+        };
+
+        public static Type GetBuiltinWindowType(SelectWindowType swt)
+        {
+            System.Type unityEditorWindowType = null;
+            switch (swt)
+            {
+                case SelectWindowType.Inspector:
+                    unityEditorWindowType =
+                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.InspectorWindow");
+                    break;
+                case SelectWindowType.ProjectBrowser:
+                    unityEditorWindowType =
+                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ProjectBrowser");
+                    break;
+                case SelectWindowType.Game:
+                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
+                    break;
+                case SelectWindowType.Console:
+                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ConsoleView");
+                    break;
+                case SelectWindowType.Hierarchy:
+                    unityEditorWindowType =
+                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneHierarchyWindow");
+                    break;
+                case SelectWindowType.Scene:
+                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneView");
+                    break;
             }
 
-            public T value
+            return unityEditorWindowType;
+        }
+    }
+
+    public class CubeTextBuilder
+    {
+
+
+    }
+    public class Shaders
+    {
+        private static Shader _heightFog;
+
+        public static Shader heightFog
+        {
+            get
             {
-                get
+                if (_heightFog == null)
                 {
-                    Load();
-                    return m_Value;
+                    _heightFog = ShaderUtil.CreateShaderAsset(
+                        "Shader \"See1View/HeightFog\"\n{\nProperties\n{\n_Height (\"Height\", Float) = 2\n_Ground (\"Ground\", Float) = 0\n_Color (\"Color\", Color) = (0, 0, 0, 0)\n}\n\nSubShader\n{\nTags { \"RenderType\" = \"Opaque\" }\nLOD 100\n\nPass\n{\nColorMask RGB\nBlend SrcAlpha  OneMinusSrcAlpha\n//Blend Zero SrcColor\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n\nstruct appdata_t\n{\nfloat4 vertex: POSITION;\n};\n\nstruct v2f\n{\nfloat4 vertex: SV_POSITION;\nfloat3 worldPos: TEXCOORD0;\n};\n\nfixed _Height;\nfixed _Ground;\nfixed4 _Color;\n\n// remap value to 0-1 range\nfloat remap(float value, float minSource, float maxSource)\n{\nreturn(value - minSource) / (maxSource - minSource);\n}\n\nv2f vert(appdata_t v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;\nreturn o;\n}\n\nfixed4 frag(v2f i): COLOR\n{\nfixed4 c = fixed4(0, 0, 0, 0);\nfloat bottom = _Ground;\nfloat top = _Ground + _Height;\nfloat v = remap(clamp(i.worldPos.y, bottom, top), bottom, top);\nfixed4 t = fixed4(0,0,0,0);\nc = lerp(_Color, t, v);\nreturn c;\n}\nENDCG\n\n}\n}\n}");
                 }
-                set
-                {
-                    Load();
 
-                    if (m_Value.Equals(value))
-                        return;
-
-                    m_Value = value;
-                    m_Setter(m_Key, value);
-                }
+                return _heightFog;
             }
         }
 
-        sealed class SavedBool : SavedParameter<bool>
-        {
-            public SavedBool(string key, bool value)
-                : base(key, value, EditorPrefs.GetBool, EditorPrefs.SetBool) { }
-        }
+        private static Shader _planarShadow;
 
-        sealed class SavedInt : SavedParameter<int>
+        public static Shader planarShadow
         {
-            public SavedInt(string key, int value)
-                : base(key, value, EditorPrefs.GetInt, EditorPrefs.SetInt) { }
-        }
-
-        sealed class SavedFloat : SavedParameter<float>
-        {
-            public SavedFloat(string key, float value)
-                : base(key, value, EditorPrefs.GetFloat, EditorPrefs.SetFloat) { }
-        }
-
-        sealed class SavedString : SavedParameter<string>
-        {
-            public SavedString(string key, string value)
-                : base(key, value, EditorPrefs.GetString, EditorPrefs.SetString) { }
-        }
-
-        public static class EditorCoroutineUtility
-        {
-            public static EditorCoroutine StartCoroutine(IEnumerator routine, object owner)
+            get
             {
-                return new EditorCoroutine(routine, owner);
-            }
-
-            public static EditorCoroutine StartCoroutineOwnerless(IEnumerator routine)
-            {
-                return new EditorCoroutine(routine);
-            }
-
-            public static void StopCoroutine(EditorCoroutine coroutine)
-            {
-                if (coroutine == null)
+                if (_planarShadow == null)
                 {
-                    Debug.LogAssertion("EditorCoroutine handle is null.");
-                    return;
+                    _planarShadow = ShaderUtil.CreateShaderAsset(
+                        "Shader \"See1View/PlanarShadow\" \n{\n\nProperties {\n_ShadowColor (\"Shadow Color\", Color) = (0,0,0,1)\n_PlaneHeight (\"Plane Height\", Float) = 0\n}\n\nSubShader {\nTags {\"Queue\"=\"Transparent\" \"IgnoreProjector\"=\"True\" \"RenderType\"=\"Transparent\"}\n\n// shadow color\nPass {   \n\nZWrite On\nZTest LEqual \nBlend SrcAlpha  OneMinusSrcAlpha\n\nStencil {\nRef 0\nComp Equal\nPass IncrWrap\nZFail Keep\n}\n\nCGPROGRAM\n#include \"UnityCG.cginc\"\n\n// User-specified uniforms\nuniform float4 _ShadowColor;\nuniform float _PlaneHeight = 0;\n\nstruct vsOut\n{\nfloat4 pos: SV_POSITION;\n};\n\nvsOut vertPlanarShadow( appdata_base v)\n{\nvsOut o;\n                     \nfloat4 vPosWorld = mul( unity_ObjectToWorld, v.vertex);\nfloat4 lightDirection = -normalize(_WorldSpaceLightPos0); \n\nfloat opposite = vPosWorld.y - _PlaneHeight;\nfloat cosTheta = -lightDirection.y;// = lightDirection dot (0,-1,0)\nfloat hypotenuse = opposite / cosTheta;\nfloat3 vPos = vPosWorld.xyz + ( lightDirection * hypotenuse );\n\no.pos = mul (UNITY_MATRIX_VP, float4(vPos.x, _PlaneHeight, vPos.z ,1));  \n\nreturn o;\n}\n\nfloat4 fragPlanarShadow( vsOut i)\n{\nreturn _ShadowColor;\n}\n#pragma vertex vert\n#pragma fragment frag\n\nvsOut vert( appdata_base v)\n{\nreturn vertPlanarShadow(v);\n}\n\n\nfixed4 frag( vsOut i) : COLOR\n{\nreturn fragPlanarShadow(i);\n}\n\nENDCG\n\n}\n}\n}\n");
                 }
 
-                coroutine.Stop();
+                return _planarShadow;
             }
         }
 
-        public static class EditorWindowControl
-        {
-            public enum SelectWindowType
-            {
-                Inspector,
-                ProjectBrowser,
-                Game,
-                Console,
-                Hierarchy,
-                Scene
-            };
+        private static Shader _wireFrame;
 
-            public static Type GetBuiltinWindowType(SelectWindowType swt)
+        public static Shader wireFrame
+        {
+            get
             {
-                System.Type unityEditorWindowType = null;
-                switch (swt)
+                if (_wireFrame == null)
                 {
-                    case SelectWindowType.Inspector:
-                        unityEditorWindowType =
-                            typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.InspectorWindow");
-                        break;
-                    case SelectWindowType.ProjectBrowser:
-                        unityEditorWindowType =
-                            typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ProjectBrowser");
-                        break;
-                    case SelectWindowType.Game:
-                        unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
-                        break;
-                    case SelectWindowType.Console:
-                        unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ConsoleView");
-                        break;
-                    case SelectWindowType.Hierarchy:
-                        unityEditorWindowType =
-                            typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneHierarchyWindow");
-                        break;
-                    case SelectWindowType.Scene:
-                        unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneView");
-                        break;
+                    _wireFrame = ShaderUtil.CreateShaderAsset(
+                        "Shader \"See1View/Wireframe\"\n{\nProperties\n{\n_LineColor (\"LineColor\", Color) = (1,1,1,1)\n_FillColor (\"FillColor\", Color) = (0,0,0,0)\n_WireThickness (\"Wire Thickness\", RANGE(0, 800)) = 100\n[MaterialToggle] UseDiscard(\"Discard Fill\", Float) = 1\n[MaterialToggle] UVMode(\"UV Mode\", Float) = 0\n }\n\nSubShader\n{\nTags { \"RenderType\"=\"Opaque\" }\n\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n\nCGPROGRAM\n#pragma vertex vert\n#pragma geometry geom\n#pragma fragment frag\n#pragma multi_compile _ USEDISCARD_ON\n#pragma multi_compile _ UVMODE_ON\n#include \"UnityCG.cginc\"\n\nfloat _WireThickness;\n\nstruct appdata\n{\nfloat4 vertex : POSITION;\n};\n\nstruct v2g\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD1;\n};\n\nstruct g2f\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD0;\nfloat4 dist : TEXCOORD1;\n};\n\n\nv2g vert (appdata v)\n{\nv2g o;\n//UNITY_SETUP_INSTANCE_ID(v);\n//UNITY_INITIALIZE_OUTPUT(v2g, o);\n#ifdef UV_ON\nv.vertex = float4(v.uv.xy, 0.0, 1.0);\no.projectionSpaceVertex = mul(UNITY_MATRIX_P, v.vertex);\no.worldSpacePosition = mul(UNITY_MATRIX_P, v.vertex);\n//o.vertex = UnityObjectToClipPos(v.vertex);\n#else\no.projectionSpaceVertex = UnityObjectToClipPos(v.vertex);\no.worldSpacePosition = mul(unity_ObjectToWorld, v.vertex);\n#endif\nreturn o;\n}\n\n[maxvertexcount(3)]\nvoid geom(triangle v2g i[3], inout TriangleStream<g2f> triangleStream)\n{\nfloat2 p0 = i[0].projectionSpaceVertex.xy / i[0].projectionSpaceVertex.w;\nfloat2 p1 = i[1].projectionSpaceVertex.xy / i[1].projectionSpaceVertex.w;\nfloat2 p2 = i[2].projectionSpaceVertex.xy / i[2].projectionSpaceVertex.w;\n\nfloat2 edge0 = p2 - p1;\nfloat2 edge1 = p2 - p0;\nfloat2 edge2 = p1 - p0;\n\n// To find the distance to the opposite edge, we take the\n// formula for finding the area of a triangle Area = Base/2 * Height, \n// and solve for the Height = (Area * 2)/Base.\n// We can get the area of a triangle by taking its cross product\n// divided by 2.  However we can avoid dividing our area/base by 2\n// since our cross product will already be double our area.\nfloat area = abs(edge1.x * edge2.y - edge1.y * edge2.x);\nfloat wireThickness = 800 - _WireThickness;\n\ng2f o;\no.worldSpacePosition = i[0].worldSpacePosition;\no.projectionSpaceVertex = i[0].projectionSpaceVertex;\no.dist.xyz = float3( (area / length(edge0)), 0.0, 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[1].worldSpacePosition;\no.projectionSpaceVertex = i[1].projectionSpaceVertex;\no.dist.xyz = float3(0.0, (area / length(edge1)), 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[2].worldSpacePosition;\no.projectionSpaceVertex = i[2].projectionSpaceVertex;\no.dist.xyz = float3(0.0, 0.0, (area / length(edge2))) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n}\n\nuniform fixed4 _LineColor;\nuniform fixed4 _FillColor;\n\nfixed4 frag (g2f i) : SV_Target\n{\nfloat minDistanceToEdge = min(i.dist[0], min(i.dist[1], i.dist[2])) * i.dist[3];\n\n// Early out if we know we are not on a line segment.\nif(minDistanceToEdge > 0.9)\n{\n#ifdef USEDISCARD_ON\ndiscard;\n#else\nreturn _FillColor;\n#endif\n}\n\nreturn _LineColor;\n}\nENDCG\n}\n}\n}");
                 }
 
-                return unityEditorWindowType;
+                return _wireFrame;
             }
         }
 
-        public class CubeTextBuilder
+        private static Shader _depth;
+
+        public static Shader depth
         {
-
-
-        }
-        public class Shaders
-        {
-            private static Shader _heightFog;
-
-            public static Shader heightFog
+            get
             {
-                get
+                if (_depth == null)
                 {
-                    if (_heightFog == null)
-                    {
-                        _heightFog = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/HeightFog\"\n{\nProperties\n{\n_Height (\"Height\", Float) = 2\n_Ground (\"Ground\", Float) = 0\n_Color (\"Color\", Color) = (0, 0, 0, 0)\n}\n\nSubShader\n{\nTags { \"RenderType\" = \"Opaque\" }\nLOD 100\n\nPass\n{\nColorMask RGB\nBlend SrcAlpha  OneMinusSrcAlpha\n//Blend Zero SrcColor\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n\nstruct appdata_t\n{\nfloat4 vertex: POSITION;\n};\n\nstruct v2f\n{\nfloat4 vertex: SV_POSITION;\nfloat3 worldPos: TEXCOORD0;\n};\n\nfixed _Height;\nfixed _Ground;\nfixed4 _Color;\n\n// remap value to 0-1 range\nfloat remap(float value, float minSource, float maxSource)\n{\nreturn(value - minSource) / (maxSource - minSource);\n}\n\nv2f vert(appdata_t v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;\nreturn o;\n}\n\nfixed4 frag(v2f i): COLOR\n{\nfixed4 c = fixed4(0, 0, 0, 0);\nfloat bottom = _Ground;\nfloat top = _Ground + _Height;\nfloat v = remap(clamp(i.worldPos.y, bottom, top), bottom, top);\nfixed4 t = fixed4(0,0,0,0);\nc = lerp(_Color, t, v);\nreturn c;\n}\nENDCG\n\n}\n}\n}");
-                    }
-
-                    return _heightFog;
+                    _depth = ShaderUtil.CreateShaderAsset(
+                        "Shader \"See1View/Depth\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n			\nsampler2D _MainTex;\nsampler2D _CameraDepthTexture;\nfloat4 _CameraDepthTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthTexture_TexelSize.z / (1 / _Seperate))\n{\nfloat depth = tex2D(_CameraDepthTexture, i.uv).r;\ncol = float4(depth, depth, depth, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}\n");
                 }
-            }
 
-            private static Shader _planarShadow;
-
-            public static Shader planarShadow
-            {
-                get
-                {
-                    if (_planarShadow == null)
-                    {
-                        _planarShadow = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/PlanarShadow\" \n{\n\nProperties {\n_ShadowColor (\"Shadow Color\", Color) = (0,0,0,1)\n_PlaneHeight (\"Plane Height\", Float) = 0\n}\n\nSubShader {\nTags {\"Queue\"=\"Transparent\" \"IgnoreProjector\"=\"True\" \"RenderType\"=\"Transparent\"}\n\n// shadow color\nPass {   \n\nZWrite On\nZTest LEqual \nBlend SrcAlpha  OneMinusSrcAlpha\n\nStencil {\nRef 0\nComp Equal\nPass IncrWrap\nZFail Keep\n}\n\nCGPROGRAM\n#include \"UnityCG.cginc\"\n\n// User-specified uniforms\nuniform float4 _ShadowColor;\nuniform float _PlaneHeight = 0;\n\nstruct vsOut\n{\nfloat4 pos: SV_POSITION;\n};\n\nvsOut vertPlanarShadow( appdata_base v)\n{\nvsOut o;\n                     \nfloat4 vPosWorld = mul( unity_ObjectToWorld, v.vertex);\nfloat4 lightDirection = -normalize(_WorldSpaceLightPos0); \n\nfloat opposite = vPosWorld.y - _PlaneHeight;\nfloat cosTheta = -lightDirection.y;// = lightDirection dot (0,-1,0)\nfloat hypotenuse = opposite / cosTheta;\nfloat3 vPos = vPosWorld.xyz + ( lightDirection * hypotenuse );\n\no.pos = mul (UNITY_MATRIX_VP, float4(vPos.x, _PlaneHeight, vPos.z ,1));  \n\nreturn o;\n}\n\nfloat4 fragPlanarShadow( vsOut i)\n{\nreturn _ShadowColor;\n}\n#pragma vertex vert\n#pragma fragment frag\n\nvsOut vert( appdata_base v)\n{\nreturn vertPlanarShadow(v);\n}\n\n\nfixed4 frag( vsOut i) : COLOR\n{\nreturn fragPlanarShadow(i);\n}\n\nENDCG\n\n}\n}\n}\n");
-                    }
-
-                    return _planarShadow;
-                }
-            }
-
-            private static Shader _wireFrame;
-
-            public static Shader wireFrame
-            {
-                get
-                {
-                    if (_wireFrame == null)
-                    {
-                        _wireFrame = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/Wireframe\"\n{\nProperties\n{\n_LineColor (\"LineColor\", Color) = (1,1,1,1)\n_FillColor (\"FillColor\", Color) = (0,0,0,0)\n_WireThickness (\"Wire Thickness\", RANGE(0, 800)) = 100\n[MaterialToggle] UseDiscard(\"Discard Fill\", Float) = 1\n[MaterialToggle] UVMode(\"UV Mode\", Float) = 0\n }\n\nSubShader\n{\nTags { \"RenderType\"=\"Opaque\" }\n\n\nPass\n{\nBlend SrcAlpha  OneMinusSrcAlpha\n\nCGPROGRAM\n#pragma vertex vert\n#pragma geometry geom\n#pragma fragment frag\n#pragma multi_compile _ USEDISCARD_ON\n#pragma multi_compile _ UVMODE_ON\n#include \"UnityCG.cginc\"\n\nfloat _WireThickness;\n\nstruct appdata\n{\nfloat4 vertex : POSITION;\n};\n\nstruct v2g\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD1;\n};\n\nstruct g2f\n{\nfloat4 projectionSpaceVertex : SV_POSITION;\nfloat4 worldSpacePosition : TEXCOORD0;\nfloat4 dist : TEXCOORD1;\n};\n\n\nv2g vert (appdata v)\n{\nv2g o;\n//UNITY_SETUP_INSTANCE_ID(v);\n//UNITY_INITIALIZE_OUTPUT(v2g, o);\n#ifdef UV_ON\nv.vertex = float4(v.uv.xy, 0.0, 1.0);\no.projectionSpaceVertex = mul(UNITY_MATRIX_P, v.vertex);\no.worldSpacePosition = mul(UNITY_MATRIX_P, v.vertex);\n//o.vertex = UnityObjectToClipPos(v.vertex);\n#else\no.projectionSpaceVertex = UnityObjectToClipPos(v.vertex);\no.worldSpacePosition = mul(unity_ObjectToWorld, v.vertex);\n#endif\nreturn o;\n}\n\n[maxvertexcount(3)]\nvoid geom(triangle v2g i[3], inout TriangleStream<g2f> triangleStream)\n{\nfloat2 p0 = i[0].projectionSpaceVertex.xy / i[0].projectionSpaceVertex.w;\nfloat2 p1 = i[1].projectionSpaceVertex.xy / i[1].projectionSpaceVertex.w;\nfloat2 p2 = i[2].projectionSpaceVertex.xy / i[2].projectionSpaceVertex.w;\n\nfloat2 edge0 = p2 - p1;\nfloat2 edge1 = p2 - p0;\nfloat2 edge2 = p1 - p0;\n\n// To find the distance to the opposite edge, we take the\n// formula for finding the area of a triangle Area = Base/2 * Height, \n// and solve for the Height = (Area * 2)/Base.\n// We can get the area of a triangle by taking its cross product\n// divided by 2.  However we can avoid dividing our area/base by 2\n// since our cross product will already be double our area.\nfloat area = abs(edge1.x * edge2.y - edge1.y * edge2.x);\nfloat wireThickness = 800 - _WireThickness;\n\ng2f o;\no.worldSpacePosition = i[0].worldSpacePosition;\no.projectionSpaceVertex = i[0].projectionSpaceVertex;\no.dist.xyz = float3( (area / length(edge0)), 0.0, 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[1].worldSpacePosition;\no.projectionSpaceVertex = i[1].projectionSpaceVertex;\no.dist.xyz = float3(0.0, (area / length(edge1)), 0.0) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n\no.worldSpacePosition = i[2].worldSpacePosition;\no.projectionSpaceVertex = i[2].projectionSpaceVertex;\no.dist.xyz = float3(0.0, 0.0, (area / length(edge2))) * o.projectionSpaceVertex.w * wireThickness;\no.dist.w = 1.0 / o.projectionSpaceVertex.w;\ntriangleStream.Append(o);\n}\n\nuniform fixed4 _LineColor;\nuniform fixed4 _FillColor;\n\nfixed4 frag (g2f i) : SV_Target\n{\nfloat minDistanceToEdge = min(i.dist[0], min(i.dist[1], i.dist[2])) * i.dist[3];\n\n// Early out if we know we are not on a line segment.\nif(minDistanceToEdge > 0.9)\n{\n#ifdef USEDISCARD_ON\ndiscard;\n#else\nreturn _FillColor;\n#endif\n}\n\nreturn _LineColor;\n}\nENDCG\n}\n}\n}");
-                    }
-
-                    return _wireFrame;
-                }
-            }
-
-            private static Shader _depth;
-
-            public static Shader depth
-            {
-                get
-                {
-                    if (_depth == null)
-                    {
-                        _depth = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/Depth\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n			\nsampler2D _MainTex;\nsampler2D _CameraDepthTexture;\nfloat4 _CameraDepthTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthTexture_TexelSize.z / (1 / _Seperate))\n{\nfloat depth = tex2D(_CameraDepthTexture, i.uv).r;\ncol = float4(depth, depth, depth, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}\n");
-                    }
-
-                    return _depth;
-                }
-            }
-
-            private static Shader _depthNormal;
-
-            public static Shader depthNormal
-            {
-                get
-                {
-                    if (_depthNormal == null)
-                    {
-                        _depthNormal = ShaderUtil.CreateShaderAsset(
-                            "Shader \"See1View/DepthNormal\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n\nsampler2D _MainTex;\nsampler2D _CameraDepthNormalsTexture;\nfloat4 _CameraDepthNormalsTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthNormalsTexture_TexelSize.z / (1 / _Seperate))\n{\nfixed3 tex = tex2D(_MainTex, i.uv).rgb;\nfixed4 dn = tex2D(_CameraDepthNormalsTexture, i.uv);\nfloat depth;\nfloat3 normal;\nDecodeDepthNormal(dn, depth, normal);\ncol = float4(normal, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}");
-                    }
-
-                    return _depthNormal;
-                }
-            }
-        }
-        // animated bool for GUI
-        [Serializable]
-        class AnimBoolS : BaseAnimValue<bool>
-        {
-            [SerializeField] private float m_Value;
-
-            public AnimBoolS()
-                : base(false)
-            {
-            }
-
-            public AnimBoolS(bool value)
-                : base(value)
-            {
-            }
-
-            public AnimBoolS(UnityAction callback)
-                : base(false, callback)
-            {
-            }
-
-            public AnimBoolS(bool value, UnityAction callback)
-                : base(value, callback)
-            {
-            }
-
-            public float faded
-            {
-                get
-                {
-                    this.GetValue();
-                    return this.m_Value;
-                }
-            }
-
-            protected override bool GetValue()
-            {
-                float a = !this.target ? 1f : 0.0f;
-                float b = 1f - a;
-                this.m_Value = Mathf.SmoothStep(a, b, this.lerpPosition);
-                return (double)this.m_Value > 0.5;
-            }
-
-            public float Fade(float from, float to)
-            {
-                return Mathf.SmoothStep(from, to, this.faded);
-            }
-        }
-        // gui helper
-        class RectSlicer
-        {
-            private EditorWindow window;
-            private Rect _rect;
-
-            public Rect rect
-            {
-                get { return window ? window.position : _rect; }
-                set { _rect = value; }
-            }
-
-            //EditiorWindow GUI
-            public AnimBoolS openTop;
-            public AnimBoolS openLeft;
-            public AnimBoolS openRight;
-            public AnimBoolS openBottom;
-            public float topTargetHeight = 100;
-            public float bottomTargetHeight = 100;
-            public float leftTargetWidth = 200;
-            public float rightTargetWidth = 200;
-
-            public float topHeight
-            {
-                get { return openTop.faded * topTargetHeight; }
-            }
-
-            public float bottomHeight
-            {
-                get { return openBottom.faded * bottomTargetHeight; }
-            }
-
-            public float leftWidth
-            {
-                get { return openLeft.faded * leftTargetWidth; }
-            }
-
-            public float rightWidth
-            {
-                get { return openRight.faded * rightTargetWidth; }
-            }
-
-            public Rect center
-            {
-                get
-                {
-                    return new Rect(leftWidth, topHeight, rect.width - leftWidth - rightWidth,
-                        rect.height - topHeight - bottomHeight);
-                }
-            } // { width = rect.width - leftWidth - rightWidth, height = rect.height - topHeight - bottomHeight, x = leftWidth, y = topHeight }; } }
-
-            public Rect top
-            {
-                get { return new Rect(leftWidth, 0, rect.width - leftWidth - rightWidth, topHeight); }
-            } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
-
-            public Rect stretchedTop
-            {
-                get { return new Rect(0, 0, rect.width, topHeight); }
-            } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
-
-            public Rect bottom
-            {
-                get
-                {
-                    return new Rect(leftWidth, topHeight + center.height, rect.width - leftWidth - rightWidth,
-                        bottomHeight);
-                }
-            }
-
-            public Rect stretchedBottom
-            {
-                get { return new Rect(0, topHeight + center.height, rect.width, bottomHeight); }
-            } // { width = rect.width, height = bottomHeight, x = 0, y = topHeight + center.height }; } }
-
-            public Rect left
-            {
-                get { return new Rect(0, topHeight, leftWidth, center.height); }
-            } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
-
-            public Rect stretchedLeft
-            {
-                get { return new Rect(0, 0, leftWidth, rect.height); }
-            } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
-
-            public Rect right
-            {
-                get { return new Rect(leftWidth + center.width, topHeight, rightWidth, center.height); }
-            } // { width = rightWidth, height = center.height, x = leftWidth + center.width, y = topHeight }; } }
-
-            public Rect stretchedRight
-            {
-                get { return new Rect(leftWidth + center.width, 0, rightWidth, rect.height); }
-            }
-
-            public Rect full
-            {
-                get { return new Rect(0, 0, rect.width, rect.height); }
-            } // { width = rect.width, height = rect.height, x = 0, y = 0 }; } }
-
-            public RectSlicer()
-            {
-                this.openTop = new AnimBoolS(false);
-                this.openBottom = new AnimBoolS(false);
-                this.openLeft = new AnimBoolS(false);
-                this.openRight = new AnimBoolS(false);
-            }
-
-
-            public RectSlicer(EditorWindow window)
-            {
-                this.window = window;
-                UnityAction onChangeCallback = window.Repaint;
-                this.openTop = new AnimBoolS(false);
-                this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new AnimBoolS(false);
-                this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new AnimBoolS(false);
-                this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new AnimBoolS(false);
-                this.openRight.valueChanged.AddListener(onChangeCallback);
-            }
-
-            public RectSlicer(UnityAction onChangeCallback)
-            {
-                this.openTop = new AnimBoolS(false);
-                this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new AnimBoolS(false);
-                this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new AnimBoolS(false);
-                this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new AnimBoolS(false);
-                this.openRight.valueChanged.AddListener(onChangeCallback);
-            }
-
-            public RectSlicer(Rect r, UnityAction onChangeCallback)
-            {
-                this.rect = r;
-                this.openTop = new AnimBoolS(false);
-                this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new AnimBoolS(false);
-                this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new AnimBoolS(false);
-                this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new AnimBoolS(false);
-                this.openRight.valueChanged.AddListener(onChangeCallback);
-            }
-
-            public RectSlicer(Rect r, float topHeight, float bottomHeight, float leftWidth, float rightWidth,
-                UnityAction onChangeCallback)
-            {
-                this.rect = r;
-                this.openTop = new AnimBoolS(false);
-                this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new AnimBoolS(false);
-                this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new AnimBoolS(false);
-                this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new AnimBoolS(false);
-                this.openRight.valueChanged.AddListener(onChangeCallback);
-
-                this.topTargetHeight = topHeight;
-                this.bottomTargetHeight = bottomHeight;
-                this.leftTargetWidth = leftWidth;
-                this.rightTargetWidth = rightWidth;
-            }
-
-            public RectSlicer(Rect r, bool openTop, float topHeight, bool openBottom, float bottomHeight, bool openLeft,
-                float leftWidth, bool openRight, float rightWidth, UnityAction onChangeCallback)
-            {
-                this.rect = r;
-                this.openTop = new AnimBoolS(openTop);
-                this.openTop.valueChanged.AddListener(onChangeCallback);
-                this.openBottom = new AnimBoolS(openBottom);
-                this.openBottom.valueChanged.AddListener(onChangeCallback);
-                this.openLeft = new AnimBoolS(openLeft);
-                this.openLeft.valueChanged.AddListener(onChangeCallback);
-                this.openRight = new AnimBoolS(openRight);
-                this.openRight.valueChanged.AddListener(onChangeCallback);
-
-                this.topTargetHeight = topHeight;
-                this.bottomTargetHeight = bottomHeight;
-                this.leftTargetWidth = leftWidth;
-                this.rightTargetWidth = rightWidth;
+                return _depth;
             }
         }
 
-        // unique data for URP
-        [Serializable]
-        internal class URPData : ICloneable
-        {
-            public bool renderPostProcessing = true;
-            public bool dithering = true;
-            public int antialiasing;
+        private static Shader _depthNormal;
 
-            public object Clone()
+        public static Shader depthNormal
+        {
+            get
             {
-                return this.MemberwiseClone();
+                if (_depthNormal == null)
+                {
+                    _depthNormal = ShaderUtil.CreateShaderAsset(
+                        "Shader \"See1View/DepthNormal\"\n{\nProperties\n{\n_MainTex (\"Texture\", 2D) = \"white\" { }\n_Seperate (\"Seperate\", range(0, 1)) = 0.5\n}\nSubShader\n{\n// No culling or depth\nCull Off ZWrite Off ZTest Always\n\nPass\n{\nCGPROGRAM\n\n#pragma vertex vert\n#pragma fragment frag\n\n#include \"UnityCG.cginc\"\n\nsampler2D _MainTex;\nsampler2D _CameraDepthNormalsTexture;\nfloat4 _CameraDepthNormalsTexture_TexelSize;\nhalf _Seperate;\n\nstruct appdata\n{\nfloat4 vertex: POSITION;\nfloat2 uv: TEXCOORD0;\n};\n\nstruct v2f\n{\nfloat2 uv: TEXCOORD0;\nfloat4 vertex: SV_POSITION;\n};\n\nv2f vert(appdata v)\n{\nv2f o;\no.vertex = UnityObjectToClipPos(v.vertex);\no.uv = v.uv;\nreturn o;\n}\n\nfixed4 frag(v2f i): SV_Target\n{\nfloat4 col = float4(1, 0, 0, 1);\nif (i.vertex.x > _CameraDepthNormalsTexture_TexelSize.z / (1 / _Seperate))\n{\nfixed3 tex = tex2D(_MainTex, i.uv).rgb;\nfixed4 dn = tex2D(_CameraDepthNormalsTexture, i.uv);\nfloat depth;\nfloat3 normal;\nDecodeDepthNormal(dn, depth, normal);\ncol = float4(normal, 1);\n}\nelse\n{\ncol = tex2D(_MainTex, i.uv);\n}\nreturn col;\n}\nENDCG\n\n}\n}\n}");
+                }
+
+                return _depthNormal;
             }
         }
-        // unique data for HDRP
-        [Serializable]
-        internal class HDRPData : ICloneable
-        {
-            public bool renderPostProcessing = true;
-            public bool dithering = true;
-            public int antialiasing;
+    }
+    // animated bool for GUI
+    [Serializable]
+    class AnimBoolS : BaseAnimValue<bool>
+    {
+        [SerializeField] private float m_Value;
 
-            public object Clone()
+        public AnimBoolS()
+            : base(false)
+        {
+        }
+
+        public AnimBoolS(bool value)
+            : base(value)
+        {
+        }
+
+        public AnimBoolS(UnityAction callback)
+            : base(false, callback)
+        {
+        }
+
+        public AnimBoolS(bool value, UnityAction callback)
+            : base(value, callback)
+        {
+        }
+
+        public float faded
+        {
+            get
             {
-                return this.MemberwiseClone();
+                this.GetValue();
+                return this.m_Value;
             }
         }
-        //Container for all data worth saving
-        [Serializable]
-        internal class Data : ICloneable
+
+        protected override bool GetValue()
         {
-            public string name;
-            public bool reframeToTarget = true;
-            public bool recalculateBound = true;
-            public int rotSpeed = 3;
-            public int zoomSpeed = 3;
-            public int panSpeed = 3;
-            public int smoothFactor = 3;
-            //Image Save
-            public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
-            public bool openSavedImage = true;
-            public bool alphaAppliedImage = true;
-            public int imageSizeMultiplier = 1;
-            //Render
-            public CameraType cameraType = CameraType.Game;
-            public int viewportMultiplier = 2;
-            public Color wireLineColor = Color.white;
-            public Color wireFillColor = Color.black;
-            public float wireThickness = 0.1f;
-            public float wireUseDiscard = 1;
-            public Color planeShadowColor = Color.gray;
-            public bool enablePlaneShadows = true;
-            public Color heightFogColor = new Color(0, 0, 0, 0.5f);
-            public bool enableHeightFog = true;
-            public float heightFogHeight = 1;
-            public bool enableShadows = true;
-            public float shadowBias = 0.01f;
+            float a = !this.target ? 1f : 0.0f;
+            float b = 1f - a;
+            this.m_Value = Mathf.SmoothStep(a, b, this.lerpPosition);
+            return (double)this.m_Value > 0.5;
+        }
 
-            public bool enablePostProcess = true;
-            public URPData urpData = new URPData();
-            public HDRPData hdrpData = new HDRPData();
-            //Resources
-            public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
-            public Color ambientSkyColor = Color.gray;
-            public ClearFlags clearFlag = ClearFlags.Color;
-            public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
-            public List<View> viewList = new List<View>();
-            public Lighting lastLighting = new Lighting();
-            public List<Lighting> lightingList = new List<Lighting>();
-            public List<Vector2> viewportSizes = new List<Vector2>();
-            public List<ModelGroup> modelGroupList = new List<ModelGroup>();
-            public List<Steel> steelList = new List<Steel>();
-            //Model
-            public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
-            public string lastTargetPath = string.Empty;
-            public GameObject _lastTarget;
-            public GameObject lastTarget
+        public float Fade(float from, float to)
+        {
+            return Mathf.SmoothStep(from, to, this.faded);
+        }
+    }
+    // gui helper
+    class RectSlicer
+    {
+        private EditorWindow window;
+        private Rect _rect;
 
+        public Rect rect
+        {
+            get { return window ? window.position : _rect; }
+            set { _rect = value; }
+        }
+
+        //EditiorWindow GUI
+        public AnimBoolS openTop;
+        public AnimBoolS openLeft;
+        public AnimBoolS openRight;
+        public AnimBoolS openBottom;
+        public float topTargetHeight = 100;
+        public float bottomTargetHeight = 100;
+        public float leftTargetWidth = 200;
+        public float rightTargetWidth = 200;
+
+        public float topHeight
+        {
+            get { return openTop.faded * topTargetHeight; }
+        }
+
+        public float bottomHeight
+        {
+            get { return openBottom.faded * bottomTargetHeight; }
+        }
+
+        public float leftWidth
+        {
+            get { return openLeft.faded * leftTargetWidth; }
+        }
+
+        public float rightWidth
+        {
+            get { return openRight.faded * rightTargetWidth; }
+        }
+
+        public Rect center
+        {
+            get
             {
-                get
-                {
-                    return _lastTarget
-                        ? _lastTarget
-                        : _lastTarget = AssetDatabase.LoadAssetAtPath<GameObject>(lastTargetPath);
-                }
-                set
-                {
-                    _lastTarget = value;
-                    lastTargetPath = AssetDatabase.GetAssetPath(value);
-                }
+                return new Rect(leftWidth, topHeight, rect.width - leftWidth - rightWidth,
+                    rect.height - topHeight - bottomHeight);
             }
+        } // { width = rect.width - leftWidth - rightWidth, height = rect.height - topHeight - bottomHeight, x = leftWidth, y = topHeight }; } }
 
-            public string cubemapPath = string.Empty;
-            private Texture _cubeMap;
-            public Texture cubeMap
+        public Rect top
+        {
+            get { return new Rect(leftWidth, 0, rect.width - leftWidth - rightWidth, topHeight); }
+        } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
+
+        public Rect stretchedTop
+        {
+            get { return new Rect(0, 0, rect.width, topHeight); }
+        } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
+
+        public Rect bottom
+        {
+            get
             {
-                get { return _cubeMap ? _cubeMap : _cubeMap = AssetDatabase.LoadAssetAtPath<Cubemap>(cubemapPath); }
-                set
-                {
-                    _cubeMap = value;
-                    cubemapPath = AssetDatabase.GetAssetPath(value);
-                }
+                return new Rect(leftWidth, topHeight + center.height, rect.width - leftWidth - rightWidth,
+                    bottomHeight);
             }
+        }
 
-            private float _cubeMapMipMapBias;
-            public float CubeMapMipMapBias
+        public Rect stretchedBottom
+        {
+            get { return new Rect(0, topHeight + center.height, rect.width, bottomHeight); }
+        } // { width = rect.width, height = bottomHeight, x = 0, y = topHeight + center.height }; } }
+
+        public Rect left
+        {
+            get { return new Rect(0, topHeight, leftWidth, center.height); }
+        } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
+
+        public Rect stretchedLeft
+        {
+            get { return new Rect(0, 0, leftWidth, rect.height); }
+        } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
+
+        public Rect right
+        {
+            get { return new Rect(leftWidth + center.width, topHeight, rightWidth, center.height); }
+        } // { width = rightWidth, height = center.height, x = leftWidth + center.width, y = topHeight }; } }
+
+        public Rect stretchedRight
+        {
+            get { return new Rect(leftWidth + center.width, 0, rightWidth, rect.height); }
+        }
+
+        public Rect full
+        {
+            get { return new Rect(0, 0, rect.width, rect.height); }
+        } // { width = rect.width, height = rect.height, x = 0, y = 0 }; } }
+
+        public RectSlicer()
+        {
+            this.openTop = new AnimBoolS(false);
+            this.openBottom = new AnimBoolS(false);
+            this.openLeft = new AnimBoolS(false);
+            this.openRight = new AnimBoolS(false);
+        }
+
+
+        public RectSlicer(EditorWindow window)
+        {
+            this.window = window;
+            UnityAction onChangeCallback = window.Repaint;
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+        }
+
+        public RectSlicer(UnityAction onChangeCallback)
+        {
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+        }
+
+        public RectSlicer(Rect r, UnityAction onChangeCallback)
+        {
+            this.rect = r;
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+        }
+
+        public RectSlicer(Rect r, float topHeight, float bottomHeight, float leftWidth, float rightWidth,
+            UnityAction onChangeCallback)
+        {
+            this.rect = r;
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+
+            this.topTargetHeight = topHeight;
+            this.bottomTargetHeight = bottomHeight;
+            this.leftTargetWidth = leftWidth;
+            this.rightTargetWidth = rightWidth;
+        }
+
+        public RectSlicer(Rect r, bool openTop, float topHeight, bool openBottom, float bottomHeight, bool openLeft,
+            float leftWidth, bool openRight, float rightWidth, UnityAction onChangeCallback)
+        {
+            this.rect = r;
+            this.openTop = new AnimBoolS(openTop);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(openBottom);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(openLeft);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(openRight);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+
+            this.topTargetHeight = topHeight;
+            this.bottomTargetHeight = bottomHeight;
+            this.leftTargetWidth = leftWidth;
+            this.rightTargetWidth = rightWidth;
+        }
+    }
+
+    // unique data for URP
+    [Serializable]
+    internal class URPData : ICloneable
+    {
+        public bool renderPostProcessing = true;
+        public bool dithering = true;
+        public int antialiasing;
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
+    // unique data for HDRP
+    [Serializable]
+    internal class HDRPData : ICloneable
+    {
+        public bool renderPostProcessing = true;
+        public bool dithering = true;
+        public int antialiasing;
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
+    //Container for all data worth saving
+    [Serializable]
+    internal class Data : ICloneable
+    {
+        public string name;
+        public bool reframeToTarget = true;
+        public bool recalculateBound = true;
+        public int rotSpeed = 3;
+        public int zoomSpeed = 3;
+        public int panSpeed = 3;
+        public int smoothFactor = 3;
+        //Image Save
+        public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
+        public bool openSavedImage = true;
+        public bool alphaAppliedImage = true;
+        public int imageSizeMultiplier = 1;
+        //Render
+        public CameraType cameraType = CameraType.Game;
+        public int viewportMultiplier = 2;
+        public Color wireLineColor = Color.white;
+        public Color wireFillColor = Color.black;
+        public float wireThickness = 0.1f;
+        public float wireUseDiscard = 1;
+        public Color planeShadowColor = Color.gray;
+        public bool enablePlaneShadows = true;
+        public Color heightFogColor = new Color(0, 0, 0, 0.5f);
+        public bool enableHeightFog = true;
+        public float heightFogHeight = 1;
+        public bool enableShadows = true;
+        public float shadowBias = 0.01f;
+
+        public bool enablePostProcess = true;
+        public URPData urpData = new URPData();
+        public HDRPData hdrpData = new HDRPData();
+        //Resources
+        public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
+        public Color ambientSkyColor = Color.gray;
+        public ClearFlags clearFlag = ClearFlags.Color;
+        public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
+        public List<View> viewList = new List<View>();
+        public Lighting lastLighting = new Lighting();
+        public List<Lighting> lightingList = new List<Lighting>();
+        public List<Vector2> viewportSizes = new List<Vector2>();
+#if SEE1VIEWPLUS
+        public List<ModelGroup> modelGroupList = new List<ModelGroup>();
+#endif
+        public List<Steel> steelList = new List<Steel>();
+        //Model
+        public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
+        public string lastTargetPath = string.Empty;
+        public GameObject _lastTarget;
+        public GameObject lastTarget
+
+        {
+            get
             {
-                get { return _cubeMapMipMapBias; }
-                set
-                {
-                    _cubeMapMipMapBias = value;
-                    if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
-                }
+                return _lastTarget
+                    ? _lastTarget
+                    : _lastTarget = AssetDatabase.LoadAssetAtPath<GameObject>(lastTargetPath);
             }
-            public string profilePath = string.Empty;
+            set
+            {
+                _lastTarget = value;
+                lastTargetPath = AssetDatabase.GetAssetPath(value);
+            }
+        }
 
-            //Post Processing Stack
+        public string cubemapPath = string.Empty;
+        private Texture _cubeMap;
+        public Texture cubeMap
+        {
+            get { return _cubeMap ? _cubeMap : _cubeMap = AssetDatabase.LoadAssetAtPath<Cubemap>(cubemapPath); }
+            set
+            {
+                _cubeMap = value;
+                cubemapPath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+
+        private float _cubeMapMipMapBias;
+        public float CubeMapMipMapBias
+        {
+            get { return _cubeMapMipMapBias; }
+            set
+            {
+                _cubeMapMipMapBias = value;
+                if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
+            }
+        }
+        public string profilePath = string.Empty;
+
+        //Post Processing Stack
 #if UNITY_POST_PROCESSING_STACK_V2
-            private PostProcessProfile _postProcessProfile;
+        private PostProcessProfile _postProcessProfile;
 
-            public PostProcessProfile profile
+        public PostProcessProfile profile
+        {
+            get
             {
-                get
-                {
-                    return _postProcessProfile
-                        ? _postProcessProfile
-                        : _postProcessProfile = AssetDatabase.LoadAssetAtPath<PostProcessProfile>(profilePath);
-                }
-                set
-                {
-                    _postProcessProfile = value;
-                    profilePath = AssetDatabase.GetAssetPath(value);
-                }
+                return _postProcessProfile
+                    ? _postProcessProfile
+                    : _postProcessProfile = AssetDatabase.LoadAssetAtPath<PostProcessProfile>(profilePath);
             }
+            set
+            {
+                _postProcessProfile = value;
+                profilePath = AssetDatabase.GetAssetPath(value);
+            }
+        }
 
 #endif
-            //Scriptable RenderPipeline Support.
-            public string renderPipelinePath = string.Empty;
+        //Scriptable RenderPipeline Support.
+        public string renderPipelinePath = string.Empty;
 
-            //Tells you the current render pipeline.
-            public RenderPipelineMode renderPipelineMode
+        //Tells you the current render pipeline.
+        public RenderPipelineMode renderPipelineMode
+        {
+            get
             {
-                get
+                RenderPipelineMode mode = RenderPipelineMode.BuiltIn;
+                if (renderPipelineAsset != null)
                 {
-                    RenderPipelineMode mode = RenderPipelineMode.BuiltIn;
-                    if (renderPipelineAsset != null)
-                    {
 #if URP
-                        if (renderPipelineAsset is UniversalRenderPipelineAsset) mode = RenderPipelineMode.Universal;
+                    if (renderPipelineAsset is UniversalRenderPipelineAsset) mode = RenderPipelineMode.Universal;
 #endif
 
 #if HDRP
                         if (renderPipelineAsset is HDRenderPipelineAsset) mode = RenderPipelineMode.HighDefinition;
 #endif
-                    }
-                    return mode;
                 }
-            }
-
-            private RenderPipelineAsset _renderPipelineAsset;
-            public RenderPipelineAsset renderPipelineAsset
-            {
-                get
-                {
-                    return _renderPipelineAsset ? _renderPipelineAsset : _renderPipelineAsset = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(renderPipelinePath);
-                }
-                set
-                {
-                    _renderPipelineAsset = value;
-                    renderPipelinePath = AssetDatabase.GetAssetPath(value);
-                }
-            }
-#if URP || HDRP
-            private VolumeProfile _volumeProfile;
-            public VolumeProfile volumeProfile
-            {
-                get
-                {
-                    return _volumeProfile
-                    ? _volumeProfile
-                        : _volumeProfile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
-                }
-                set
-                {
-                    _volumeProfile = value;
-                    profilePath = AssetDatabase.GetAssetPath(value);
-                }
-            }
-#endif
-            public Data(string name)
-            {
-                this.name = name;
-            }
-
-            public object Clone()
-            {
-                return this.MemberwiseClone();
+                return mode;
             }
         }
-        // recent list
-        [Serializable]
-        internal class Recent<T> where T : UnityEngine.Object
+
+        private RenderPipelineAsset _renderPipelineAsset;
+        public RenderPipelineAsset renderPipelineAsset
         {
-            private int _maxSize = 10;
-            private List<string> _list = new List<string>();
-            public int size { get { return _list.Count; } }
-            private string key = "see1view.recent.";
-            public Action<T> onClickEvent;
-
-            public Recent(int maxSize)
+            get
             {
-                this._maxSize = maxSize;
-                this.key += typeof(T).ToString().ToLower();
-                Load();
+                return _renderPipelineAsset ? _renderPipelineAsset : _renderPipelineAsset = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(renderPipelinePath);
             }
-
-            public void Add(string path)
+            set
             {
-                if (!_list.Contains(path))
+                _renderPipelineAsset = value;
+                renderPipelinePath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+#if URP || HDRP
+        private VolumeProfile _volumeProfile;
+        public VolumeProfile volumeProfile
+        {
+            get
+            {
+                return _volumeProfile
+                ? _volumeProfile
+                    : _volumeProfile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
+            }
+            set
+            {
+                _volumeProfile = value;
+                profilePath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+#endif
+        public Data(string name)
+        {
+            this.name = name;
+        }
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
+    // recent list
+    [Serializable]
+    internal class Recent<T> where T : UnityEngine.Object
+    {
+        private int _maxSize = 10;
+        private List<string> _list = new List<string>();
+        public int size { get { return _list.Count; } }
+        private string key = "see1view.recent.";
+        public Action<T> onClickEvent;
+
+        public Recent(int maxSize)
+        {
+            this._maxSize = maxSize;
+            this.key += typeof(T).ToString().ToLower();
+            Load();
+        }
+
+        public void Add(string path)
+        {
+            if (!_list.Contains(path))
+            {
+                if (_list.Count > _maxSize)
                 {
-                    if (_list.Count > _maxSize)
+                    _list = _list.GetRange(1, _list.Count - 1);
+                }
+                _list.Add(path);
+            }
+            Save();
+        }
+
+        public T Get(int index)
+        {
+            return (T)AssetDatabase.LoadAssetAtPath<T>(_list[index]);
+        }
+
+        internal string GetName(int index)
+        {
+            if (index < _list.Count)
+            {
+                return Path.GetFileNameWithoutExtension(_list[index]);
+            }
+            return string.Empty;
+        }
+
+        public void Clear()
+        {
+            _list.Clear();
+            Save();
+        }
+
+        void Load()
+        {
+            string temp = EditorPrefs.GetString(key);
+            string[] tempArray = temp.Split("*".ToCharArray());
+
+            for (int i = 0; i < tempArray.Length; i++)
+            {
+                if (i <= _maxSize) _list.Add(tempArray[i]);
+            }
+        }
+
+        void Save()
+        {
+            string temp = string.Empty;
+            for (int i = 0; i < _list.Count; i++)
+            {
+                if (i != _list.Count - 1)
+                    temp += _list[i].ToString() + "*";//note that the last character you add
+                                                      //is important
+                else
+                    temp += _list[i].ToString();
+            }
+            EditorPrefs.SetString(key, temp);
+        }
+
+        public void OnGUI()
+        {
+            using (EditorHelper.Colorize.Do(Color.white, Color.red))
+            {
+                if (GUILayout.Button("Clear", EditorStyles.miniButton))
+                {
+                    Clear();
+                }
+            }
+            for (int i = size - 1; i > 0; --i)
+            {
+                {
+                    if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton, GUILayout.Width(246)))
                     {
-                        _list = _list.GetRange(1, _list.Count - 1);
-                    }
-                    _list.Add(path);
-                }
-                Save();
-            }
-
-            public T Get(int index)
-            {
-                return (T)AssetDatabase.LoadAssetAtPath<T>(_list[index]);
-            }
-
-            internal string GetName(int index)
-            {
-                if (index < _list.Count)
-                {
-                    return Path.GetFileNameWithoutExtension(_list[index]);
-                }
-                return string.Empty;
-            }
-
-            public void Clear()
-            {
-                _list.Clear();
-                Save();
-            }
-
-            void Load()
-            {
-                string temp = EditorPrefs.GetString(key);
-                string[] tempArray = temp.Split("*".ToCharArray());
-
-                for (int i = 0; i < tempArray.Length; i++)
-                {
-                    if (i <= _maxSize) _list.Add(tempArray[i]);
-                }
-            }
-
-            void Save()
-            {
-                string temp = string.Empty;
-                for (int i = 0; i < _list.Count; i++)
-                {
-                    if (i != _list.Count - 1)
-                        temp += _list[i].ToString() + "*";//note that the last character you add
-                                                          //is important
-                    else
-                        temp += _list[i].ToString();
-                }
-                EditorPrefs.SetString(key, temp);
-            }
-
-            public void OnGUI()
-            {
-                using (EditorHelper.Colorize.Do(Color.white, Color.red))
-                {
-                    if (GUILayout.Button("Clear", EditorStyles.miniButton))
-                    {
-                        Clear();
-                    }
-                }
-                for (int i = size - 1; i > 0; --i)
-                {
-                    {
-                        if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton, GUILayout.Width(246)))
+                        var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
+                        if (obj)
                         {
-                            var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
-                            if (obj)
-                            {
-                                onClickEvent?.Invoke(obj);
-                            }
+                            onClickEvent?.Invoke(obj);
                         }
                     }
                 }
             }
-
         }
-        // all configuration and settings
-        [Serializable]
-        class See1ViewSettings
+
+    }
+    // all configuration and settings
+    [Serializable]
+    class See1ViewSettings
+    {
+        private static See1ViewSettings _instance;
+
+        public static See1ViewSettings instance
         {
-            private static See1ViewSettings _instance;
+            get { return (_instance != null) ? _instance : Load(); }
+            set { _instance = value; }
+        }
 
-            public static See1ViewSettings instance
+        public List<Data> dataList = new List<Data>();
+        public static TextAsset dataAsset;
+
+        public Data current
+        {
+            get { return dataList[dataIndex]; }
+        }
+
+        private int _dataIndex;
+
+        public int dataIndex
+        {
+            get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
+            set { _dataIndex = value; }
+        }
+
+        public static string[] dataNames
+        {
+            get { return instance.dataList.Select((x) => x.name).ToArray(); }
+        }
+
+        public static string path = "Assets/Editor/See1ViewSettings.json";
+
+        public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view.settings", GetProjectName().ToLower());
+        public static UnityEvent onDataChanged = new UnityEvent();
+        static bool isAddName;
+        static bool isEditName;
+        private static string inputStr;
+        public static bool _isDirty;
+
+        public bool Add(string name)
+        {
+            bool canAdd = CheckName(name);
+            while (!canAdd)
             {
-                get { return (_instance != null) ? _instance : Load(); }
-                set { _instance = value; }
+                name += "_1";
+                canAdd = CheckName(name);
             }
 
-            public List<Data> dataList = new List<Data>();
-            public static TextAsset dataAsset;
+            Data data = new Data(name);
+            dataList.Add(data);
+            dataIndex = dataList.Count - 1;
+            return canAdd;
+        }
 
-            public Data current
+        public bool RemoveCurrent()
+        {
+            dataList.Remove(dataList[dataIndex]);
+            dataIndex -= 1;
+            return true;
+        }
+
+        public bool Remove(string name)
+        {
+            dataList.Remove(dataList.FirstOrDefault(x => x.name == name));
+            dataIndex -= 1;
+            return true;
+        }
+
+        public bool Remove(Data data)
+        {
+            if (dataList.Contains(data))
             {
-                get { return dataList[dataIndex]; }
-            }
-
-            private int _dataIndex;
-
-            public int dataIndex
-            {
-                get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
-                set { _dataIndex = value; }
-            }
-
-            public static string[] dataNames
-            {
-                get { return instance.dataList.Select((x) => x.name).ToArray(); }
-            }
-
-            public static string path = "Assets/Editor/See1ViewSettings.json";
-
-            public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view.settings", GetProjectName().ToLower());
-            public static UnityEvent onDataChanged = new UnityEvent();
-            static bool isAddName;
-            static bool isEditName;
-            private static string inputStr;
-            public static bool _isDirty;
-
-            public bool Add(string name)
-            {
-                bool canAdd = CheckName(name);
-                while (!canAdd)
-                {
-                    name += "_1";
-                    canAdd = CheckName(name);
-                }
-
-                Data data = new Data(name);
-                dataList.Add(data);
-                dataIndex = dataList.Count - 1;
-                return canAdd;
-            }
-
-            public bool RemoveCurrent()
-            {
-                dataList.Remove(dataList[dataIndex]);
-                dataIndex -= 1;
+                dataList.Remove(data);
+                Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
                 return true;
             }
 
-            public bool Remove(string name)
+            return false;
+        }
+
+        private static See1ViewSettings Load()
+        {
+            _instance = new See1ViewSettings();
+            dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+            string data = string.Empty;
+            if (dataAsset)
             {
-                dataList.Remove(dataList.FirstOrDefault(x => x.name == name));
-                dataIndex -= 1;
-                return true;
+                data = dataAsset.text;
+                JsonUtility.FromJsonOverwrite(data, _instance);
+                _isDirty = false;
+            }
+            else
+            {
+                _instance.Add("Default");
+                SetDirty();
             }
 
-            public bool Remove(Data data)
+            //var json = EditorPrefs.GetString(key);
+            //JsonUtility.FromJsonOverwrite(json, instance);
+            //if (instance.dataList.Count == 0)
+            //{
+            //    instance.dataList.Add(new Data("Data"));
+            //    Debug.Log("There is no data. Default Data Created.");
+            //    Save();
+            //}
+            return _instance;
+        }
+
+        public static void Save()
+        {
+            var json = JsonUtility.ToJson(instance, true);
+            DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
+            if (!di.Exists) di.Create();
+            AssetDatabase.Refresh();
+            File.WriteAllText(path, json);
+            AssetDatabase.Refresh();
+            dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+            EditorPrefs.SetString(key, json);
+        }
+
+        public static void DeleteAll()
+        {
+            if (EditorPrefs.HasKey(key))
             {
-                if (dataList.Contains(data))
+                if (EditorUtility.DisplayDialog("Removing " + key + "?", "Are you sure you want to " + "delete the editor key " + key + "?, This action cant be undone", "Yes", "No"))
+                    EditorPrefs.DeleteKey(key);
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Could not find " + key, "Seems that " + key + " does not exists or it has been deleted already, " + "check that you have typed correctly the name of the key.", "Ok");
+            }
+        }
+
+        public static bool CheckName(string dataName)
+        {
+            if (string.IsNullOrEmpty(dataName)) return false;
+            if (_instance.dataList.Count(x => x.name == dataName) != 0) return false;
+            return true;
+        }
+
+        public static string GetProjectName()
+        {
+            string[] s = Application.dataPath.Split('/');
+            string projectName = s[s.Length - 2];
+            return projectName;
+        }
+
+        public static void SetDirty()
+        {
+            _isDirty = true;
+        }
+
+        public static void ConfirmSave()
+        {
+            if (_isDirty)
+            {
+                if (EditorUtility.DisplayDialog("", "", "", ""))
                 {
-                    dataList.Remove(data);
-                    Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
-                    return true;
-                }
-
-                return false;
-            }
-
-            private static See1ViewSettings Load()
-            {
-                _instance = new See1ViewSettings();
-                dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
-                string data = string.Empty;
-                if (dataAsset)
-                {
-                    data = dataAsset.text;
-                    JsonUtility.FromJsonOverwrite(data, _instance);
-                    _isDirty = false;
-                }
-                else
-                {
-                    _instance.Add("Default");
-                    SetDirty();
-                }
-
-                //var json = EditorPrefs.GetString(key);
-                //JsonUtility.FromJsonOverwrite(json, instance);
-                //if (instance.dataList.Count == 0)
-                //{
-                //    instance.dataList.Add(new Data("Data"));
-                //    Debug.Log("There is no data. Default Data Created.");
-                //    Save();
-                //}
-                return _instance;
-            }
-
-            public static void Save()
-            {
-                var json = JsonUtility.ToJson(instance, true);
-                DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
-                if (!di.Exists) di.Create();
-                AssetDatabase.Refresh();
-                File.WriteAllText(path, json);
-                AssetDatabase.Refresh();
-                dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
-                EditorPrefs.SetString(key, json);
-            }
-
-            public static void DeleteAll()
-            {
-                if (EditorPrefs.HasKey(key))
-                {
-                    if (EditorUtility.DisplayDialog("Removing " + key + "?", "Are you sure you want to " + "delete the editor key " + key + "?, This action cant be undone", "Yes", "No"))
-                        EditorPrefs.DeleteKey(key);
-                }
-                else
-                {
-                    EditorUtility.DisplayDialog("Could not find " + key, "Seems that " + key + " does not exists or it has been deleted already, " + "check that you have typed correctly the name of the key.", "Ok");
-                }
-            }
-
-            public static bool CheckName(string dataName)
-            {
-                if (string.IsNullOrEmpty(dataName)) return false;
-                if (_instance.dataList.Count(x => x.name == dataName) != 0) return false;
-                return true;
-            }
-
-            public static string GetProjectName()
-            {
-                string[] s = Application.dataPath.Split('/');
-                string projectName = s[s.Length - 2];
-                return projectName;
-            }
-
-            public static void SetDirty()
-            {
-                _isDirty = true;
-            }
-
-            public static void ConfirmSave()
-            {
-                if (_isDirty)
-                {
-                    if (EditorUtility.DisplayDialog("", "", "", ""))
-                    {
-                        Save();
-                    }
+                    Save();
                 }
             }
+        }
 
-            public bool Duplicate()
+        public bool Duplicate()
+        {
+            Data data = current.Clone() as Data;
+            bool canDuplicate = data != null;
+            if (canDuplicate)
             {
-                Data data = current.Clone() as Data;
-                bool canDuplicate = data != null;
+                data.name += "_1";
+                canDuplicate = CheckName(data.name);
                 if (canDuplicate)
                 {
-                    data.name += "_1";
-                    canDuplicate = CheckName(data.name);
-                    if (canDuplicate)
-                    {
-                        dataList.Add(data);
-                        dataIndex = dataList.Count - 1;
-                        SetDirty();
-                    }
+                    dataList.Add(data);
+                    dataIndex = dataList.Count - 1;
+                    SetDirty();
                 }
-
-                return canDuplicate;
             }
 
-            static void ResetInputState()
-            {
-                isAddName = false;
-                isEditName = false;
-                inputStr = string.Empty;
-                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-            }
+            return canDuplicate;
+        }
 
-            internal static void OnManageGUI()
+        static void ResetInputState()
+        {
+            isAddName = false;
+            isEditName = false;
+            inputStr = string.Empty;
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+        }
+
+        internal static void OnManageGUI()
+        {
+            using (var check = new EditorGUI.ChangeCheckScope())
             {
-                using (var check = new EditorGUI.ChangeCheckScope())
+                int idx = instance.dataIndex;
+                bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                if (isAddName || isEditName)
                 {
-                    int idx = instance.dataIndex;
-                    bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
-                    bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
-                    if (isAddName || isEditName)
+                    GUI.SetNextControlName("input");
+                    inputStr = EditorGUILayout.TextField(inputStr);
+                    if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
                     {
-                        GUI.SetNextControlName("input");
-                        inputStr = EditorGUILayout.TextField(inputStr);
-                        if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
+                        if (CheckName(inputStr))
                         {
-                            if (CheckName(inputStr))
+                            if (isAddName)
                             {
-                                if (isAddName)
-                                {
-                                    instance.Add(inputStr);
-                                }
+                                instance.Add(inputStr);
+                            }
 
-                                if (isEditName)
-                                {
-                                    instance.current.name = inputStr;
-                                }
-                                ResetInputState();
-                            }
-                            else
+                            if (isEditName)
                             {
-                                ResetInputState();
+                                instance.current.name = inputStr;
                             }
+                            ResetInputState();
                         }
-
-                        bool focusLost = GUI.GetNameOfFocusedControl() != "input";
-                        if (focusLost || escapePressed)
+                        else
                         {
                             ResetInputState();
                         }
                     }
-                    else
+
+                    bool focusLost = GUI.GetNameOfFocusedControl() != "input";
+                    if (focusLost || escapePressed)
                     {
-                        instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup);
-                    }
-
-                    if (GUILayout.Button("+", EditorStyles.toolbarButton))
-                    {
-                        isAddName = true;
-                        inputStr = "New";
-                        UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                        EditorGUI.FocusTextInControl("input");
-                    }
-
-                    using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
-                    {
-                        if (GUILayout.Button("-", EditorStyles.toolbarButton))
-                        {
-                            if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
-                            {
-                                instance.RemoveCurrent();
-                            }
-                        }
-                    }
-
-                    if (GUILayout.Button("=", EditorStyles.toolbarButton))
-                    {
-                        isEditName = true;
-                        inputStr = instance.current.name;
-                        UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                        EditorGUI.FocusTextInControl("input");
-                    }
-
-                    if (check.changed)
-                    {
-                        if (idx != instance.dataIndex)
-                        {
-                            onDataChanged.Invoke();
-                            Notice.Log(string.Format("Data Chaneged to {0}", instance.current.name));
-                        }
-                    }
-                }
-            }
-        }
-        // base model managing
-        [Serializable]
-        internal class ModelGroup
-        {
-            [Serializable]
-            public class AssembleOptions
-            {
-                public bool ResetTransform = false;
-                public bool m_RenderersOnly = false;
-                public Vector3 Position = Vector3.zero;
-                public Quaternion Rotation = Quaternion.identity;
-                public Vector3 Scale = Vector3.one;
-
-                public void ResetCustomOrigin()
-                {
-                    Position = Vector3.zero;
-                    Rotation = Quaternion.identity;
-                    Scale = Vector3.one;
-                }
-            }
-
-            public AnimBool enabled;
-            public int SelectedIndex;
-            public string m_Name = string.Empty;
-            public string m_TargetPath = string.Empty;
-            public List<GameObject> m_Sources;
-            public AssembleOptions m_Options;
-
-            public bool IsEditingName { get; set; }
-            public bool IsExpanded { get; set; }
-
-            public ModelGroup(string name)
-            {
-                enabled = new AnimBool(true);
-                this.m_Name = name;
-                if (m_Sources == null)
-                {
-                    m_Sources = new List<GameObject>();
-                }
-
-                if (m_Options == null)
-                {
-                    m_Options = new AssembleOptions();
-                }
-            }
-        }
-        // camera information
-        [Serializable]
-        internal class View
-        {
-            public string name;
-            public Vector2 rotation;
-            public float distance;
-            public Vector3 pivot;
-            public float fieldOfView = 30f;
-
-            public View(Vector2 rotation, float distance, Vector3 pivot, float fieldOfView)
-            {
-                this.name = string.Empty;
-                this.rotation = rotation;
-                this.distance = distance;
-                this.pivot = pivot;
-                this.fieldOfView = fieldOfView;
-            }
-
-            public View(Camera camera)
-            {
-                this.name = camera.name;
-                this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y, camera.transform.rotation.eulerAngles.x);
-                var distanceToZero = Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
-                this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f, 0.5f, 0)) + camera.transform.rotation * Vector3.forward * distanceToZero;
-                this.distance = Vector3.Distance(camera.transform.position, this.pivot);
-                this.fieldOfView = camera.fieldOfView;
-            }
-        }
-        // scene lighting infomation
-        [Serializable]
-        internal class Lighting
-        {
-            [Serializable]
-            public class LightInfo
-            {
-                public Vector2 position = Vector2.zero;
-                public Quaternion rotation = Quaternion.identity;
-                public Color lightColor = Color.white;
-                public float intensity = 1;
-            }
-
-            public string name = string.Empty;
-            public List<LightInfo> lightList = new List<LightInfo>();
-            public Color ambientSkyColor = Color.gray;
-            public string cubemapPath = string.Empty;
-        }
-        // model animation frame information
-        [Serializable]
-        internal class Steel
-        {
-            public string clipPath;
-            public double time;
-            private AnimationClip _animationClip;
-            public AnimationClip animationClip
-            {
-                get
-                {
-                    if (!_animationClip)
-                        _animationClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
-                    return _animationClip;
-                }
-                set
-                {
-                    _animationClip = value;
-                    clipPath = AssetDatabase.GetAssetPath(_animationClip);
-                }
-            }
-
-            public Steel(AnimationClip clip, double time)
-            {
-                this.animationClip = clip;
-                this.time = time;
-            }
-        }
-
-        //view target object. model, particle, etc
-        class TargetInfo
-        {
-            public string assetPath;
-            private StringBuilder sb = new StringBuilder();
-            public Bounds bounds;
-            public List<Renderer> renderers = new List<Renderer>();
-            public List<Transform> bones = new List<Transform>();
-            public List<Material> materials = new List<Material>();
-            public Animator[] animators;
-            public MeshRenderer[] meshRenderers;
-            public SkinnedMeshRenderer[] skinnedMeshRenderers;
-            public ParticleSystem[] particleSystems;
-
-            public ParticleSystemRenderer[] particleSystemRenderers;
-            //public Mesh[] meshes;
-
-            void Cleanup()
-            {
-                sb.Length = 0;
-                bounds = new Bounds();
-                renderers.Clear();
-                bones.Clear();
-                materials.Clear();
-                animators = null;
-                meshRenderers = null;
-                skinnedMeshRenderers = null;
-                particleSystems = null;
-                particleSystemRenderers = null;
-            }
-
-            public void Init(GameObject root)
-            {
-                Cleanup();
-#if UNITY_2018
-                var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(root);
-#else
-                var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(root);
-#endif
-                assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : string.Empty;
-                sb.Append(root.name);
-                sb.Append("\n");
-                animators = root.GetComponentsInChildren<Animator>();
-                renderers = root.GetComponentsInChildren<Renderer>().ToList();
-                meshRenderers = root.GetComponentsInChildren<MeshRenderer>();
-                skinnedMeshRenderers = root.GetComponentsInChildren<SkinnedMeshRenderer>();
-                particleSystems = root.GetComponentsInChildren<ParticleSystem>();
-                particleSystemRenderers = root.GetComponentsInChildren<ParticleSystemRenderer>();
-
-                foreach (var renderer in renderers)
-                {
-                    materials.AddRange(renderer.sharedMaterials);
-                    bounds.Encapsulate(renderer.bounds);
-                }
-
-                materials = materials.Where(x => x != null).Distinct().ToList();
-
-                if (animators.Length > 0)
-                {
-                    sb.Append(string.Format("Animators : {0}\n", animators.Count().ToString()));
-                }
-
-                if (meshRenderers.Length > 0)
-                {
-                    sb.Append(string.Format("MeshRenderer : {0}\n", meshRenderers.Length.ToString()));
-                }
-
-                if (skinnedMeshRenderers.Length > 0)
-                {
-                    bones.AddRange(skinnedMeshRenderers.SelectMany(x => x.bones).Distinct());
-                    sb.Append(string.Format("SkinnedMeshRenderer : {0}\n", skinnedMeshRenderers.Length.ToString()));
-                    sb.Append(string.Format("Bones : {0}\n",
-                        skinnedMeshRenderers.SelectMany(x => x.bones).Distinct().Count().ToString()));
-                }
-
-                if (particleSystems.Length > 0)
-                {
-                    foreach (var ps in particleSystems)
-                    {
-                        ParticleSystemRenderer component = ps.GetComponent<ParticleSystemRenderer>();
-                        ps.Simulate(1, true, true, false);
-                        bounds.Encapsulate(component.bounds);
-                        ps.Clear();
-                        ps.Stop();
-                    }
-
-                    sb.Append(string.Format("ParticleSystem : {0}\n", particleSystems.Length.ToString()));
-                    if (particleSystemRenderers.Length > 0)
-                    {
-                        sb.Append(string.Format("ParticleSystemRenderer : {0}\n",
-                            particleSystemRenderers.Length.ToString()));
-                    }
-                }
-
-                sb.Append(string.Format("Materials : {0}\n",
-                    renderers.SelectMany(x => x.sharedMaterials).Distinct().Count().ToString()));
-            }
-
-            public string GetMeshInfo(Mesh target)
-            {
-                //namespace UnityEditor
-                //{
-                //  internal sealed class InternalMeshUtil
-                //  {
-                //    public static extern int GetPrimitiveCount(Mesh mesh);
-                //    public static extern int CalcTriangleCount(Mesh mesh);
-                //    public static extern bool HasNormals(Mesh mesh);
-                //    public static extern string GetVertexFormat(Mesh mesh);
-                //    public static extern float GetCachedMeshSurfaceArea(MeshRenderer meshRenderer);
-                //  }
-                //}
-                Type internalMeshUtil = Type.GetType("InternalMeshUtil");
-                MethodInfo getPrimitiveCount = internalMeshUtil.GetMethod("GetPrimitiveCount", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                MethodInfo getVertexFormat = internalMeshUtil.GetMethod("GetVertexFormat", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                string str = target.vertexCount.ToString() + " verts, " + (object)getPrimitiveCount.Invoke(this, new object[] { target }) + " tris";
-                int subMeshCount = target.subMeshCount;
-                if (subMeshCount > 1)
-                    str = str + ", " + (object)subMeshCount + " submeshes";
-                int blendShapeCount = target.blendShapeCount;
-                if (blendShapeCount > 1)
-                    str = str + ", " + (object)blendShapeCount + " blendShapes";
-                return str + "\n" + getVertexFormat.Invoke(this, new object[] { target });
-            }
-
-            public string Print()
-            {
-                return sb.ToString();
-            }
-        }
-        // override quality setting in scope
-        class QualitySettingsOverrider : IDisposable
-        {
-            private UnityEngine.ShadowQuality _shadows;
-            private UnityEngine.ShadowResolution _shadowResolution;
-            private ShadowProjection _shadowProjection;
-            private float _shadowDistance;
-            private ShadowmaskMode _shadowmaskMode;
-
-            public QualitySettingsOverrider()
-            {
-                _shadows = QualitySettings.shadows;
-                QualitySettings.shadows = UnityEngine.ShadowQuality.All;
-                _shadowResolution = QualitySettings.shadowResolution;
-                QualitySettings.shadowResolution = UnityEngine.ShadowResolution.VeryHigh;
-                _shadowProjection = QualitySettings.shadowProjection;
-                QualitySettings.shadowProjection = ShadowProjection.CloseFit;
-                _shadowDistance = QualitySettings.shadowDistance;
-                QualitySettings.shadowDistance = 10;
-                _shadowmaskMode = QualitySettings.shadowmaskMode;
-                QualitySettings.shadowmaskMode = ShadowmaskMode.DistanceShadowmask;
-            }
-
-            public QualitySettingsOverrider(UnityEngine.ShadowQuality shadows, UnityEngine.ShadowResolution shadowResolution,
-                ShadowProjection shadowProjection, float shadowDistance, ShadowmaskMode shadowmaskMode)
-            {
-                _shadows = QualitySettings.shadows;
-                QualitySettings.shadows = shadows;
-                _shadowResolution = QualitySettings.shadowResolution;
-                QualitySettings.shadowResolution = shadowResolution;
-                _shadowProjection = QualitySettings.shadowProjection;
-                QualitySettings.shadowProjection = shadowProjection;
-                _shadowDistance = QualitySettings.shadowDistance;
-                QualitySettings.shadowDistance = shadowDistance;
-                _shadowmaskMode = QualitySettings.shadowmaskMode;
-                QualitySettings.shadowmaskMode = shadowmaskMode;
-            }
-
-            public void Dispose()
-            {
-                QualitySettings.shadows = _shadows;
-                QualitySettings.shadowResolution = _shadowResolution;
-                QualitySettings.shadowDistance = _shadowDistance;
-                QualitySettings.shadowProjection = _shadowProjection;
-                QualitySettings.shadowmaskMode = _shadowmaskMode;
-            }
-        }
-        // override rendersetting in scope
-        class RenderSettingsOverrider : IDisposable
-        {
-            [Serializable]
-            public class RenderSettingsData
-            {
-                public bool fog = false;
-                public float fogStartDistance = 0f;
-                public float fogEndDistance = 300f;
-                public FogMode fogMode = FogMode.ExponentialSquared;
-                public Color fogColor = Color.gray;
-                public float fogDensity = 0.01f;
-                public AmbientMode ambientMode = AmbientMode.Skybox;
-                public Color ambientSkyColor = new Color(0.212f, 0.227f, 0.259f, 1.000f);
-                public Color ambientEquatorColor = new Color(0.114f, 0.125f, 0.133f, 1.000f);
-                public Color ambientGroundColor = new Color(0.047f, 0.043f, 0.035f, 1.000f);
-                public float ambientIntensity = 1f;
-                public Color ambientLight = new Color(0.212f, 0.227f, 0.259f, 1.000f);
-                public Color subtractiveShadowColor = new Color(0.420f, 0.478f, 0.627f, 1.000f);
-                public Material skybox =null;
-                public Light sun = null;
-                public SphericalHarmonicsL2 ambientProbe = new SphericalHarmonicsL2();
-                public Cubemap customReflection = null;
-                public float reflectionIntensity = 1f;
-                public int reflectionBounces = 1;
-                public DefaultReflectionMode defaultReflectionMode = DefaultReflectionMode.Skybox;
-                public int defaultReflectionResolution = 128;
-                public float haloStrength = 0.5f;
-                public float flareStrength = 1f;
-                public float flareFadeSpeed = 3f;
-
-                public void CopyToRenderSettings()
-                {
-                    RenderSettings.fog = fog;
-                    RenderSettings.fogDensity = fogDensity;
-                    RenderSettings.fogColor = fogColor;
-                    RenderSettings.skybox = skybox;
-                    RenderSettings.sun = sun;
-                    RenderSettings.ambientIntensity = ambientIntensity;
-                    RenderSettings.ambientLight = ambientLight;
-                    RenderSettings.ambientMode = ambientMode;
-                    RenderSettings.customReflection = customReflection;
-                    RenderSettings.fogMode = fogMode;
-                    RenderSettings.haloStrength = haloStrength;
-                    RenderSettings.reflectionBounces = reflectionBounces;
-                    RenderSettings.reflectionIntensity = reflectionIntensity;
-                    RenderSettings.ambientEquatorColor = ambientEquatorColor;
-                    RenderSettings.ambientGroundColor = ambientGroundColor;
-                    RenderSettings.ambientSkyColor = ambientSkyColor;
-                    RenderSettings.defaultReflectionMode = defaultReflectionMode;
-                    RenderSettings.defaultReflectionResolution = defaultReflectionResolution;
-                    RenderSettings.flareFadeSpeed = flareFadeSpeed;
-                    RenderSettings.fogEndDistance = fogEndDistance;
-                    RenderSettings.fogStartDistance = fogStartDistance;
-                    RenderSettings.subtractiveShadowColor = subtractiveShadowColor;
-                }
-
-                public void CopyFromRenderSettings()
-                {
-                    fog = RenderSettings.fog = fog;
-                    fogDensity = RenderSettings.fogDensity;
-                    fogColor =  RenderSettings.fogColor;
-                    skybox =  RenderSettings.skybox;
-                    sun =  RenderSettings.sun ;
-                    ambientIntensity =  RenderSettings.ambientIntensity ;
-                    ambientLight =  RenderSettings.ambientLight ;
-                    ambientMode =  RenderSettings.ambientMode ;
-                    customReflection =  (Cubemap)RenderSettings.customReflection ;
-                    fogMode =  RenderSettings.fogMode ;
-                    haloStrength =  RenderSettings.haloStrength ;
-                    reflectionBounces =  RenderSettings.reflectionBounces ;
-                    reflectionIntensity =  RenderSettings.reflectionIntensity ;
-                    ambientEquatorColor =  RenderSettings.ambientEquatorColor ;
-                    ambientGroundColor =  RenderSettings.ambientGroundColor ;
-                    ambientSkyColor =  RenderSettings.ambientSkyColor ;
-                    defaultReflectionMode =  RenderSettings.defaultReflectionMode ;
-                    defaultReflectionResolution =  RenderSettings.defaultReflectionResolution ;
-                    flareFadeSpeed =  RenderSettings.flareFadeSpeed ;
-                    fogEndDistance =  RenderSettings.fogEndDistance ;
-                    fogStartDistance =  RenderSettings.fogStartDistance ;
-                    subtractiveShadowColor =  RenderSettings.subtractiveShadowColor ;
-                }
-            }
-
-            RenderSettingsData savedRenderSettings = new RenderSettingsData();
-
-            public RenderSettingsOverrider(AmbientMode ambientMode, Color ambientSkyColor, Material skybox)
-            {
-                savedRenderSettings.ambientMode = RenderSettings.ambientMode;
-                savedRenderSettings.ambientSkyColor = RenderSettings.ambientSkyColor;
-                savedRenderSettings.skybox = RenderSettings.skybox;
-                RenderSettings.skybox = skybox;
-                RenderSettings.ambientMode = AmbientMode.Flat;
-                RenderSettings.ambientSkyColor = ambientSkyColor;
-            }
-
-            public RenderSettingsOverrider(RenderSettingsData c)
-            {
-                savedRenderSettings.CopyFromRenderSettings(); //backup
-                c.CopyToRenderSettings();
-            }
-
-            public void Dispose()
-            {
-                savedRenderSettings.CopyToRenderSettings();
-            }
-        }
-        // override renderpipeline in scope
-        class RenderPipelineOverrider : IDisposable
-        {
-            private RenderPipelineAsset _renderPipeline;
-
-            public RenderPipelineOverrider(RenderPipelineAsset renderPipelineAsset)
-            {
-
-                _renderPipeline = GraphicsSettings.defaultRenderPipeline;
-                GraphicsSettings.renderPipelineAsset = renderPipelineAsset;
-            }
-
-            public void Dispose()
-            {
-                GraphicsSettings.renderPipelineAsset = _renderPipeline;
-            }
-        }
-        // show hide object in scope
-        struct ShowObjectScope : IDisposable
-        {
-            private Renderer[] _renderers;
-
-            public ShowObjectScope(GameObject root)
-            {
-                if (root)
-                {
-                    _renderers = root.GetComponentsInChildren<Renderer>(true);
-                    if (_renderers != null)
-                    {
-                        if (_renderers.Length > 0)
-                        {
-                            for (int i = 0; i < _renderers.Length; i++)
-                            {
-                                _renderers[i].enabled = true;
-                            }
-                        }
+                        ResetInputState();
                     }
                 }
                 else
                 {
-                    _renderers = null;
+                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup);
+                }
+
+                if (GUILayout.Button("+", EditorStyles.toolbarButton))
+                {
+                    isAddName = true;
+                    inputStr = "New";
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                    EditorGUI.FocusTextInControl("input");
+                }
+
+                using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
+                {
+                    if (GUILayout.Button("-", EditorStyles.toolbarButton))
+                    {
+                        if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
+                        {
+                            instance.RemoveCurrent();
+                        }
+                    }
+                }
+
+                if (GUILayout.Button("=", EditorStyles.toolbarButton))
+                {
+                    isEditName = true;
+                    inputStr = instance.current.name;
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                    EditorGUI.FocusTextInControl("input");
+                }
+
+                if (check.changed)
+                {
+                    if (idx != instance.dataIndex)
+                    {
+                        onDataChanged.Invoke();
+                        Notice.Log(string.Format("Data Chaneged to {0}", instance.current.name));
+                    }
+                }
+            }
+        }
+    }
+
+    // camera information
+    [Serializable]
+    internal class View
+    {
+        public string name;
+        public Vector2 rotation;
+        public float distance;
+        public Vector3 pivot;
+        public float fieldOfView = 30f;
+
+        public View(Vector2 rotation, float distance, Vector3 pivot, float fieldOfView)
+        {
+            this.name = string.Empty;
+            this.rotation = rotation;
+            this.distance = distance;
+            this.pivot = pivot;
+            this.fieldOfView = fieldOfView;
+        }
+
+        public View(Camera camera)
+        {
+            this.name = camera.name;
+            this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y, camera.transform.rotation.eulerAngles.x);
+            var distanceToZero = Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
+            this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f, 0.5f, 0)) + camera.transform.rotation * Vector3.forward * distanceToZero;
+            this.distance = Vector3.Distance(camera.transform.position, this.pivot);
+            this.fieldOfView = camera.fieldOfView;
+        }
+    }
+    // scene lighting infomation
+    [Serializable]
+    internal class Lighting
+    {
+        [Serializable]
+        public class LightInfo
+        {
+            public Vector2 position = Vector2.zero;
+            public Quaternion rotation = Quaternion.identity;
+            public Color lightColor = Color.white;
+            public float intensity = 1;
+        }
+
+        public string name = string.Empty;
+        public List<LightInfo> lightList = new List<LightInfo>();
+        public Color ambientSkyColor = Color.gray;
+        public string cubemapPath = string.Empty;
+    }
+    // model animation frame information
+    [Serializable]
+    internal class Steel
+    {
+        public string clipPath;
+        public double time;
+        private AnimationClip _animationClip;
+        public AnimationClip animationClip
+        {
+            get
+            {
+                if (!_animationClip)
+                    _animationClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+                return _animationClip;
+            }
+            set
+            {
+                _animationClip = value;
+                clipPath = AssetDatabase.GetAssetPath(_animationClip);
+            }
+        }
+
+        public Steel(AnimationClip clip, double time)
+        {
+            this.animationClip = clip;
+            this.time = time;
+        }
+    }
+
+    //view target object. model, particle, etc
+    class TargetInfo
+    {
+        public string assetPath;
+        private StringBuilder sb = new StringBuilder();
+        public Bounds bounds;
+        public List<Renderer> renderers = new List<Renderer>();
+        public List<Transform> bones = new List<Transform>();
+        public List<Material> materials = new List<Material>();
+        public Animator[] animators;
+        public MeshRenderer[] meshRenderers;
+        public SkinnedMeshRenderer[] skinnedMeshRenderers;
+        public ParticleSystem[] particleSystems;
+
+        public ParticleSystemRenderer[] particleSystemRenderers;
+        //public Mesh[] meshes;
+
+        void Cleanup()
+        {
+            sb.Length = 0;
+            bounds = new Bounds();
+            renderers.Clear();
+            bones.Clear();
+            materials.Clear();
+            animators = null;
+            meshRenderers = null;
+            skinnedMeshRenderers = null;
+            particleSystems = null;
+            particleSystemRenderers = null;
+        }
+
+        public void Init(GameObject root)
+        {
+            Cleanup();
+#if UNITY_2018
+                var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(root);
+#else
+            var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(root);
+#endif
+            assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : string.Empty;
+            sb.Append(root.name);
+            sb.Append("\n");
+            animators = root.GetComponentsInChildren<Animator>();
+            renderers = root.GetComponentsInChildren<Renderer>().ToList();
+            meshRenderers = root.GetComponentsInChildren<MeshRenderer>();
+            skinnedMeshRenderers = root.GetComponentsInChildren<SkinnedMeshRenderer>();
+            particleSystems = root.GetComponentsInChildren<ParticleSystem>();
+            particleSystemRenderers = root.GetComponentsInChildren<ParticleSystemRenderer>();
+
+            foreach (var renderer in renderers)
+            {
+                materials.AddRange(renderer.sharedMaterials);
+                bounds.Encapsulate(renderer.bounds);
+            }
+
+            materials = materials.Where(x => x != null).Distinct().ToList();
+
+            if (animators.Length > 0)
+            {
+                sb.Append(string.Format("Animators : {0}\n", animators.Count().ToString()));
+            }
+
+            if (meshRenderers.Length > 0)
+            {
+                sb.Append(string.Format("MeshRenderer : {0}\n", meshRenderers.Length.ToString()));
+            }
+
+            if (skinnedMeshRenderers.Length > 0)
+            {
+                bones.AddRange(skinnedMeshRenderers.SelectMany(x => x.bones).Distinct());
+                sb.Append(string.Format("SkinnedMeshRenderer : {0}\n", skinnedMeshRenderers.Length.ToString()));
+                sb.Append(string.Format("Bones : {0}\n",
+                    skinnedMeshRenderers.SelectMany(x => x.bones).Distinct().Count().ToString()));
+            }
+
+            if (particleSystems.Length > 0)
+            {
+                foreach (var ps in particleSystems)
+                {
+                    ParticleSystemRenderer component = ps.GetComponent<ParticleSystemRenderer>();
+                    ps.Simulate(1, true, true, false);
+                    bounds.Encapsulate(component.bounds);
+                    ps.Clear();
+                    ps.Stop();
+                }
+
+                sb.Append(string.Format("ParticleSystem : {0}\n", particleSystems.Length.ToString()));
+                if (particleSystemRenderers.Length > 0)
+                {
+                    sb.Append(string.Format("ParticleSystemRenderer : {0}\n",
+                        particleSystemRenderers.Length.ToString()));
                 }
             }
 
-            public void Dispose()
+            sb.Append(string.Format("Materials : {0}\n",
+                renderers.SelectMany(x => x.sharedMaterials).Distinct().Count().ToString()));
+        }
+
+        public string GetMeshInfo(Mesh target)
+        {
+            //namespace UnityEditor
+            //{
+            //  internal sealed class InternalMeshUtil
+            //  {
+            //    public static extern int GetPrimitiveCount(Mesh mesh);
+            //    public static extern int CalcTriangleCount(Mesh mesh);
+            //    public static extern bool HasNormals(Mesh mesh);
+            //    public static extern string GetVertexFormat(Mesh mesh);
+            //    public static extern float GetCachedMeshSurfaceArea(MeshRenderer meshRenderer);
+            //  }
+            //}
+            Type internalMeshUtil = Type.GetType("InternalMeshUtil");
+            MethodInfo getPrimitiveCount = internalMeshUtil.GetMethod("GetPrimitiveCount", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            MethodInfo getVertexFormat = internalMeshUtil.GetMethod("GetVertexFormat", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            string str = target.vertexCount.ToString() + " verts, " + (object)getPrimitiveCount.Invoke(this, new object[] { target }) + " tris";
+            int subMeshCount = target.subMeshCount;
+            if (subMeshCount > 1)
+                str = str + ", " + (object)subMeshCount + " submeshes";
+            int blendShapeCount = target.blendShapeCount;
+            if (blendShapeCount > 1)
+                str = str + ", " + (object)blendShapeCount + " blendShapes";
+            return str + "\n" + getVertexFormat.Invoke(this, new object[] { target });
+        }
+
+        public string Print()
+        {
+            return sb.ToString();
+        }
+    }
+    // override quality setting in scope
+    class QualitySettingsOverrider : IDisposable
+    {
+        private UnityEngine.ShadowQuality _shadows;
+        private UnityEngine.ShadowResolution _shadowResolution;
+        private ShadowProjection _shadowProjection;
+        private float _shadowDistance;
+        private ShadowmaskMode _shadowmaskMode;
+
+        public QualitySettingsOverrider()
+        {
+            _shadows = QualitySettings.shadows;
+            QualitySettings.shadows = UnityEngine.ShadowQuality.All;
+            _shadowResolution = QualitySettings.shadowResolution;
+            QualitySettings.shadowResolution = UnityEngine.ShadowResolution.VeryHigh;
+            _shadowProjection = QualitySettings.shadowProjection;
+            QualitySettings.shadowProjection = ShadowProjection.CloseFit;
+            _shadowDistance = QualitySettings.shadowDistance;
+            QualitySettings.shadowDistance = 10;
+            _shadowmaskMode = QualitySettings.shadowmaskMode;
+            QualitySettings.shadowmaskMode = ShadowmaskMode.DistanceShadowmask;
+        }
+
+        public QualitySettingsOverrider(UnityEngine.ShadowQuality shadows, UnityEngine.ShadowResolution shadowResolution,
+            ShadowProjection shadowProjection, float shadowDistance, ShadowmaskMode shadowmaskMode)
+        {
+            _shadows = QualitySettings.shadows;
+            QualitySettings.shadows = shadows;
+            _shadowResolution = QualitySettings.shadowResolution;
+            QualitySettings.shadowResolution = shadowResolution;
+            _shadowProjection = QualitySettings.shadowProjection;
+            QualitySettings.shadowProjection = shadowProjection;
+            _shadowDistance = QualitySettings.shadowDistance;
+            QualitySettings.shadowDistance = shadowDistance;
+            _shadowmaskMode = QualitySettings.shadowmaskMode;
+            QualitySettings.shadowmaskMode = shadowmaskMode;
+        }
+
+        public void Dispose()
+        {
+            QualitySettings.shadows = _shadows;
+            QualitySettings.shadowResolution = _shadowResolution;
+            QualitySettings.shadowDistance = _shadowDistance;
+            QualitySettings.shadowProjection = _shadowProjection;
+            QualitySettings.shadowmaskMode = _shadowmaskMode;
+        }
+    }
+    // override rendersetting in scope
+    class RenderSettingsOverrider : IDisposable
+    {
+        [Serializable]
+        public class RenderSettingsData
+        {
+            public bool fog = false;
+            public float fogStartDistance = 0f;
+            public float fogEndDistance = 300f;
+            public FogMode fogMode = FogMode.ExponentialSquared;
+            public Color fogColor = Color.gray;
+            public float fogDensity = 0.01f;
+            public AmbientMode ambientMode = AmbientMode.Skybox;
+            public Color ambientSkyColor = new Color(0.212f, 0.227f, 0.259f, 1.000f);
+            public Color ambientEquatorColor = new Color(0.114f, 0.125f, 0.133f, 1.000f);
+            public Color ambientGroundColor = new Color(0.047f, 0.043f, 0.035f, 1.000f);
+            public float ambientIntensity = 1f;
+            public Color ambientLight = new Color(0.212f, 0.227f, 0.259f, 1.000f);
+            public Color subtractiveShadowColor = new Color(0.420f, 0.478f, 0.627f, 1.000f);
+            public Material skybox = null;
+            public Light sun = null;
+            public SphericalHarmonicsL2 ambientProbe = new SphericalHarmonicsL2();
+            public Cubemap customReflection = null;
+            public float reflectionIntensity = 1f;
+            public int reflectionBounces = 1;
+            public DefaultReflectionMode defaultReflectionMode = DefaultReflectionMode.Skybox;
+            public int defaultReflectionResolution = 128;
+            public float haloStrength = 0.5f;
+            public float flareStrength = 1f;
+            public float flareFadeSpeed = 3f;
+
+            public void CopyToRenderSettings()
             {
+                RenderSettings.fog = fog;
+                RenderSettings.fogDensity = fogDensity;
+                RenderSettings.fogColor = fogColor;
+                RenderSettings.skybox = skybox;
+                RenderSettings.sun = sun;
+                RenderSettings.ambientIntensity = ambientIntensity;
+                RenderSettings.ambientLight = ambientLight;
+                RenderSettings.ambientMode = ambientMode;
+                RenderSettings.customReflection = customReflection;
+                RenderSettings.fogMode = fogMode;
+                RenderSettings.haloStrength = haloStrength;
+                RenderSettings.reflectionBounces = reflectionBounces;
+                RenderSettings.reflectionIntensity = reflectionIntensity;
+                RenderSettings.ambientEquatorColor = ambientEquatorColor;
+                RenderSettings.ambientGroundColor = ambientGroundColor;
+                RenderSettings.ambientSkyColor = ambientSkyColor;
+                RenderSettings.defaultReflectionMode = defaultReflectionMode;
+                RenderSettings.defaultReflectionResolution = defaultReflectionResolution;
+                RenderSettings.flareFadeSpeed = flareFadeSpeed;
+                RenderSettings.fogEndDistance = fogEndDistance;
+                RenderSettings.fogStartDistance = fogStartDistance;
+                RenderSettings.subtractiveShadowColor = subtractiveShadowColor;
+            }
+
+            public void CopyFromRenderSettings()
+            {
+                fog = RenderSettings.fog = fog;
+                fogDensity = RenderSettings.fogDensity;
+                fogColor = RenderSettings.fogColor;
+                skybox = RenderSettings.skybox;
+                sun = RenderSettings.sun;
+                ambientIntensity = RenderSettings.ambientIntensity;
+                ambientLight = RenderSettings.ambientLight;
+                ambientMode = RenderSettings.ambientMode;
+                customReflection = (Cubemap)RenderSettings.customReflection;
+                fogMode = RenderSettings.fogMode;
+                haloStrength = RenderSettings.haloStrength;
+                reflectionBounces = RenderSettings.reflectionBounces;
+                reflectionIntensity = RenderSettings.reflectionIntensity;
+                ambientEquatorColor = RenderSettings.ambientEquatorColor;
+                ambientGroundColor = RenderSettings.ambientGroundColor;
+                ambientSkyColor = RenderSettings.ambientSkyColor;
+                defaultReflectionMode = RenderSettings.defaultReflectionMode;
+                defaultReflectionResolution = RenderSettings.defaultReflectionResolution;
+                flareFadeSpeed = RenderSettings.flareFadeSpeed;
+                fogEndDistance = RenderSettings.fogEndDistance;
+                fogStartDistance = RenderSettings.fogStartDistance;
+                subtractiveShadowColor = RenderSettings.subtractiveShadowColor;
+            }
+        }
+
+        RenderSettingsData savedRenderSettings = new RenderSettingsData();
+
+        public RenderSettingsOverrider(AmbientMode ambientMode, Color ambientSkyColor, Material skybox)
+        {
+            savedRenderSettings.ambientMode = RenderSettings.ambientMode;
+            savedRenderSettings.ambientSkyColor = RenderSettings.ambientSkyColor;
+            savedRenderSettings.skybox = RenderSettings.skybox;
+            RenderSettings.skybox = skybox;
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientSkyColor = ambientSkyColor;
+        }
+
+        public RenderSettingsOverrider(RenderSettingsData c)
+        {
+            savedRenderSettings.CopyFromRenderSettings(); //backup
+            c.CopyToRenderSettings();
+        }
+
+        public void Dispose()
+        {
+            savedRenderSettings.CopyToRenderSettings();
+        }
+    }
+    // override renderpipeline in scope
+    class RenderPipelineOverrider : IDisposable
+    {
+        private RenderPipelineAsset _renderPipeline;
+
+        public RenderPipelineOverrider(RenderPipelineAsset renderPipelineAsset)
+        {
+
+            _renderPipeline = GraphicsSettings.defaultRenderPipeline;
+            GraphicsSettings.renderPipelineAsset = renderPipelineAsset;
+        }
+
+        public void Dispose()
+        {
+            GraphicsSettings.renderPipelineAsset = _renderPipeline;
+        }
+    }
+    // show hide object in scope
+    struct ShowObjectScope : IDisposable
+    {
+        private Renderer[] _renderers;
+
+        public ShowObjectScope(GameObject root)
+        {
+            if (root)
+            {
+                _renderers = root.GetComponentsInChildren<Renderer>(true);
                 if (_renderers != null)
                 {
                     if (_renderers.Length > 0)
                     {
                         for (int i = 0; i < _renderers.Length; i++)
                         {
-                            _renderers[i].enabled = false;
+                            _renderers[i].enabled = true;
                         }
                     }
                 }
             }
-        }
-        // simple command buffer manager
-        class CommandBufferManager
-        {
-            class Blitter
+            else
             {
-                public Camera camera;
-                public CommandBuffer commandBuffer;
-                public CameraEvent cameraEvent;
-                public RenderTexture rt;
-                public Material mat;
-                //public RenderPipelineAsset pipelineAsset;
-
-                public Blitter(Camera cam, CameraEvent cameraEvent, Material mat)
-                {
-                    this.camera = cam;
-                    this.cameraEvent = cameraEvent;
-                    commandBuffer = new CommandBuffer();
-                    this.mat = mat;
-                }
-
-                public void Blit()
-                {
-                    rt = RenderTexture.GetTemporary(camera.targetTexture.width, camera.targetTexture.height, 24);
-                    camera.AddCommandBuffer(cameraEvent, commandBuffer);
-                    commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, rt, mat);
-                    commandBuffer.Blit(rt, BuiltinRenderTextureType.CameraTarget);
-
-                }
-            }
-
-            private List<Blitter> blitterList = new List<Blitter>();
-
-            //private DepthTextureMode _mode = DepthTextureMode.None;
-            private Camera _camera;
-
-            public CommandBufferManager(Camera camera)
-            {
-                this._camera = camera;
-            }
-
-            public void Add(DepthTextureMode mode, Material mat)
-            {
-                //this._mode = mode;
-                _camera.depthTextureMode = mode;
-                foreach (var blitter in blitterList)
-                {
-                    blitter.rt =
-                        RenderTexture.GetTemporary(_camera.targetTexture.width, _camera.targetTexture.height, 24);
-                    _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
-                    blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
-                    blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
-                }
-            }
-
-            public static void RemoveBufferFromAllEvent(Camera camera, CommandBuffer buffer)
-            {
-                camera.RemoveCommandBuffer(CameraEvent.BeforeDepthTexture, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeDepthNormalsTexture, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterDepthNormalsTexture, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeGBuffer, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterGBuffer, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterLighting, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeFinalPass, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterFinalPass, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterForwardOpaque, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffectsOpaque, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterImageEffectsOpaque, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeSkybox, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterSkybox, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterEverything, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeReflections, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterReflections, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.BeforeHaloAndLensFlares, buffer);
-                camera.RemoveCommandBuffer(CameraEvent.AfterHaloAndLensFlares, buffer);
+                _renderers = null;
             }
         }
-        // calculate fps info
-        class FPS
+
+        public void Dispose()
         {
-            static string formatedString = "{0} FPS ({1}ms)";
-
-            static float ms
+            if (_renderers != null)
             {
-                get { return (float)System.Math.Round(1000f / fps, 1); }
-            }
-
-            public static float updateInterval = 0.25f;
-            static float elapsedTime = 0;
-            static float fps = 0.0F;
-
-            public static void Calculate(float deltaTime)
-            {
-                elapsedTime += deltaTime;
-                if (elapsedTime / updateInterval > 1)
+                if (_renderers.Length > 0)
                 {
-                    fps = 1 / deltaTime;
-                    elapsedTime = 0;
+                    for (int i = 0; i < _renderers.Length; i++)
+                    {
+                        _renderers[i].enabled = false;
+                    }
                 }
-
-                fps = (float)System.Math.Round(fps, 1);
-            }
-
-            public static string GetString()
-            {
-                return string.Format(formatedString, fps.ToString(), ms.ToString());
             }
         }
-        // texture utilities. not use.
-        class TexUtil
+    }
+    // simple command buffer manager
+    class CommandBufferManager
+    {
+        class Blitter
         {
-            public enum ImageFilterMode : int
+            public Camera camera;
+            public CommandBuffer commandBuffer;
+            public CameraEvent cameraEvent;
+            public RenderTexture rt;
+            public Material mat;
+            //public RenderPipelineAsset pipelineAsset;
+
+            public Blitter(Camera cam, CameraEvent cameraEvent, Material mat)
             {
-                Nearest = 0,
-                Biliner = 1,
-                Average = 2
+                this.camera = cam;
+                this.cameraEvent = cameraEvent;
+                commandBuffer = new CommandBuffer();
+                this.mat = mat;
             }
 
-            public static Texture2D ResizeTexture(Texture2D pSource, ImageFilterMode pFilterMode, Vector2 size)
+            public void Blit()
+            {
+                rt = RenderTexture.GetTemporary(camera.targetTexture.width, camera.targetTexture.height, 24);
+                camera.AddCommandBuffer(cameraEvent, commandBuffer);
+                commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, rt, mat);
+                commandBuffer.Blit(rt, BuiltinRenderTextureType.CameraTarget);
+
+            }
+        }
+
+        private List<Blitter> blitterList = new List<Blitter>();
+
+        //private DepthTextureMode _mode = DepthTextureMode.None;
+        private Camera _camera;
+
+        public CommandBufferManager(Camera camera)
+        {
+            this._camera = camera;
+        }
+
+        public void Add(DepthTextureMode mode, Material mat)
+        {
+            //this._mode = mode;
+            _camera.depthTextureMode = mode;
+            foreach (var blitter in blitterList)
+            {
+                blitter.rt =
+                    RenderTexture.GetTemporary(_camera.targetTexture.width, _camera.targetTexture.height, 24);
+                _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
+                blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
+                blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
+            }
+        }
+
+        public static void RemoveBufferFromAllEvent(Camera camera, CommandBuffer buffer)
+        {
+            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthNormalsTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterDepthNormalsTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeGBuffer, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterGBuffer, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterLighting, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeFinalPass, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterFinalPass, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterForwardOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffectsOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffectsOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeSkybox, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterSkybox, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterEverything, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeReflections, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterReflections, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeHaloAndLensFlares, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterHaloAndLensFlares, buffer);
+        }
+    }
+    // calculate fps info
+    class FPS
+    {
+        static string formatedString = "{0} FPS ({1}ms)";
+
+        static float ms
+        {
+            get { return (float)System.Math.Round(1000f / fps, 1); }
+        }
+
+        public static float updateInterval = 0.25f;
+        static float elapsedTime = 0;
+        static float fps = 0.0F;
+
+        public static void Calculate(float deltaTime)
+        {
+            elapsedTime += deltaTime;
+            if (elapsedTime / updateInterval > 1)
+            {
+                fps = 1 / deltaTime;
+                elapsedTime = 0;
+            }
+
+            fps = (float)System.Math.Round(fps, 1);
+        }
+
+        public static string GetString()
+        {
+            return string.Format(formatedString, fps.ToString(), ms.ToString());
+        }
+    }
+    // texture utilities. not use.
+    class TexUtil
+    {
+        public enum ImageFilterMode : int
+        {
+            Nearest = 0,
+            Biliner = 1,
+            Average = 2
+        }
+
+        public static Texture2D ResizeTexture(Texture2D pSource, ImageFilterMode pFilterMode, Vector2 size)
+        {
+
+            //*** Variables
+            int i;
+
+            //*** Get All the source pixels
+            Color[] aSourceColor = pSource.GetPixels(0);
+            Vector2 vSourceSize = new Vector2(pSource.width, pSource.height);
+
+            //*** Calculate New Size
+            float xWidth = Mathf.RoundToInt((float)size.x);
+            float xHeight = Mathf.RoundToInt((float)size.y);
+
+            //*** Make New
+            Texture2D oNewTex = new Texture2D((int)xWidth, (int)xHeight, TextureFormat.RGBA32, false);
+
+            //*** Make destination array
+            int xLength = (int)xWidth * (int)xHeight;
+            Color[] aColor = new Color[xLength];
+
+            Vector2 vPixelSize = new Vector2(vSourceSize.x / xWidth, vSourceSize.y / xHeight);
+
+            //*** Loop through destination pixels and process
+            Vector2 vCenter = new Vector2();
+            for (i = 0; i < xLength; i++)
             {
 
-                //*** Variables
-                int i;
+                //*** Figure out x&y
+                float xX = (float)i % xWidth;
+                float xY = Mathf.Floor((float)i / xWidth);
 
-                //*** Get All the source pixels
-                Color[] aSourceColor = pSource.GetPixels(0);
-                Vector2 vSourceSize = new Vector2(pSource.width, pSource.height);
+                //*** Calculate Center
+                vCenter.x = (xX / xWidth) * vSourceSize.x;
+                vCenter.y = (xY / xHeight) * vSourceSize.y;
 
-                //*** Calculate New Size
-                float xWidth = Mathf.RoundToInt((float)size.x);
-                float xHeight = Mathf.RoundToInt((float)size.y);
-
-                //*** Make New
-                Texture2D oNewTex = new Texture2D((int)xWidth, (int)xHeight, TextureFormat.RGBA32, false);
-
-                //*** Make destination array
-                int xLength = (int)xWidth * (int)xHeight;
-                Color[] aColor = new Color[xLength];
-
-                Vector2 vPixelSize = new Vector2(vSourceSize.x / xWidth, vSourceSize.y / xHeight);
-
-                //*** Loop through destination pixels and process
-                Vector2 vCenter = new Vector2();
-                for (i = 0; i < xLength; i++)
+                //*** Do Based on mode
+                //*** Nearest neighbour (testing)
+                if (pFilterMode == ImageFilterMode.Nearest)
                 {
 
-                    //*** Figure out x&y
-                    float xX = (float)i % xWidth;
-                    float xY = Mathf.Floor((float)i / xWidth);
-
-                    //*** Calculate Center
-                    vCenter.x = (xX / xWidth) * vSourceSize.x;
-                    vCenter.y = (xY / xHeight) * vSourceSize.y;
-
-                    //*** Do Based on mode
                     //*** Nearest neighbour (testing)
-                    if (pFilterMode == ImageFilterMode.Nearest)
+                    vCenter.x = Mathf.Round(vCenter.x);
+                    vCenter.y = Mathf.Round(vCenter.y);
+
+                    //*** Calculate source index
+                    int xSourceIndex = (int)((vCenter.y * vSourceSize.x) + vCenter.x);
+
+                    //*** Copy Pixel
+                    aColor[i] = aSourceColor[xSourceIndex];
+                }
+
+                //*** Bilinear
+                else if (pFilterMode == ImageFilterMode.Biliner)
+                {
+
+                    //*** Get Ratios
+                    float xRatioX = vCenter.x - Mathf.Floor(vCenter.x);
+                    float xRatioY = vCenter.y - Mathf.Floor(vCenter.y);
+
+                    //*** Get Pixel index's
+                    int xIndexTL = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
+                    int xIndexTR = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
+                    int xIndexBL = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
+                    int xIndexBR = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
+
+                    //*** Calculate Color
+                    aColor[i] = Color.Lerp(
+                        Color.Lerp(aSourceColor[xIndexTL], aSourceColor[xIndexTR], xRatioX),
+                        Color.Lerp(aSourceColor[xIndexBL], aSourceColor[xIndexBR], xRatioX),
+                        xRatioY
+                    );
+                }
+
+                //*** Average
+                else if (pFilterMode == ImageFilterMode.Average)
+                {
+
+                    //*** Calculate grid around point
+                    int xXFrom = (int)Mathf.Max(Mathf.Floor(vCenter.x - (vPixelSize.x * 0.5f)), 0);
+                    int xXTo = (int)Mathf.Min(Mathf.Ceil(vCenter.x + (vPixelSize.x * 0.5f)), vSourceSize.x);
+                    int xYFrom = (int)Mathf.Max(Mathf.Floor(vCenter.y - (vPixelSize.y * 0.5f)), 0);
+                    int xYTo = (int)Mathf.Min(Mathf.Ceil(vCenter.y + (vPixelSize.y * 0.5f)), vSourceSize.y);
+
+                    //*** Loop and accumulate
+                    //Vector4 oColorTotal = new Vector4();
+                    Color oColorTemp = new Color();
+                    float xGridCount = 0;
+                    for (int iy = xYFrom; iy < xYTo; iy++)
                     {
-
-                        //*** Nearest neighbour (testing)
-                        vCenter.x = Mathf.Round(vCenter.x);
-                        vCenter.y = Mathf.Round(vCenter.y);
-
-                        //*** Calculate source index
-                        int xSourceIndex = (int)((vCenter.y * vSourceSize.x) + vCenter.x);
-
-                        //*** Copy Pixel
-                        aColor[i] = aSourceColor[xSourceIndex];
-                    }
-
-                    //*** Bilinear
-                    else if (pFilterMode == ImageFilterMode.Biliner)
-                    {
-
-                        //*** Get Ratios
-                        float xRatioX = vCenter.x - Mathf.Floor(vCenter.x);
-                        float xRatioY = vCenter.y - Mathf.Floor(vCenter.y);
-
-                        //*** Get Pixel index's
-                        int xIndexTL = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
-                        int xIndexTR = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
-                        int xIndexBL = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
-                        int xIndexBR = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
-
-                        //*** Calculate Color
-                        aColor[i] = Color.Lerp(
-                            Color.Lerp(aSourceColor[xIndexTL], aSourceColor[xIndexTR], xRatioX),
-                            Color.Lerp(aSourceColor[xIndexBL], aSourceColor[xIndexBR], xRatioX),
-                            xRatioY
-                        );
-                    }
-
-                    //*** Average
-                    else if (pFilterMode == ImageFilterMode.Average)
-                    {
-
-                        //*** Calculate grid around point
-                        int xXFrom = (int)Mathf.Max(Mathf.Floor(vCenter.x - (vPixelSize.x * 0.5f)), 0);
-                        int xXTo = (int)Mathf.Min(Mathf.Ceil(vCenter.x + (vPixelSize.x * 0.5f)), vSourceSize.x);
-                        int xYFrom = (int)Mathf.Max(Mathf.Floor(vCenter.y - (vPixelSize.y * 0.5f)), 0);
-                        int xYTo = (int)Mathf.Min(Mathf.Ceil(vCenter.y + (vPixelSize.y * 0.5f)), vSourceSize.y);
-
-                        //*** Loop and accumulate
-                        //Vector4 oColorTotal = new Vector4();
-                        Color oColorTemp = new Color();
-                        float xGridCount = 0;
-                        for (int iy = xYFrom; iy < xYTo; iy++)
+                        for (int ix = xXFrom; ix < xXTo; ix++)
                         {
-                            for (int ix = xXFrom; ix < xXTo; ix++)
+
+                            //*** Get Color
+                            oColorTemp += aSourceColor[(int)(((float)iy * vSourceSize.x) + ix)];
+
+                            //*** Sum
+                            xGridCount++;
+                        }
+                    }
+
+                    //*** Average Color
+                    aColor[i] = oColorTemp / (float)xGridCount;
+                }
+            }
+
+            //*** Set Pixels
+            oNewTex.SetPixels(aColor);
+            oNewTex.Apply();
+
+            //*** Return
+            return oNewTex;
+        }
+
+        public static Texture2D ApplyGammaCorrection(Texture2D src)
+        {
+            Color[] srcColors = src.GetPixels(0);
+            Texture2D newTex = new Texture2D((int)src.width, (int)src.height, TextureFormat.RGBA32, false);
+            int pixelCount = (int)src.width * (int)src.height;
+            Color[] newColors = new Color[pixelCount];
+            for (int i = 0; i < pixelCount; i++)
+            {
+                newColors[i] = srcColors[i].gamma;
+            }
+
+            newTex.SetPixels(newColors);
+            newTex.Apply();
+            return newTex;
+        }
+    }
+    // simple grid mesh builder
+    class Grid
+    {
+        private static List<Vector3> verticies;
+        private static List<int> indicies;
+        private static Mesh mesh;
+
+        public static Mesh Get(int size)
+        {
+            if (mesh == null) mesh = new Mesh();
+            if (indicies == null) indicies = new List<int>();
+            if (verticies == null) verticies = new List<Vector3>();
+
+            mesh.Clear();
+            verticies.Clear();
+            indicies.Clear();
+
+            for (int i = 0; i < size; i++)
+            {
+                verticies.Add(new Vector3(i, 0, 0));
+                verticies.Add(new Vector3(i, 0, size));
+
+                indicies.Add(4 * i + 0);
+                indicies.Add(4 * i + 1);
+
+                verticies.Add(new Vector3(0, 0, i));
+                verticies.Add(new Vector3(size, 0, i));
+
+                indicies.Add(4 * i + 2);
+                indicies.Add(4 * i + 3);
+            }
+
+            mesh.vertices = verticies.ToArray();
+            mesh.SetIndices(indicies.ToArray(), MeshTopology.Lines, 0);
+            return mesh;
+        }
+    }
+    // simple hierachy view
+    class TransformTreeView : TreeView
+    {
+        Scene scene;
+        public Action<GameObject> onDragObject;
+
+        public TransformTreeView(Scene scene, TreeViewState state)
+            : base(state)
+        {
+            this.scene = scene;
+            Reload();
+        }
+
+        protected override TreeViewItem BuildRoot()
+        {
+            return new TreeViewItem { id = 0, depth = -1 };
+        }
+
+
+        protected override IList<TreeViewItem> BuildRows(TreeViewItem root)
+        {
+            var rows = GetRows() ?? new List<TreeViewItem>(200);
+
+            //Scene scene = SceneManager.GetSceneAt (0);
+
+            // We use the GameObject instanceIDs as ids for items as we want to 
+            // select the game objects and not the transform components.
+            rows.Clear();
+            var gameObjectRoots = scene.GetRootGameObjects();
+            foreach (var gameObject in gameObjectRoots)
+            {
+                var item = CreateTreeViewItemForGameObject(gameObject);
+                root.AddChild(item);
+                rows.Add(item);
+                if (gameObject.transform.childCount > 0)
+                {
+                    if (IsExpanded(item.id))
+                    {
+                        AddChildrenRecursive(gameObject, item, rows);
+                    }
+                    else
+                    {
+                        item.children = CreateChildListForCollapsedParent();
+                    }
+                }
+            }
+
+            SetupDepthsFromParentsAndChildren(root);
+            return rows;
+        }
+
+        void AddChildrenRecursive(GameObject go, TreeViewItem item, IList<TreeViewItem> rows)
+        {
+            int childCount = go.transform.childCount;
+
+            item.children = new List<TreeViewItem>(childCount);
+            for (int i = 0; i < childCount; ++i)
+            {
+                var childTransform = go.transform.GetChild(i);
+                var childItem = CreateTreeViewItemForGameObject(childTransform.gameObject);
+                item.AddChild(childItem);
+                rows.Add(childItem);
+
+                if (childTransform.childCount > 0)
+                {
+                    if (IsExpanded(childItem.id))
+                    {
+                        AddChildrenRecursive(childTransform.gameObject, childItem, rows);
+                    }
+                    else
+                    {
+                        childItem.children = CreateChildListForCollapsedParent();
+                    }
+                }
+            }
+        }
+
+        static TreeViewItem CreateTreeViewItemForGameObject(GameObject gameObject)
+        {
+            // We can use the GameObject instanceID for TreeViewItem id, as it ensured to be unique among other items in the tree.
+            // To optimize reload time we could delay fetching the transform.name until it used for rendering (prevents allocating strings 
+            // for items not rendered in large trees)
+            // We just set depth to -1 here and then call SetupDepthsFromParentsAndChildren at the end of BuildRootAndRows to set the depths.
+            return new TreeViewItem(gameObject.GetInstanceID(), -1, gameObject.name);
+        }
+
+        protected override IList<int> GetAncestors(int id)
+        {
+            // The backend needs to provide us with this info since the item with id
+            // may not be present in the rows
+
+            List<int> ancestors = new List<int>();
+            var go = GetGameObject(id);
+            if (!go) return ancestors;
+            var transform = GetGameObject(id).transform;
+            while (transform.parent != null)
+            {
+                ancestors.Add(transform.parent.gameObject.GetInstanceID());
+                transform = transform.parent;
+            }
+
+            return ancestors;
+        }
+
+        protected override IList<int> GetDescendantsThatHaveChildren(int id)
+        {
+            Stack<Transform> stack = new Stack<Transform>();
+
+            var start = GetGameObject(id).transform;
+            stack.Push(start);
+
+            var parents = new List<int>();
+            while (stack.Count > 0)
+            {
+                Transform current = stack.Pop();
+                parents.Add(current.gameObject.GetInstanceID());
+                for (int i = 0; i < current.childCount; ++i)
+                {
+                    if (current.childCount > 0)
+                        stack.Push(current.GetChild(i));
+                }
+            }
+
+            return parents;
+        }
+
+        GameObject GetGameObject(int instanceID)
+        {
+            return (GameObject)EditorUtility.InstanceIDToObject(instanceID);
+        }
+
+        // Custom GUI
+
+        protected override void RowGUI(RowGUIArgs args)
+        {
+            Event evt = Event.current;
+            extraSpaceBeforeIconAndLabel = 18f;
+
+            // GameObject isStatic toggle 
+            var gameObject = GetGameObject(args.item.id);
+            if (gameObject == null)
+                return;
+
+            Rect r = args.rowRect;
+            r.x += GetContentIndent(args.item);
+            r.width = 16f;
+
+            // Ensure row is selected before using the toggle (usability)
+            if (evt.type == EventType.MouseDown && r.Contains(evt.mousePosition))
+                SelectionClick(args.item, false);
+
+            EditorGUI.BeginChangeCheck();
+            bool activeInHierarchy = EditorGUI.Toggle(r, gameObject.activeInHierarchy);
+            if (EditorGUI.EndChangeCheck())
+                gameObject.SetActive(activeInHierarchy);
+
+            r.x += 16f;
+            r.width = args.rowRect.width;
+            EditorGUI.DropShadowLabel(r, args.item.displayName, EditorStyles.whiteMiniLabel);
+            r.x += r.width - 60;
+            r.width = 16;
+            r.height = 16;
+
+            //Delete root gameObject only
+            if (gameObject.transform.parent == null)
+            {
+
+                if (GUI.Button(r, "x", EditorStyles.miniButton))
+                {
+
+                }
+            }
+
+            //base.RowGUI(args);
+        }
+
+        // Selection
+
+        protected override void SelectionChanged(IList<int> selectedIds)
+        {
+            Selection.instanceIDs = selectedIds.ToArray();
+        }
+
+        // Reordering
+
+        protected override bool CanStartDrag(CanStartDragArgs args)
+        {
+            return true;
+        }
+
+        protected override void SetupDragAndDrop(SetupDragAndDropArgs args)
+        {
+            DragAndDrop.PrepareStartDrag();
+
+            var sortedDraggedIDs = SortItemIDsInRowOrder(args.draggedItemIDs);
+
+            List<Object> objList = new List<Object>(sortedDraggedIDs.Count);
+            foreach (var id in sortedDraggedIDs)
+            {
+                Object obj = EditorUtility.InstanceIDToObject(id);
+                if (obj != null)
+                    objList.Add(obj);
+            }
+
+            DragAndDrop.objectReferences = objList.ToArray();
+
+            string title = objList.Count > 1 ? "<Multiple>" : objList[0].name;
+            DragAndDrop.StartDrag(title);
+        }
+
+        protected override DragAndDropVisualMode HandleDragAndDrop(DragAndDropArgs args)
+        {
+            // First check if the dragged objects are GameObjects
+            var draggedObjects = DragAndDrop.objectReferences;
+            var transforms = new List<Transform>(draggedObjects.Length);
+            foreach (var obj in draggedObjects)
+            {
+                var go = obj as GameObject;
+                if (go == null)
+                {
+                    return DragAndDropVisualMode.None;
+                }
+
+                if (!AssetDatabase.Contains(go)) continue; //Project View Asset
+                                                           //프로젝트 뷰에서 드래그하면 인스턴스를 만들어 Add 하도록 해봄
+                if (onDragObject != null)
+                {
+                    onDragObject(go);
+                }
+
+                //transforms.Add(go.transform);
+            }
+
+            // Filter out any unnecessary transforms before the reparent operation
+            RemoveItemsThatAreDescendantsFromOtherItems(transforms);
+
+            // Reparent
+            if (args.performDrop)
+            {
+                switch (args.dragAndDropPosition)
+                {
+                    case DragAndDropPosition.UponItem:
+                    case DragAndDropPosition.BetweenItems:
+                        Transform parent = args.parentItem != null
+                            ? GetGameObject(args.parentItem.id).transform
+                            : null;
+
+                        if (!IsValidReparenting(parent, transforms))
+                            return DragAndDropVisualMode.None;
+
+                        foreach (var trans in transforms)
+                            trans.SetParent(parent);
+
+                        if (args.dragAndDropPosition == DragAndDropPosition.BetweenItems)
+                        {
+                            int insertIndex = args.insertAtIndex;
+                            for (int i = transforms.Count - 1; i >= 0; i--)
                             {
-
-                                //*** Get Color
-                                oColorTemp += aSourceColor[(int)(((float)iy * vSourceSize.x) + ix)];
-
-                                //*** Sum
-                                xGridCount++;
+                                var transform = transforms[i];
+                                insertIndex = GetAdjustedInsertIndex(parent, transform, insertIndex);
+                                transform.SetSiblingIndex(insertIndex);
                             }
                         }
 
-                        //*** Average Color
-                        aColor[i] = oColorTemp / (float)xGridCount;
-                    }
+                        break;
+
+                    case DragAndDropPosition.OutsideItems:
+                        foreach (var trans in transforms)
+                        {
+                            trans.SetParent(null); // make root when dragged to empty space in treeview
+                        }
+
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
 
-                //*** Set Pixels
-                oNewTex.SetPixels(aColor);
-                oNewTex.Apply();
-
-                //*** Return
-                return oNewTex;
-            }
-
-            public static Texture2D ApplyGammaCorrection(Texture2D src)
-            {
-                Color[] srcColors = src.GetPixels(0);
-                Texture2D newTex = new Texture2D((int)src.width, (int)src.height, TextureFormat.RGBA32, false);
-                int pixelCount = (int)src.width * (int)src.height;
-                Color[] newColors = new Color[pixelCount];
-                for (int i = 0; i < pixelCount; i++)
-                {
-                    newColors[i] = srcColors[i].gamma;
-                }
-
-                newTex.SetPixels(newColors);
-                newTex.Apply();
-                return newTex;
-            }
-        }
-        // simple grid mesh builder
-        class Grid
-        {
-            private static List<Vector3> verticies;
-            private static List<int> indicies;
-            private static Mesh mesh;
-
-            public static Mesh Get(int size)
-            {
-                if (mesh == null) mesh = new Mesh();
-                if (indicies == null) indicies = new List<int>();
-                if (verticies == null) verticies = new List<Vector3>();
-
-                mesh.Clear();
-                verticies.Clear();
-                indicies.Clear();
-
-                for (int i = 0; i < size; i++)
-                {
-                    verticies.Add(new Vector3(i, 0, 0));
-                    verticies.Add(new Vector3(i, 0, size));
-
-                    indicies.Add(4 * i + 0);
-                    indicies.Add(4 * i + 1);
-
-                    verticies.Add(new Vector3(0, 0, i));
-                    verticies.Add(new Vector3(size, 0, i));
-
-                    indicies.Add(4 * i + 2);
-                    indicies.Add(4 * i + 3);
-                }
-
-                mesh.vertices = verticies.ToArray();
-                mesh.SetIndices(indicies.ToArray(), MeshTopology.Lines, 0);
-                return mesh;
-            }
-        }
-        // simple hierachy view
-        class TransformTreeView : TreeView
-        {
-            Scene scene;
-            public Action<GameObject> onDragObject;
-
-            public TransformTreeView(Scene scene, TreeViewState state)
-                : base(state)
-            {
-                this.scene = scene;
                 Reload();
+                SetSelection(transforms.Select(t => t.gameObject.GetInstanceID()).ToList(),
+                    TreeViewSelectionOptions.RevealAndFrame);
             }
 
-            protected override TreeViewItem BuildRoot()
-            {
-                return new TreeViewItem { id = 0, depth = -1 };
-            }
+            return DragAndDropVisualMode.Move;
+        }
 
+        int GetAdjustedInsertIndex(Transform parent, Transform transformToInsert, int insertIndex)
+        {
+            if (transformToInsert.parent == parent && transformToInsert.GetSiblingIndex() < insertIndex)
+                return --insertIndex;
+            return insertIndex;
+        }
 
-            protected override IList<TreeViewItem> BuildRows(TreeViewItem root)
-            {
-                var rows = GetRows() ?? new List<TreeViewItem>(200);
-
-                //Scene scene = SceneManager.GetSceneAt (0);
-
-                // We use the GameObject instanceIDs as ids for items as we want to 
-                // select the game objects and not the transform components.
-                rows.Clear();
-                var gameObjectRoots = scene.GetRootGameObjects();
-                foreach (var gameObject in gameObjectRoots)
-                {
-                    var item = CreateTreeViewItemForGameObject(gameObject);
-                    root.AddChild(item);
-                    rows.Add(item);
-                    if (gameObject.transform.childCount > 0)
-                    {
-                        if (IsExpanded(item.id))
-                        {
-                            AddChildrenRecursive(gameObject, item, rows);
-                        }
-                        else
-                        {
-                            item.children = CreateChildListForCollapsedParent();
-                        }
-                    }
-                }
-
-                SetupDepthsFromParentsAndChildren(root);
-                return rows;
-            }
-
-            void AddChildrenRecursive(GameObject go, TreeViewItem item, IList<TreeViewItem> rows)
-            {
-                int childCount = go.transform.childCount;
-
-                item.children = new List<TreeViewItem>(childCount);
-                for (int i = 0; i < childCount; ++i)
-                {
-                    var childTransform = go.transform.GetChild(i);
-                    var childItem = CreateTreeViewItemForGameObject(childTransform.gameObject);
-                    item.AddChild(childItem);
-                    rows.Add(childItem);
-
-                    if (childTransform.childCount > 0)
-                    {
-                        if (IsExpanded(childItem.id))
-                        {
-                            AddChildrenRecursive(childTransform.gameObject, childItem, rows);
-                        }
-                        else
-                        {
-                            childItem.children = CreateChildListForCollapsedParent();
-                        }
-                    }
-                }
-            }
-
-            static TreeViewItem CreateTreeViewItemForGameObject(GameObject gameObject)
-            {
-                // We can use the GameObject instanceID for TreeViewItem id, as it ensured to be unique among other items in the tree.
-                // To optimize reload time we could delay fetching the transform.name until it used for rendering (prevents allocating strings 
-                // for items not rendered in large trees)
-                // We just set depth to -1 here and then call SetupDepthsFromParentsAndChildren at the end of BuildRootAndRows to set the depths.
-                return new TreeViewItem(gameObject.GetInstanceID(), -1, gameObject.name);
-            }
-
-            protected override IList<int> GetAncestors(int id)
-            {
-                // The backend needs to provide us with this info since the item with id
-                // may not be present in the rows
-
-                List<int> ancestors = new List<int>();
-                var go = GetGameObject(id);
-                if (!go) return ancestors;
-                var transform = GetGameObject(id).transform;
-                while (transform.parent != null)
-                {
-                    ancestors.Add(transform.parent.gameObject.GetInstanceID());
-                    transform = transform.parent;
-                }
-
-                return ancestors;
-            }
-
-            protected override IList<int> GetDescendantsThatHaveChildren(int id)
-            {
-                Stack<Transform> stack = new Stack<Transform>();
-
-                var start = GetGameObject(id).transform;
-                stack.Push(start);
-
-                var parents = new List<int>();
-                while (stack.Count > 0)
-                {
-                    Transform current = stack.Pop();
-                    parents.Add(current.gameObject.GetInstanceID());
-                    for (int i = 0; i < current.childCount; ++i)
-                    {
-                        if (current.childCount > 0)
-                            stack.Push(current.GetChild(i));
-                    }
-                }
-
-                return parents;
-            }
-
-            GameObject GetGameObject(int instanceID)
-            {
-                return (GameObject)EditorUtility.InstanceIDToObject(instanceID);
-            }
-
-            // Custom GUI
-
-            protected override void RowGUI(RowGUIArgs args)
-            {
-                Event evt = Event.current;
-                extraSpaceBeforeIconAndLabel = 18f;
-
-                // GameObject isStatic toggle 
-                var gameObject = GetGameObject(args.item.id);
-                if (gameObject == null)
-                    return;
-
-                Rect r = args.rowRect;
-                r.x += GetContentIndent(args.item);
-                r.width = 16f;
-
-                // Ensure row is selected before using the toggle (usability)
-                if (evt.type == EventType.MouseDown && r.Contains(evt.mousePosition))
-                    SelectionClick(args.item, false);
-
-                EditorGUI.BeginChangeCheck();
-                bool activeInHierarchy = EditorGUI.Toggle(r, gameObject.activeInHierarchy);
-                if (EditorGUI.EndChangeCheck())
-                    gameObject.SetActive(activeInHierarchy);
-
-                r.x += 16f;
-                r.width = args.rowRect.width;
-                EditorGUI.DropShadowLabel(r, args.item.displayName, EditorStyles.whiteMiniLabel);
-                r.x += r.width - 60;
-                r.width = 16;
-                r.height = 16;
-
-                //Delete root gameObject only
-                if (gameObject.transform.parent == null)
-                {
-
-                    if (GUI.Button(r, "x", EditorStyles.miniButton))
-                    {
-
-                    }
-                }
-
-                //base.RowGUI(args);
-            }
-
-            // Selection
-
-            protected override void SelectionChanged(IList<int> selectedIds)
-            {
-                Selection.instanceIDs = selectedIds.ToArray();
-            }
-
-            // Reordering
-
-            protected override bool CanStartDrag(CanStartDragArgs args)
-            {
+        bool IsValidReparenting(Transform parent, List<Transform> transformsToMove)
+        {
+            if (parent == null)
                 return true;
+
+            foreach (var transformToMove in transformsToMove)
+            {
+                if (transformToMove == parent)
+                    return false;
+
+                if (IsHoveredAChildOfDragged(parent, transformToMove))
+                    return false;
             }
 
-            protected override void SetupDragAndDrop(SetupDragAndDropArgs args)
+            return true;
+        }
+
+
+        bool IsHoveredAChildOfDragged(Transform hovered, Transform dragged)
+        {
+            Transform t = hovered.parent;
+            while (t)
             {
-                DragAndDrop.PrepareStartDrag();
-
-                var sortedDraggedIDs = SortItemIDsInRowOrder(args.draggedItemIDs);
-
-                List<Object> objList = new List<Object>(sortedDraggedIDs.Count);
-                foreach (var id in sortedDraggedIDs)
-                {
-                    Object obj = EditorUtility.InstanceIDToObject(id);
-                    if (obj != null)
-                        objList.Add(obj);
-                }
-
-                DragAndDrop.objectReferences = objList.ToArray();
-
-                string title = objList.Count > 1 ? "<Multiple>" : objList[0].name;
-                DragAndDrop.StartDrag(title);
-            }
-
-            protected override DragAndDropVisualMode HandleDragAndDrop(DragAndDropArgs args)
-            {
-                // First check if the dragged objects are GameObjects
-                var draggedObjects = DragAndDrop.objectReferences;
-                var transforms = new List<Transform>(draggedObjects.Length);
-                foreach (var obj in draggedObjects)
-                {
-                    var go = obj as GameObject;
-                    if (go == null)
-                    {
-                        return DragAndDropVisualMode.None;
-                    }
-
-                    if (!AssetDatabase.Contains(go)) continue; //Project View Asset
-                    //프로젝트 뷰에서 드래그하면 인스턴스를 만들어 Add 하도록 해봄
-                    if (onDragObject != null)
-                    {
-                        onDragObject(go);
-                    }
-
-                    //transforms.Add(go.transform);
-                }
-
-                // Filter out any unnecessary transforms before the reparent operation
-                RemoveItemsThatAreDescendantsFromOtherItems(transforms);
-
-                // Reparent
-                if (args.performDrop)
-                {
-                    switch (args.dragAndDropPosition)
-                    {
-                        case DragAndDropPosition.UponItem:
-                        case DragAndDropPosition.BetweenItems:
-                            Transform parent = args.parentItem != null
-                                ? GetGameObject(args.parentItem.id).transform
-                                : null;
-
-                            if (!IsValidReparenting(parent, transforms))
-                                return DragAndDropVisualMode.None;
-
-                            foreach (var trans in transforms)
-                                trans.SetParent(parent);
-
-                            if (args.dragAndDropPosition == DragAndDropPosition.BetweenItems)
-                            {
-                                int insertIndex = args.insertAtIndex;
-                                for (int i = transforms.Count - 1; i >= 0; i--)
-                                {
-                                    var transform = transforms[i];
-                                    insertIndex = GetAdjustedInsertIndex(parent, transform, insertIndex);
-                                    transform.SetSiblingIndex(insertIndex);
-                                }
-                            }
-
-                            break;
-
-                        case DragAndDropPosition.OutsideItems:
-                            foreach (var trans in transforms)
-                            {
-                                trans.SetParent(null); // make root when dragged to empty space in treeview
-                            }
-
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    Reload();
-                    SetSelection(transforms.Select(t => t.gameObject.GetInstanceID()).ToList(),
-                        TreeViewSelectionOptions.RevealAndFrame);
-                }
-
-                return DragAndDropVisualMode.Move;
-            }
-
-            int GetAdjustedInsertIndex(Transform parent, Transform transformToInsert, int insertIndex)
-            {
-                if (transformToInsert.parent == parent && transformToInsert.GetSiblingIndex() < insertIndex)
-                    return --insertIndex;
-                return insertIndex;
-            }
-
-            bool IsValidReparenting(Transform parent, List<Transform> transformsToMove)
-            {
-                if (parent == null)
+                if (t == dragged)
                     return true;
-
-                foreach (var transformToMove in transformsToMove)
-                {
-                    if (transformToMove == parent)
-                        return false;
-
-                    if (IsHoveredAChildOfDragged(parent, transformToMove))
-                        return false;
-                }
-
-                return true;
+                t = t.parent;
             }
 
-
-            bool IsHoveredAChildOfDragged(Transform hovered, Transform dragged)
-            {
-                Transform t = hovered.parent;
-                while (t)
-                {
-                    if (t == dragged)
-                        return true;
-                    t = t.parent;
-                }
-
-                return false;
-            }
-
-
-            // Returns true if there is an ancestor of transform in the transforms list
-            static bool IsDescendantOf(Transform transform, List<Transform> transforms)
-            {
-                while (transform != null)
-                {
-                    transform = transform.parent;
-                    if (transforms.Contains(transform))
-                        return true;
-                }
-
-                return false;
-            }
-
-            static void RemoveItemsThatAreDescendantsFromOtherItems(List<Transform> transforms)
-            {
-                transforms.RemoveAll(t => IsDescendantOf(t, transforms));
-            }
+            return false;
         }
-        // texture helpers not use.
-        class Textures
+
+
+        // Returns true if there is an ancestor of transform in the transforms list
+        static bool IsDescendantOf(Transform transform, List<Transform> transforms)
         {
-            static Texture2D m_WhiteTexture;
-
-            /// <summary>
-            /// A 1x1 white texture.
-            /// </summary>
-            /// <remarks>
-            /// This texture is only created once and recycled afterward. You shouldn't modify it.
-            /// </remarks>
-            public static Texture2D whiteTexture
+            while (transform != null)
             {
-                get
-                {
-                    if (m_WhiteTexture == null)
-                    {
-                        m_WhiteTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "White Texture" };
-                        m_WhiteTexture.SetPixel(0, 0, Color.white);
-                        m_WhiteTexture.Apply();
-                    }
-
-                    return m_WhiteTexture;
-                }
+                transform = transform.parent;
+                if (transforms.Contains(transform))
+                    return true;
             }
 
-            static Texture3D m_WhiteTexture3D;
-
-            /// <summary>
-            /// A 1x1x1 white texture.
-            /// </summary>
-            /// <remarks>
-            /// This texture is only created once and recycled afterward. You shouldn't modify it.
-            /// </remarks>
-            public static Texture3D whiteTexture3D
-            {
-                get
-                {
-                    if (m_WhiteTexture3D == null)
-                    {
-                        m_WhiteTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                        { name = "White Texture 3D" };
-                        m_WhiteTexture3D.SetPixels(new Color[] { Color.white });
-                        m_WhiteTexture3D.Apply();
-                    }
-
-                    return m_WhiteTexture3D;
-                }
-            }
-
-            static Texture2D m_BlackTexture;
-
-            /// <summary>
-            /// A 1x1 black texture.
-            /// </summary>
-            /// <remarks>
-            /// This texture is only created once and recycled afterward. You shouldn't modify it.
-            /// </remarks>
-            public static Texture2D blackTexture
-            {
-                get
-                {
-                    if (m_BlackTexture == null)
-                    {
-                        m_BlackTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "Black Texture" };
-                        m_BlackTexture.SetPixel(0, 0, Color.black);
-                        m_BlackTexture.Apply();
-                    }
-
-                    return m_BlackTexture;
-                }
-            }
-
-            static Texture3D m_BlackTexture3D;
-
-            /// <summary>
-            /// A 1x1x1 black texture.
-            /// </summary>
-            /// <remarks>
-            /// This texture is only created once and recycled afterward. You shouldn't modify it.
-            /// </remarks>
-            public static Texture3D blackTexture3D
-            {
-                get
-                {
-                    if (m_BlackTexture3D == null)
-                    {
-                        m_BlackTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                        { name = "Black Texture 3D" };
-                        m_BlackTexture3D.SetPixels(new Color[] { Color.black });
-                        m_BlackTexture3D.Apply();
-                    }
-
-                    return m_BlackTexture3D;
-                }
-            }
-
-            static Texture2D m_TransparentTexture;
-
-            /// <summary>
-            /// A 1x1 transparent texture.
-            /// </summary>
-            /// <remarks>
-            /// This texture is only created once and recycled afterward. You shouldn't modify it.
-            /// </remarks>
-            public static Texture2D transparentTexture
-            {
-                get
-                {
-                    if (m_TransparentTexture == null)
-                    {
-                        m_TransparentTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false)
-                        { name = "Transparent Texture" };
-                        m_TransparentTexture.SetPixel(0, 0, Color.clear);
-                        m_TransparentTexture.Apply();
-                    }
-
-                    return m_TransparentTexture;
-                }
-            }
-
-            static Texture3D m_TransparentTexture3D;
-
-            /// <summary>
-            /// A 1x1x1 transparent texture.
-            /// </summary>
-            /// <remarks>
-            /// This texture is only created once and recycled afterward. You shouldn't modify it.
-            /// </remarks>
-            public static Texture3D transparentTexture3D
-            {
-                get
-                {
-                    if (m_TransparentTexture3D == null)
-                    {
-                        m_TransparentTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                        { name = "Transparent Texture 3D" };
-                        m_TransparentTexture3D.SetPixels(new Color[] { Color.clear });
-                        m_TransparentTexture3D.Apply();
-                    }
-
-                    return m_TransparentTexture3D;
-                }
-            }
+            return false;
         }
-        // popup window context for size input.
-        public class SizePopup : PopupWindowContent
-        {    //Search results can be filtered by specifying a series of properties that sounds should match. 
-             //In other words, using the filter parameter you can specify the value that certain sound fields should have in order to be considered valid search results. 
-             //Filters are defined with a syntax like filter=fieldname:value fieldname:value (that is the Solr filter syntax). 
-             //Use double quotes for multi-word queries (filter=fieldname:"val ue"). Filter names can be any of the following:
-            public EditorWindow _caller;
-            private int x;
-            private int y;
 
-            public delegate void OnReceive(Vector2 v2);
-
-
-            private EditorWindow parent;
-            private OnReceive onReceive;
-            public bool isInitialized;
-
-            //float width = 350;
-            //float height = 200;
-
-            public SizePopup()
-            {
-                //this.parent = parent;
-                //this.onReceive = onReceive;
-                isInitialized = true;
-            }
-
-            Vector2 scrollPosition;
-            public override Vector2 GetWindowSize()
-            {
-                return (_caller) ? new Vector2(250, 450) : Vector2.zero;
-            }
-
-            public override void OnGUI(Rect rect)
-            {
-                if (_caller)
-                {
-                    EditorGUIUtility.labelWidth = 50;
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        GUILayout.Label("Add New viewport size", EditorStyles.whiteLargeLabel);
-                        if (GUILayout.Button("X", GUILayout.Width(40)))
-                            OnClose();
-                    }
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (new EditorGUILayout.VerticalScope())
-                        {
-                            EditorGUILayout.LabelField("Landscape", EditorStyles.miniLabel);
-                            DrawPresetButton(800, 600);
-                            DrawPresetButton(1280, 720);
-                            DrawPresetButton(1600, 900);
-                            DrawPresetButton(1920, 1080);
-                            DrawPresetButton(2560, 1440);
-                            DrawPresetButton(3840, 2160);
-                        }
-
-                        using (new EditorGUILayout.VerticalScope())
-                        {
-                            EditorGUILayout.LabelField("Portrait", EditorStyles.miniLabel);
-                            DrawPresetButton(600, 800);
-                            DrawPresetButton(720, 1280);
-                            DrawPresetButton(900, 1600);
-                            DrawPresetButton(1080, 1920);
-                            DrawPresetButton(1440, 2560);
-                            DrawPresetButton(2160, 3840);
-                        }
-
-                        using (new EditorGUILayout.VerticalScope())
-                        {
-                            EditorGUILayout.LabelField("POT", EditorStyles.miniLabel);
-                            DrawPresetButton(128, 128);
-                            DrawPresetButton(256, 256);
-                            DrawPresetButton(512, 512);
-                            DrawPresetButton(1024, 1024);
-                            DrawPresetButton(2048, 2048);
-                            DrawPresetButton(4096, 4096);
-                        }
-                    }
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (new EditorGUILayout.VerticalScope())
-                        {
-                            x = EditorGUILayout.IntSlider("Width", x, 128, 4096);
-                            y = EditorGUILayout.IntSlider("Height", y, 128, 4096);
-                        }
-
-                        if (GUILayout.Button("Add", GUILayout.Width(80), GUILayout.ExpandHeight(true)))
-                            if (onReceive != null)
-                                onReceive.Invoke(new Vector2(x, y));
-                    }
-                }
-            }
-
-            public override void OnOpen()
-            {
-                _caller = EditorWindow.GetWindow<EditorWindow>();
-            }
-            public override void OnClose()
-            {
-            }
-
-            void DrawPresetButton(int width, int height)
-            {
-
-                if (GUILayout.Button(string.Format("{0}x{1}", width, height), EditorStyles.miniButton))
-                {
-                    this.x = width;
-                    this.y = height;
-                }
-            }
-        }
-        // popup window for additional inputs.
-        class PopupWindow : EditorWindow
+        static void RemoveItemsThatAreDescendantsFromOtherItems(List<Transform> transforms)
         {
-            private int x;
-            private int y;
+            transforms.RemoveAll(t => IsDescendantOf(t, transforms));
+        }
+    }
+    // texture helpers not use.
+    class Textures
+    {
+        static Texture2D m_WhiteTexture;
 
-            public delegate void OnReceive(Vector2 v2);
-
-            public delegate void OnClose();
-
-            private EditorWindow parent;
-            private OnReceive onReceive;
-            private OnClose onClose;
-            public bool isInitialized;
-
-            float width = 350;
-            float height = 200;
-
-            public void Init(EditorWindow parent, OnReceive onReceive, OnClose onClose)
+        /// <summary>
+        /// A 1x1 white texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture2D whiteTexture
+        {
+            get
             {
-                this.parent = parent;
-                this.onReceive = onReceive;
-                this.onClose = onClose;
-                isInitialized = true;
-            }
+                if (m_WhiteTexture == null)
+                {
+                    m_WhiteTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "White Texture" };
+                    m_WhiteTexture.SetPixel(0, 0, Color.white);
+                    m_WhiteTexture.Apply();
+                }
 
-            void OnFocus()
+                return m_WhiteTexture;
+            }
+        }
+
+        static Texture3D m_WhiteTexture3D;
+
+        /// <summary>
+        /// A 1x1x1 white texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture3D whiteTexture3D
+        {
+            get
             {
-            }
+                if (m_WhiteTexture3D == null)
+                {
+                    m_WhiteTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
+                    { name = "White Texture 3D" };
+                    m_WhiteTexture3D.SetPixels(new Color[] { Color.white });
+                    m_WhiteTexture3D.Apply();
+                }
 
-            void OnLostFocus()
+                return m_WhiteTexture3D;
+            }
+        }
+
+        static Texture2D m_BlackTexture;
+
+        /// <summary>
+        /// A 1x1 black texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture2D blackTexture
+        {
+            get
             {
-                CloseWindow();
-            }
+                if (m_BlackTexture == null)
+                {
+                    m_BlackTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "Black Texture" };
+                    m_BlackTexture.SetPixel(0, 0, Color.black);
+                    m_BlackTexture.Apply();
+                }
 
-            void OnGUI()
+                return m_BlackTexture;
+            }
+        }
+
+        static Texture3D m_BlackTexture3D;
+
+        /// <summary>
+        /// A 1x1x1 black texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture3D blackTexture3D
+        {
+            get
+            {
+                if (m_BlackTexture3D == null)
+                {
+                    m_BlackTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
+                    { name = "Black Texture 3D" };
+                    m_BlackTexture3D.SetPixels(new Color[] { Color.black });
+                    m_BlackTexture3D.Apply();
+                }
+
+                return m_BlackTexture3D;
+            }
+        }
+
+        static Texture2D m_TransparentTexture;
+
+        /// <summary>
+        /// A 1x1 transparent texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture2D transparentTexture
+        {
+            get
+            {
+                if (m_TransparentTexture == null)
+                {
+                    m_TransparentTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false)
+                    { name = "Transparent Texture" };
+                    m_TransparentTexture.SetPixel(0, 0, Color.clear);
+                    m_TransparentTexture.Apply();
+                }
+
+                return m_TransparentTexture;
+            }
+        }
+
+        static Texture3D m_TransparentTexture3D;
+
+        /// <summary>
+        /// A 1x1x1 transparent texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture3D transparentTexture3D
+        {
+            get
+            {
+                if (m_TransparentTexture3D == null)
+                {
+                    m_TransparentTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
+                    { name = "Transparent Texture 3D" };
+                    m_TransparentTexture3D.SetPixels(new Color[] { Color.clear });
+                    m_TransparentTexture3D.Apply();
+                }
+
+                return m_TransparentTexture3D;
+            }
+        }
+    }
+    // popup window context for size input.
+    public class SizePopup : PopupWindowContent
+    {    //Search results can be filtered by specifying a series of properties that sounds should match. 
+         //In other words, using the filter parameter you can specify the value that certain sound fields should have in order to be considered valid search results. 
+         //Filters are defined with a syntax like filter=fieldname:value fieldname:value (that is the Solr filter syntax). 
+         //Use double quotes for multi-word queries (filter=fieldname:"val ue"). Filter names can be any of the following:
+        public EditorWindow _caller;
+        private int x;
+        private int y;
+
+        public delegate void OnReceive(Vector2 v2);
+
+
+        private EditorWindow parent;
+        private OnReceive onReceive;
+        public bool isInitialized;
+
+        //float width = 350;
+        //float height = 200;
+
+        public SizePopup()
+        {
+            //this.parent = parent;
+            //this.onReceive = onReceive;
+            isInitialized = true;
+        }
+
+        Vector2 scrollPosition;
+        public override Vector2 GetWindowSize()
+        {
+            return (_caller) ? new Vector2(250, 450) : Vector2.zero;
+        }
+
+        public override void OnGUI(Rect rect)
+        {
+            if (_caller)
             {
                 EditorGUIUtility.labelWidth = 50;
-                ValidateWindow();
-
-                position = new Rect(parent.position.x + (parent.position.width - width) / 2,
-                    parent.position.y + (parent.position.height - height) / 2, width, height);
                 using (EditorHelper.Horizontal.Do())
                 {
                     GUILayout.Label("Add New viewport size", EditorStyles.whiteLargeLabel);
                     if (GUILayout.Button("X", GUILayout.Width(40)))
-                        CloseWindow();
+                        OnClose();
                 }
 
                 using (EditorHelper.Horizontal.Do())
@@ -2771,2445 +2654,2132 @@ namespace See1Studios.See1View.Editor
                             onReceive.Invoke(new Vector2(x, y));
                 }
             }
+        }
 
-            void DrawPresetButton(int width, int height)
+        public override void OnOpen()
+        {
+            _caller = EditorWindow.GetWindow<EditorWindow>();
+        }
+        public override void OnClose()
+        {
+        }
+
+        void DrawPresetButton(int width, int height)
+        {
+
+            if (GUILayout.Button(string.Format("{0}x{1}", width, height), EditorStyles.miniButton))
             {
+                this.x = width;
+                this.y = height;
+            }
+        }
+    }
+    // popup window for additional inputs.
+    class PopupWindow : EditorWindow
+    {
+        private int x;
+        private int y;
 
-                if (GUILayout.Button(string.Format("{0}x{1}", width, height), EditorStyles.miniButton))
+        public delegate void OnReceive(Vector2 v2);
+
+        public delegate void OnClose();
+
+        private EditorWindow parent;
+        private OnReceive onReceive;
+        private OnClose onClose;
+        public bool isInitialized;
+
+        float width = 350;
+        float height = 200;
+
+        public void Init(EditorWindow parent, OnReceive onReceive, OnClose onClose)
+        {
+            this.parent = parent;
+            this.onReceive = onReceive;
+            this.onClose = onClose;
+            isInitialized = true;
+        }
+
+        void OnFocus()
+        {
+        }
+
+        void OnLostFocus()
+        {
+            CloseWindow();
+        }
+
+        void OnGUI()
+        {
+            EditorGUIUtility.labelWidth = 50;
+            ValidateWindow();
+
+            position = new Rect(parent.position.x + (parent.position.width - width) / 2,
+                parent.position.y + (parent.position.height - height) / 2, width, height);
+            using (EditorHelper.Horizontal.Do())
+            {
+                GUILayout.Label("Add New viewport size", EditorStyles.whiteLargeLabel);
+                if (GUILayout.Button("X", GUILayout.Width(40)))
+                    CloseWindow();
+            }
+
+            using (EditorHelper.Horizontal.Do())
+            {
+                using (new EditorGUILayout.VerticalScope())
                 {
-                    this.x = width;
-                    this.y = height;
+                    EditorGUILayout.LabelField("Landscape", EditorStyles.miniLabel);
+                    DrawPresetButton(800, 600);
+                    DrawPresetButton(1280, 720);
+                    DrawPresetButton(1600, 900);
+                    DrawPresetButton(1920, 1080);
+                    DrawPresetButton(2560, 1440);
+                    DrawPresetButton(3840, 2160);
+                }
+
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    EditorGUILayout.LabelField("Portrait", EditorStyles.miniLabel);
+                    DrawPresetButton(600, 800);
+                    DrawPresetButton(720, 1280);
+                    DrawPresetButton(900, 1600);
+                    DrawPresetButton(1080, 1920);
+                    DrawPresetButton(1440, 2560);
+                    DrawPresetButton(2160, 3840);
+                }
+
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    EditorGUILayout.LabelField("POT", EditorStyles.miniLabel);
+                    DrawPresetButton(128, 128);
+                    DrawPresetButton(256, 256);
+                    DrawPresetButton(512, 512);
+                    DrawPresetButton(1024, 1024);
+                    DrawPresetButton(2048, 2048);
+                    DrawPresetButton(4096, 4096);
                 }
             }
 
-            void ValidateWindow()
+            using (EditorHelper.Horizontal.Do())
             {
-                bool isParentFocused = EditorWindow.focusedWindow == parent;
-                bool isThisFocused = EditorWindow.focusedWindow == this;
-                if (!isParentFocused && !isThisFocused) CloseWindow();
-            }
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    x = EditorGUILayout.IntSlider("Width", x, 128, 4096);
+                    y = EditorGUILayout.IntSlider("Height", y, 128, 4096);
+                }
 
-            void CloseWindow()
-            {
-                if (onClose != null) onClose.Invoke();
-                this.Close();
-            }
-
-            void OnInspectorUpdate()
-            {
-                Repaint();
+                if (GUILayout.Button("Add", GUILayout.Width(80), GUILayout.ExpandHeight(true)))
+                    if (onReceive != null)
+                        onReceive.Invoke(new Vector2(x, y));
             }
         }
-        // draw text on viewport directly.
-        static class Notice
+
+        void DrawPresetButton(int width, int height)
         {
-            private static StringBuilder _sb;
-            private static GUIContent _log;
-            private static GUIStyle style;
-            private static float timer = 0;
 
-            static Notice()
+            if (GUILayout.Button(string.Format("{0}x{1}", width, height), EditorStyles.miniButton))
             {
-                _sb = new StringBuilder();
-                style = new GUIStyle();
-                style.alignment = TextAnchor.UpperLeft;
-                style.richText = false;
-                style.fontSize = 9;
+                this.x = width;
+                this.y = height;
             }
+        }
 
-            public static void Log(object message, bool debugOutput = false)
+        void ValidateWindow()
+        {
+            bool isParentFocused = EditorWindow.focusedWindow == parent;
+            bool isThisFocused = EditorWindow.focusedWindow == this;
+            if (!isParentFocused && !isThisFocused) CloseWindow();
+        }
+
+        void CloseWindow()
+        {
+            if (onClose != null) onClose.Invoke();
+            this.Close();
+        }
+
+        void OnInspectorUpdate()
+        {
+            Repaint();
+        }
+    }
+    // draw text on viewport directly.
+    static class Notice
+    {
+        private static StringBuilder _sb;
+        private static GUIContent _log;
+        private static GUIStyle style;
+        private static float timer = 0;
+
+        static Notice()
+        {
+            _sb = new StringBuilder();
+            style = new GUIStyle();
+            style.alignment = TextAnchor.UpperLeft;
+            style.richText = false;
+            style.fontSize = 9;
+        }
+
+        public static void Log(object message, bool debugOutput = false)
+        {
+            _sb.Append(message);
+            _sb.Append("\n");
+            timer = 5;
+            if (debugOutput) Debug.Log(message);
+        }
+
+        public static void OnGUI(Rect r)
+        {
+            style.normal.textColor = Color.white * timer;
+            _log = new GUIContent(_sb.ToString());
+            var infoSize = style.CalcSize(_log);
+            Rect area = new Rect(r.x + 4, r.y, infoSize.x, infoSize.y);
+            EditorGUI.DropShadowLabel(area, _log, style);
+            timer -= 0.01f;
+            if (timer < 0)
             {
-                _sb.Append(message);
-                _sb.Append("\n");
-                timer = 5;
-                if (debugOutput) Debug.Log(message);
+                timer = 0;
+                _sb.Length = 0;
             }
+        }
+    }
+    // simple shortcut manager.
+    class Shortcuts
+    {
+        static StringBuilder sb = new StringBuilder();
+        static Dictionary<KeyCode, UnityAction> shortcutDic = new Dictionary<KeyCode, UnityAction>();
 
-            public static void OnGUI(Rect r)
+        public static void AddBlank(GUIContent desc)
+        {
+            sb.AppendFormat("{0}", desc.text);
+            sb.AppendLine();
+        }
+
+        public static void Add(KeyCode input, GUIContent desc, UnityAction action)
+        {
+            shortcutDic.Add(input, action);
+            sb.AppendFormat("{0} - {1}", input.ToString(), desc.text);
+            sb.AppendLine();
+        }
+
+        public static void Clear()
+        {
+            shortcutDic.Clear();
+            sb.Length = 0;
+        }
+
+        public static void ProcessInput(KeyCode input)
+        {
+            if (shortcutDic.ContainsKey(input))
             {
-                style.normal.textColor = Color.white * timer;
-                _log = new GUIContent(_sb.ToString());
-                var infoSize = style.CalcSize(_log);
-                Rect area = new Rect(r.x + 4, r.y, infoSize.x, infoSize.y);
-                EditorGUI.DropShadowLabel(area, _log, style);
-                timer -= 0.01f;
-                if (timer < 0)
+                if (shortcutDic[input] != null)
                 {
-                    timer = 0;
-                    _sb.Length = 0;
+                    shortcutDic[input].Invoke();
                 }
             }
         }
-        // simple shortcut manager.
-        class Shortcuts
+
+        public static string Print()
         {
-            static StringBuilder sb = new StringBuilder();
-            static Dictionary<KeyCode, UnityAction> shortcutDic = new Dictionary<KeyCode, UnityAction>();
+            return sb.ToString();
+        }
+    }
 
-            public static void AddBlank(GUIContent desc)
+    // manage and play animations.
+    public class AnimationPlayer
+    {
+        public class Actor
+        {
+            public bool enabled;
+            public GameObject prefab;
+            public GameObject instance;
+            public Animator animator;
+            public Bounds bounds;
+
+            public bool isSceneObject
             {
-                sb.AppendFormat("{0}", desc.text);
-                sb.AppendLine();
+                get { return prefab == null; }
             }
-
-            public static void Add(KeyCode input, GUIContent desc, UnityAction action)
+            public string name
             {
-                shortcutDic.Add(input, action);
-                sb.AppendFormat("{0} - {1}", input.ToString(), desc.text);
-                sb.AppendLine();
+                get { return isSceneObject ? instance.name : prefab.name; }
             }
-
-            public static void Clear()
+            public Actor(GameObject src, bool sceneObject)
             {
-                shortcutDic.Clear();
-                sb.Length = 0;
-            }
-
-            public static void ProcessInput(KeyCode input)
-            {
-                if (shortcutDic.ContainsKey(input))
+                this.enabled = true;
+                if (sceneObject)
                 {
-                    if (shortcutDic[input] != null)
+                    this.instance = src;
+                }
+                else
+                {
+                    this.prefab = src;
+                    this.instance = (GameObject)PrefabUtility.InstantiatePrefab((prefab));
+                    if (!instance)
                     {
-                        shortcutDic[input].Invoke();
+                        Debug.Log(string.Format("Can't instantiate : {0}", src.name));
+                        return;
                     }
+                    this.instance.name = prefab.name + "(Actor)";
+                }
+                Animator animator = instance.GetComponent<Animator>();
+                if (animator)
+                {
+                    this.animator = animator;
+                }
+                var renderers = instance.GetComponentsInChildren<Renderer>().ToList();
+                foreach (var renderer in renderers)
+                {
+                    bounds.Encapsulate(renderer.bounds);
                 }
             }
+        }
 
-            public static string Print()
+        public class ClipInfo
+        {
+            public AnimationClip clip;
+            public bool enabled;
+            //public int loopTimes;
+            StringBuilder sb = new StringBuilder();
+
+            public ClipInfo(AnimationClip clip)
+            {
+                this.clip = clip;
+                //sb.AppendFormat("Name : {0}", clip.name);
+                //sb.AppendLine();
+                //sb.AppendFormat("Local Bounds : {0}", clip.localBounds.ToString());
+                //sb.AppendLine();
+                //sb.AppendFormat("Events : {0}", clip.events.ToString());
+                //sb.AppendLine();
+                sb.AppendFormat("FrameRate : {0}", clip.frameRate.ToString());
+                sb.AppendLine();
+                //sb.AppendFormat("Human Motion : {0}", clip.humanMotion.ToString());
+                //sb.AppendLine();
+                //sb.AppendFormat("Legacy : {0}", clip.legacy.ToString());
+                //sb.AppendLine();
+                sb.AppendFormat("Length : {0}", clip.length.ToString("0.00"));
+                //sb.AppendLine();
+                //sb.AppendFormat("WrapMode : {0}", clip.wrapMode.ToString());
+                //sb.AppendLine();
+                //sb.AppendFormat("Apparent Speed : {0}", clip.apparentSpeed.ToString());
+                //sb.AppendLine();
+                //sb.AppendFormat("Average Angular Speed : {0}", clip.averageAngularSpeed.ToString());
+                //sb.AppendLine();
+                //sb.AppendFormat("Average Duration : {0}", clip.averageDuration.ToString());
+                //sb.AppendLine();
+                //sb.AppendFormat("Average Speed : {0}", clip.averageSpeed.ToString());
+            }
+
+            public string Print()
             {
                 return sb.ToString();
             }
         }
-        // manage and assemble multiple models. wip.
-        class ModelAssembler
+
+        internal UnityEditorInternal.ReorderableList reorderableActorList;
+        internal UnityEditorInternal.ReorderableList reorderableClipList;
+        internal List<Actor> actorList = new List<Actor>();
+        internal List<AnimationClip> playList = new List<AnimationClip>();
+        internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
+        private int current;
+        internal double time = 0.0f;
+        internal float timeSpeed = 1.0f;
+        private bool _isOptimized { get; set; }
+        internal bool isPlayable { get { return actorList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
+        internal bool isPlaying { get; set; }
+        internal bool isLooping { get; set; }
+        private bool _showEvent { get; set; }
+        private int _actorRow = 4;
+        private int _actorDistance = 1;
+        internal AnimationClip _currentClip { get { return playList[0]; } }
+        internal UnityEvent onStopPlaying = new UnityEvent();
+        internal ClipInfo currentClipInfo
         {
-            internal UnityEditorInternal.ReorderableList rol;
-            //internal List<ModelGroup> modelGroupList;
+            get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
+        }
+        //Texture aniIcon = EditorGUIUtility.IconContent("Animator Icon").image;
 
-            private static string _nameBuffer = string.Empty;
+        public AnimationPlayer()
+        {
+            InitActorList();
+            InitClipList();
+        }
 
-            //static GUIContent plusIcon = EditorGUIUtility.IconContent("ShurikenPlus");
-            //static GUIContent minusIcon = EditorGUIUtility.IconContent("ShurikenMinus");
-            //static GUIContent settingsIcon = EditorGUIUtility.IconContent("Inlined TextField Focus");
-            private const string MODEL_ROOT_NAME = "Root";
-
-            public static void SetBuiltinNames()
+        public void Dispose()
+        {
+            foreach (var actor in actorList.ToArray())
             {
-
-            }
-
-            public void Init(List<ModelGroup> modelGroupList, GenericMenu.MenuFunction dataChangeHandler,
-                GenericMenu.MenuFunction2 targetItemHandler, GenericMenu.MenuFunction2 menuItemHandler)
-            {
-                rol = new UnityEditorInternal.ReorderableList(modelGroupList, typeof(ModelGroup));
-                rol.showDefaultBackground = false;
-                //Header
-                rol.headerHeight = 20;
-                rol.drawHeaderCallback = (position) =>
-                {
-                    //var btn20 = position.width * 0.2f;
-                    var btn25 = position.width * 0.25f;
-                    //var btn30 = position.width * 0.3f;
-                    var btn50 = position.width * 0.5f;
-                    position.width = btn50;
-                    if (GUI.Button(position, "Reset Names", EditorStyles.miniButton))
-                    {
-                        SetBuiltinNames();
-                    }
-
-                    //position.x += position.width;
-                    //position.width = btn30;
-                    //if (GUI.Button(position, "Remove All", EditorStyles.miniButton))
-                    //{
-                    //    data.PartDataList.Clear();
-                    //}
-                    position.x += position.width;
-                    position.width = btn25;
-                    if (GUI.Button(position, "Add Part", EditorStyles.miniButtonLeft))
-                    {
-                        rol.onAddDropdownCallback.Invoke(position, rol);
-                    }
-
-                    position.x += position.width;
-                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonRight))
-                    {
-                        rol.onRemoveCallback(rol);
-                    }
-                };
-                rol.drawFooterCallback = (position) => { };
-                //Element
-                //reorderableList.elementHeight = EditorGUIUtility.singleLineHeight * 3f;
-                rol.elementHeightCallback = (index) =>
-                {
-                    //var height = EditorGUIUtility.singleLineHeight * 5f;
-
-                    //    height += 70f;
-                    return 100;
-                };
-                rol.drawElementCallback = (position, index, isActive, isFocused) =>
-                {
-                    Rect r = new Rect(position);
-                    Event evt = Event.current;
-                    var pData = modelGroupList[index];
-                    //list 크기가 변할 수 있으므로 인덱스를 일단 계속 갱신해줌 ㅠㅠ
-                    pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
-
-                    //UI Constants
-                    var listRect = new RectOffset(2, 2, 2, 2).Remove(position);
-                    const float space = 2f;
-                    const float lineHeight = 20f;
-                    const float miniBtnWidth = 20f;
-                    //var miniButtonwidth = listRect.width * 0.5f;
-                    const float miniButtonheight = 15f;
-
-                    Rect color_area = new Rect(position.x - 15, position.y + 20, 10, 70);
-                    //float hue = (1.0f / (float)((float)index + 1.0f));
-                    Color color = isActive ? Color.white : Color.black; // Color.HSVToRGB(hue, 1.0f, 1.0f);
-                    if (pData.enabled.target)
-                        EditorGUI.DrawRect(color_area, color * (isActive ? 0.5f : 0.25f));
-                    ////1st Row
-                    EditorGUI.BeginChangeCheck();
-                    ////Draw Header
-                    var headerRect = new Rect()
-                    { x = listRect.x, y = listRect.y, width = listRect.width, height = lineHeight };
-                    GUI.backgroundColor = pData.enabled.target ? Color.black * 0.5f : Color.white;
-                    GUI.Box(headerRect, "", "ShurikenModuleTitle");
-                    GUI.backgroundColor = Color.white;
-
-                    ////Toggle Active
-                    position.x = listRect.x;
-                    position.width = miniBtnWidth;
-                    position.height = lineHeight;
-                    pData.enabled.target = GUI.Toggle(position, pData.enabled.target, "", "OL Toggle");
-
-                    ////Default Option
-                    using (new EditorGUI.DisabledScope(!pData.enabled.target))
-                    {
-                        ////Data Name
-                        position.x += position.width;
-                        position.width = (listRect.width - miniBtnWidth * 4);
-
-                        if (pData.IsEditingName)
-                        {
-                            if (Event.current.keyCode == KeyCode.Escape)
-                            {
-                                pData.IsEditingName = false;
-                            }
-
-                            if (Event.current.isMouse && !position.Contains(Event.current.mousePosition))
-                            {
-                                pData.IsEditingName = false;
-                            }
-
-                            using (var inputCheck = new EditorGUI.ChangeCheckScope())
-                            {
-                                _nameBuffer = EditorGUI.DelayedTextField(position, _nameBuffer);
-                                if (inputCheck.changed)
-                                {
-                                    pData.m_Name = _nameBuffer;
-                                    _nameBuffer = string.Empty;
-                                    pData.IsEditingName = false;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            GUI.Label(position,
-                                string.Format("{0}   {1}/{2}", pData.m_Name, pData.SelectedIndex + 1,
-                                    pData.m_Sources.Count), Styles.centeredMiniLabel);
-                        }
-
-                        position.x += position.width;
-                        position.width = miniBtnWidth;
-                        if (GUI.Button(position, "Settings", Styles.transButton))
-                        {
-                            pData.IsEditingName = true;
-                            _nameBuffer = pData.m_Name.ToString();
-                        }
-
-                        position.x += position.width;
-                        position.width = miniBtnWidth;
-                        int id = EditorGUIUtility.GetControlID(FocusType.Passive, position);
-                        string commandName = evt.commandName;
-                        if (commandName == "ObjectSelectorClosed")
-                        {
-                            var obj = EditorGUIUtility.GetObjectPickerObject() as GameObject;
-                            if (obj)
-                            {
-                                if (pData.m_Sources.All(x => x != obj))
-                                {
-                                    pData.m_Sources.Add(obj);
-                                    pData.SelectedIndex += 1;
-                                    pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
-                                    dataChangeHandler();
-                                }
-                            }
-
-                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                        }
-
-                        if (GUI.Button(position, "+", Styles.transButton))
-                        {
-                            EditorGUIUtility.ShowObjectPicker<GameObject>(null, false, "", id);
-                        }
-
-                        position.x += position.width;
-                        position.width = miniBtnWidth;
-                        if (GUI.Button(position, "-", Styles.transButton))
-                        {
-                            if (pData.m_Sources.Count > 0)
-                            {
-                                pData.m_Sources.RemoveAt(pData.SelectedIndex);
-                                //Refresh Index T_T
-                                pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
-                                dataChangeHandler();
-                            }
-                        }
-
-                        ////위에서 인덱스가 바뀔 수 있으므로 여기서 판단함.
-                        bool isSourceExist = (pData.m_Sources.Count > 0)
-                            ? (pData.m_Sources[pData.SelectedIndex]) != null
-                            : false;
-
-                        //2nd Row
-                        //position.y += space;
-                        position.y += lineHeight;
-
-                        //Index Mod
-                        position.x = listRect.x;
-                        position.width = miniBtnWidth;
-                        position.height = lineHeight;
-                        if (GUI.Button(position, "◄", Styles.transButton))
-                        {
-                            pData.SelectedIndex -= 1;
-                            pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
-                        }
-
-                        ////Source Field
-                        position.x += miniBtnWidth;
-                        position.width = (listRect.width - miniBtnWidth * 2);
-
-                        ////Drag and Drop
-                        Rect drop_area = position;
-                        GUI.Box(drop_area, "", GUI.skin.box);
-                        switch (evt.type)
-                        {
-                            case EventType.DragUpdated:
-                            case EventType.DragPerform:
-                                if (!r.Contains(evt.mousePosition))
-                                    return;
-                                DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
-                                if (evt.type == EventType.DragPerform)
-                                {
-                                    DragAndDrop.AcceptDrag();
-                                    foreach (UnityEngine.Object dragged_object in DragAndDrop.objectReferences)
-                                    {
-                                        if (dragged_object is GameObject)
-                                        {
-                                            pData.m_Sources.Add(dragged_object as GameObject);
-                                        }
-                                    }
-
-                                    //Refresh Index T_T
-                                    pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
-                                    dataChangeHandler();
-                                }
-
-                                break;
-                        }
-
-                        string pName = (isSourceExist) ? pData.m_Sources[pData.SelectedIndex].name : "None";
-                        var style = new GUIStyle(GUI.skin.label)
-                        { fontSize = 10, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-                        if (GUI.Button(position, pName, style))
-                        {
-                            if (isSourceExist)
-                            {
-                                Selection.activeObject =
-                                    EditorUtility.InstanceIDToObject(pData.m_Sources[pData.SelectedIndex]
-                                        .GetInstanceID());
-                            }
-                        }
-
-                        ////Index Mod
-                        position.x += position.width;
-                        position.width = miniBtnWidth;
-                        if (GUI.Button(position, "►", Styles.transButton))
-                        {
-                            pData.SelectedIndex += 1;
-                            pData.SelectedIndex = ClampInRange(pData.SelectedIndex, pData.m_Sources.Count);
-                        }
-
-                        position.x = listRect.x;
-                        position.width = listRect.width;
-                        position.y += space * 4;
-                        position.y += miniButtonheight;
-                        pData.SelectedIndex =
-                            EditorGUI.IntSlider(position, pData.SelectedIndex + 1, 1, pData.m_Sources.Count) -
-                            1; // EditorGUI.Vector3Field(position, "", pData.Position);
-
-                        ////Default Option
-                        using (new EditorGUI.DisabledScope(!isSourceExist))
-                        {
-                            position.y += space;
-                            position.x = listRect.x;
-                            position.y += lineHeight;
-                            position.width = listRect.width;
-                            position.height = miniButtonheight;
-                            if (GUI.Button(position,
-                                (string.Format("{0}{1}", "Parent - ",
-                                    string.IsNullOrEmpty(pData.m_TargetPath) ? MODEL_ROOT_NAME : pData.m_TargetPath)),
-                                "MiniPopup"))
-                            {
-                                targetItemHandler(pData);
-                            }
-
-                            //4th Row
-                            //position.x = listRect.x;
-                            //position.y += space;
-                            //position.y += miniButtonheight;
-                            //position.width = listRect.width;
-                            //pData.IsExpanded = GUI.Toggle(position, pData.IsExpanded, "Options", "MiniButton");
-                            //if (pData.IsExpanded)
-                            //{
-                            position.y += space;
-                            position.y += miniButtonheight;
-                            position.width = listRect.width / 2;
-                            pData.m_Options.ResetTransform = GUI.Toggle(position, pData.m_Options.ResetTransform,
-                                "Reset Transform", "MiniButton");
-                            position.x += position.width;
-                            pData.m_Options.m_RenderersOnly = GUI.Toggle(position, pData.m_Options.m_RenderersOnly,
-                                "Renderers Only", "MiniButton");
-
-                            //position.x = listRect.x;
-                            //position.width = listRect.width;
-                            //position.y += space;
-                            //position.y += miniButtonheight;
-                            //pData.m.m_Options.Position = EditorGUI.Vector3Field(position, "", pData.m_Options.Position);// EditorGUI.Vector3Field(position, "", pData.Position);
-                            //position.y += space;
-                            //position.y += miniButtonheight;
-                            //pData.m_Options.Rotation.eulerAngles = EditorGUI.Vector3Field(position, "", pData.m_Options.Rotation.eulerAngles);
-                            //position.y += space;
-                            //position.y += miniButtonheight;
-                            //pData.m_Options.Scale = EditorGUI.Vector3Field(position, "", pData.m_Options.Scale);
-                            //}
-                        }
-
-                        if (evt.type == EventType.Repaint)
-                        {
-                            if (DragAndDrop.visualMode == DragAndDropVisualMode.Copy && (r.Contains(evt.mousePosition)))
-                            {
-                                GUI.Box(r, "", GUI.skin.box);
-                                EditorGUI.DrawRect(r, new Color(0.5f, 1.0f, 1.0f) * 0.5f);
-                            }
-                        }
-
-                        if (EditorGUI.EndChangeCheck())
-                        {
-                            dataChangeHandler();
-                        }
-                    }
-                };
-                rol.drawElementBackgroundCallback = (rect, index, isActive, isFocused) =>
-                {
-                    if (isActive || isFocused)
-                    {
-                        GUI.Box(rect, "", GUI.skin.box);
-                        //EditorGUI.DrawRect(rect, Color.white * 0.5f);
-                    }
-                };
-                rol.onChangedCallback = (list) =>
-                {
-                    //Debug.Log("onChangedCallback");
-                };
-                rol.displayAdd = true;
-                rol.displayRemove = true;
-                rol.onAddDropdownCallback = (buttonRect, list) =>
-                {
-                    EditorGUI.DrawRect(buttonRect, Color.green);
-                    var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent("Add New Part"), false, menuItemHandler, new ModelGroup("New"));
-                    menu.AddSeparator("");
-                    //foreach (var partName in AS_Settings.instance.currentData.PartNames)
-                    //{
-                    //    menu.AddItem(new GUIContent(partName), false, menuItemHandler, new ModelGroup(partName));
-                    //}
-
-                    menu.ShowAsContext();
-                };
-                rol.onRemoveCallback = (list) =>
-                {
-                    if (-1 < list.index && list.index < list.list.Count)
-                        modelGroupList.RemoveAt(list.index);
-                };
-                rol.onCanRemoveCallback = (list) =>
-                {
-                    //Debug.Log("onCanRemoveCallback");
-                    return true;
-                };
-                rol.onReorderCallback = (list) =>
-                {
-                    //Debug.Log("onReorderCallback");
-                    dataChangeHandler();
-                };
-                //Footer
-                //rol.footerHeight = 0;
-                //rol.drawFooterCallback = (position) =>
-                //{
-                //    //EditorGUI.DrawRect(position, Color.blue);
-                //};
-            }
-
-            public static bool Header(string title, bool isExpanded, bool enabledField)
-            {
-                var display = isExpanded;
-                var enabled = enabledField;
-                var rect = GUILayoutUtility.GetRect(16f, 22f, Styles.header);
-                GUI.Box(rect, title, Styles.header);
-
-                var toggleRect = new Rect(rect.x + 4f, rect.y + 4f, 13f, 13f);
-                var e = Event.current;
-
-                if (e.type == EventType.Repaint)
-                {
-                    Styles.headerCheckbox.Draw(toggleRect, false, false, enabled, false);
-                }
-
-                if (e.type == EventType.MouseDown)
-                {
-                    const float kOffset = 2f;
-                    toggleRect.x -= kOffset;
-                    toggleRect.y -= kOffset;
-                    toggleRect.width += kOffset * 2f;
-                    toggleRect.height += kOffset * 2f;
-
-                    if (toggleRect.Contains(e.mousePosition))
-                    {
-                        enabledField = !enabledField;
-                        e.Use();
-                    }
-                    else if (rect.Contains(e.mousePosition))
-                    {
-                        display = !display;
-                        isExpanded = !isExpanded;
-                        e.Use();
-                    }
-                }
-
-                return display;
-            }
-
-            private static int ClampInRange(int i, int count)
-            {
-                if (count == 0) return -1;
-                else if (i < 0) return count - 1;
-                else if (i > count - 1) return 0;
-                else return i;
-            }
-
-            internal void OnGUI()
-            {
-                if (rol != null)
-                {
-                    rol.DoLayoutList();
-                }
+                RemoveActor(actor);
             }
         }
-        // manage and play animations.
-        public class AnimationPlayer
+
+        public void TogglePlay()
         {
-            public class Actor
+            isPlaying = !isPlaying;
+            if (isPlaying) Play();
+        }
+
+        private void InitActorList()
+        {
+            actorList = new List<Actor>();
+            reorderableActorList = new UnityEditorInternal.ReorderableList(actorList, typeof(GameObject), true, true, false, false);
+            //fields
+            reorderableActorList.showDefaultBackground = false;
+            reorderableActorList.headerHeight = 20;
+            reorderableActorList.elementHeight = 18;
+            reorderableActorList.footerHeight = 40;
+            //draw callback
+            reorderableActorList.drawHeaderCallback = (position) =>
             {
-                public bool enabled;
-                public GameObject prefab;
-                public GameObject instance;
-                public Animator animator;
-                public Bounds bounds;
-
-                public bool isSceneObject
+                var btn30 = position.width * 0.3333f;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(Selection.activeGameObject == null))
                 {
-                    get { return prefab == null; }
-                }
-                public string name
-                {
-                    get { return isSceneObject ? instance.name : prefab.name; }
-                }
-                public Actor(GameObject src, bool sceneObject)
-                {
-                    this.enabled = true;
-                    if (sceneObject)
-                    {
-                        this.instance = src;
-                    }
-                    else
-                    {
-                        this.prefab = src;
-                        this.instance = (GameObject)PrefabUtility.InstantiatePrefab((prefab));
-                        if (!instance)
-                        {
-                            Debug.Log(string.Format("Can't instantiate : {0}", src.name));
-                            return;
-                        }
-                        this.instance.name = prefab.name + "(Actor)";
-                    }
-                    Animator animator = instance.GetComponent<Animator>();
-                    if (animator)
-                    {
-                        this.animator = animator;
-                    }
-                    var renderers = instance.GetComponentsInChildren<Renderer>().ToList();
-                    foreach (var renderer in renderers)
-                    {
-                        bounds.Encapsulate(renderer.bounds);
-                    }
-                }
-            }
-
-            public class ClipInfo
-            {
-                public AnimationClip clip;
-                public bool enabled;
-                //public int loopTimes;
-                StringBuilder sb = new StringBuilder();
-
-                public ClipInfo(AnimationClip clip)
-                {
-                    this.clip = clip;
-                    //sb.AppendFormat("Name : {0}", clip.name);
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Local Bounds : {0}", clip.localBounds.ToString());
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Events : {0}", clip.events.ToString());
-                    //sb.AppendLine();
-                    sb.AppendFormat("FrameRate : {0}", clip.frameRate.ToString());
-                    sb.AppendLine();
-                    //sb.AppendFormat("Human Motion : {0}", clip.humanMotion.ToString());
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Legacy : {0}", clip.legacy.ToString());
-                    //sb.AppendLine();
-                    sb.AppendFormat("Length : {0}", clip.length.ToString("0.00"));
-                    //sb.AppendLine();
-                    //sb.AppendFormat("WrapMode : {0}", clip.wrapMode.ToString());
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Apparent Speed : {0}", clip.apparentSpeed.ToString());
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Average Angular Speed : {0}", clip.averageAngularSpeed.ToString());
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Average Duration : {0}", clip.averageDuration.ToString());
-                    //sb.AppendLine();
-                    //sb.AppendFormat("Average Speed : {0}", clip.averageSpeed.ToString());
-                }
-
-                public string Print()
-                {
-                    return sb.ToString();
-                }
-            }
-
-            internal UnityEditorInternal.ReorderableList reorderableActorList;
-            internal UnityEditorInternal.ReorderableList reorderableClipList;
-            internal List<Actor> actorList = new List<Actor>();
-            internal List<AnimationClip> playList = new List<AnimationClip>();
-            internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
-            private int current;
-            internal double time = 0.0f;
-            internal float timeSpeed = 1.0f;
-            private bool _isOptimized { get; set; }
-            internal bool isPlayable { get { return actorList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
-            internal bool isPlaying { get; set; }
-            internal bool isLooping { get; set; }
-            private bool _showEvent { get; set; }
-            private int _actorRow = 4;
-            private int _actorDistance = 1;
-            internal AnimationClip _currentClip { get { return playList[0]; } }
-            internal UnityEvent onStopPlaying = new UnityEvent();
-            internal ClipInfo currentClipInfo
-            {
-                get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
-            }
-            //Texture aniIcon = EditorGUIUtility.IconContent("Animator Icon").image;
-
-            public AnimationPlayer()
-            {
-                InitActorList();
-                InitClipList();
-            }
-
-            public void Dispose()
-            {
-                foreach (var actor in actorList.ToArray())
-                {
-                    RemoveActor(actor);
-                }
-            }
-
-            public void TogglePlay()
-            {
-                isPlaying = !isPlaying;
-                if (isPlaying) Play();
-            }
-
-            private void InitActorList()
-            {
-                actorList = new List<Actor>();
-                reorderableActorList = new UnityEditorInternal.ReorderableList(actorList, typeof(GameObject), true, true, false, false);
-                //fields
-                reorderableActorList.showDefaultBackground = false;
-                reorderableActorList.headerHeight = 20;
-                reorderableActorList.elementHeight = 18;
-                reorderableActorList.footerHeight = 40;
-                //draw callback
-                reorderableActorList.drawHeaderCallback = (position) =>
-                {
-                    var btn30 = position.width * 0.3333f;
-                    position.width = btn30;
-                    using (new EditorGUI.DisabledScope(Selection.activeGameObject == null))
-                    {
-                        if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
-                        {
-                            reorderableActorList.onAddDropdownCallback.Invoke(position, reorderableActorList);
-                        }
-                    }
-
-                    position.x += position.width;
-                    position.width = btn30;
-                    using (new EditorGUI.DisabledScope(reorderableActorList.index < 0))
-                    {
-                        if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
-                        {
-                            reorderableActorList.onRemoveCallback(reorderableActorList);
-                        }
-                    }
-
-                    position.x += position.width;
-                    position.width = btn30;
-                    using (new EditorGUI.DisabledScope(actorList.Count == 0))
-                    {
-                        if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
-                        {
-                            foreach (var actor in actorList.ToArray())
-                            {
-                                RemoveActor(actor);
-                            }
-                        }
-                    }
-                };
-                reorderableActorList.drawElementCallback = (position, index, isActive, isFocused) =>
-                {
-                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
-                    {
-                        Selection.activeGameObject = actorList[index].instance;
-                        SceneView.lastActiveSceneView.pivot = actorList[index].instance.transform.position + actorList[index].bounds.center;
-                    }
-
-                    float rectWidth = position.width;
-                    float rectHeight = position.height;
-                    float tglWidth = 15;
-                    float btnWidth = 55;
-                    position.width = tglWidth;
-                    using (var check = new EditorGUI.ChangeCheckScope())
-                    {
-                        actorList[index].enabled = EditorGUI.Toggle(position, actorList[index].enabled);
-                        if (check.changed)
-                        {
-                        }
-                    }
-
-                    position.x += position.width;
-                    position.width = rectWidth - btnWidth - tglWidth;
-                    EditorGUI.LabelField(position, actorList[index].name, EditorStyles.miniBoldLabel);
-                    var style = new GUIStyle(EditorStyles.miniLabel);
-                    style.alignment = TextAnchor.MiddleRight;
-                    style.normal.textColor = Color.gray;
-                    bool animatorExist = actorList[index].animator != null;
-                    if (animatorExist)
-                        EditorGUI.LabelField(position, actorList[index].animator.isHuman ? "Humanoid" : "Generic", style);
-                    position.x += position.width;
-                    position.width = btnWidth;
-                    position.height = 16;
-                    if (animatorExist)
-                    {
-                        if (GUI.Button(position, "GetClips", EditorStyles.miniButton))
-                        {
-                            InitAnimatorAndClips(actorList[index].animator);
-                        }
-                    }
-                };
-
-                reorderableActorList.drawFooterCallback = position =>
-                {
-
-                    var start = position;
-                    var btn50 = position.width * 0.5f;
-                    position.height *= 0.5f;
-                    var labelwidth = 60;
-                    EditorGUIUtility.labelWidth = labelwidth;
-                    position.width = btn50;
-                    var controlPos = EditorGUI.PrefixLabel(position, new GUIContent(string.Format(" Rows : {0}", _actorRow)), EditorStyles.miniLabel);
-                    _actorRow = (int)GUI.HorizontalSlider(controlPos, _actorRow, 1, 8);
-                    position.x += position.width;
-                    controlPos = EditorGUI.PrefixLabel(position, new GUIContent(string.Format(" Dist : {0}", _actorDistance)), EditorStyles.miniLabel);
-                    _actorDistance = (int)GUI.HorizontalSlider(controlPos, _actorDistance, 1, 8);
-                    EditorGUIUtility.labelWidth = labelwidth;
-                    position.x = start.x;
-                    position.y += position.height;
-                    position.width = btn50;
-                    if (GUI.Button(position, "Grid", EditorStyles.miniButtonLeft))
-                    {
-                        SetActorPosition(true);
-                    }
-                    position.x += position.width;
-                    if (GUI.Button(position, "Reset", EditorStyles.miniButtonRight))
-                    {
-                        SetActorPosition(false);
-                    }
-                    position.x += position.width;
-                };
-                //btn callback
-                reorderableActorList.onAddDropdownCallback = (buttonRect, list) =>
-                {
-                    var selection = Selection.gameObjects;
-                    foreach (var go in selection)
-                    {
-                        var root = go.transform.root;
-                        if (root)
-                        {
-                            if (!AssetDatabase.Contains(root.gameObject) && !(Enumerable.Any(actorList, x => x.instance == root.gameObject)))
-                            {
-                                this.actorList.Add(new Actor(root.gameObject, true));
-                            }
-                        }
-                    }
-                };
-                reorderableActorList.onRemoveCallback = (list) =>
-                {
-                    reorderableActorList.index = Mathf.Clamp(reorderableActorList.index, 0, reorderableActorList.count - 1);
-                    if (actorList.Count > 0)
-                    {
-                        var actor = actorList[reorderableActorList.index];
-                        RemoveActor(actor);
-                    }
-
-                    reorderableActorList.index = Mathf.Clamp(reorderableActorList.index, 0, reorderableActorList.count - 1);
-                };
-                reorderableActorList.onChangedCallback = list => { };
-            }
-
-            private void InitClipList()
-            {
-                clipInfoList = new List<ClipInfo>();
-                reorderableClipList = new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
-                //fields
-                reorderableClipList.showDefaultBackground = false;
-                reorderableClipList.headerHeight = 20;
-                reorderableClipList.elementHeight = 18;
-                reorderableClipList.footerHeight = 20;
-                //draw callback
-                reorderableClipList.drawHeaderCallback = (position) =>
-                {
-                    Event evt = Event.current;
-                    var btn30 = position.width * 0.3333f;
-                    position.width = btn30;
                     if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
                     {
-                        reorderableClipList.onAddDropdownCallback.Invoke(position, reorderableClipList);
+                        reorderableActorList.onAddDropdownCallback.Invoke(position, reorderableActorList);
                     }
-
-                    position.x += position.width;
-                    position.width = btn30;
-                    using (new EditorGUI.DisabledScope(reorderableClipList.index < 0))
-                    {
-                        if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
-                        {
-                            reorderableClipList.onRemoveCallback(reorderableClipList);
-                        }
-                    }
-                    position.x += position.width;
-                    position.width = btn30;
-                    using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
-                    {
-                        if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
-                        {
-                            clipInfoList.Clear();
-                        }
-                    }
-                    string commandName = Event.current.commandName;
-                    if (commandName == "ObjectSelectorUpdated")
-                    {
-                        var clip = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
-                        if (clip)
-                        {
-                            if (!Enumerable.Any(clipInfoList, x => x.clip == clip))
-                            {
-                                clipInfoList.Add(new ClipInfo(clip));
-                                RefreshPlayList();
-                                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                            }
-                        }
-                    }
-                    else if (commandName == "ObjectSelectorClosed")
-                    {
-                        var clip = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
-                        if (clip)
-                        {
-                            if (!Enumerable.Any(clipInfoList, x => x.clip == clip))
-                            {
-                                clipInfoList.Add(new ClipInfo(clip));
-                                RefreshPlayList();
-                                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                            }
-                        }
-                    }
-
-                };
-                reorderableClipList.drawElementCallback = (position, index, isActive, isFocused) =>
-                {
-                    if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
-                    {
-                        PlayInstant(index);
-                    }
-                    float rectWidth = position.width;
-                    float rectHeight = position.height;
-                    float tglWidth = 15;
-                    float btnWidth = 55;
-                    position.width = tglWidth;
-                    using (var check = new EditorGUI.ChangeCheckScope())
-                    {
-                        clipInfoList[index].enabled = EditorGUI.Toggle(position, clipInfoList[index].enabled);
-                        if (check.changed)
-                        {
-                            RefreshPlayList();
-                        }
-                    }
-                    position.x += position.width;
-                    position.width = rectWidth - btnWidth - tglWidth;
-                    bool playing = isPlayable && playList[0] == clipInfoList[index].clip;
-                    var style0 = new GUIStyle(EditorStyles.miniLabel);
-                    style0.normal.textColor = playing ? Color.white : Color.gray;
-                    EditorGUI.LabelField(position, string.Format("{0}", clipInfoList[index].clip.name), style0);
-                    var style1 = new GUIStyle(EditorStyles.miniLabel);
-                    style1.alignment = TextAnchor.MiddleRight;
-                    style1.normal.textColor = Color.gray;
-                    EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic", style1);
-                    position.x += position.width;
-                    position.width = btnWidth;
-                    position.height = 16;
-                    if (GUI.Button(position, "Select", EditorStyles.miniButton))
-                    {
-                        Selection.activeObject = clipInfoList[index].clip;
-                    }
-                };
-                reorderableClipList.drawFooterCallback = position =>
-                {
-                    //var btn20 = position.width * 0.2f;
-                    //var btn25 = position.width * 0.25f;
-                    //var btn30 = position.width * 0.3f;
-                    var btn50 = position.width * 0.5f;
-                    position.width = btn50;
-                    if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
-                    {
-                        foreach (var info in clipInfoList)
-                        {
-                            info.enabled = true;
-                        }
-
-                        RefreshPlayList();
-                    }
-
-                    position.x += position.width;
-                    position.width = btn50;
-                    if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
-                    {
-                        foreach (var info in clipInfoList)
-                        {
-                            info.enabled = false;
-                        }
-
-                        RefreshPlayList();
-                    }
-
-                    position.x += position.width;
-                };
-                //btn callback
-                reorderableClipList.onAddDropdownCallback = (buttonRect, list) =>
-                {
-                    int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
-                    EditorGUIUtility.ShowObjectPicker<AnimationClip>(null, false, string.Empty, currentPickerWindow);
-                };
-                reorderableClipList.onRemoveCallback = (list) =>
-                {
-                    reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
-                    if (clipInfoList.Count > 0)
-                    {
-                        clipInfoList.RemoveAt(reorderableClipList.index);
-                        RefreshPlayList();
-                    }
-                    reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
-                };
-                reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
-            }
-
-            public void PlayInstant(int index)
-            {
-                foreach (var info in clipInfoList)
-                {
-                    info.enabled = false;
                 }
 
-                clipInfoList[index].enabled = true;
-                RefreshPlayList();
-                Play();
-            }
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(reorderableActorList.index < 0))
+                {
+                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
+                    {
+                        reorderableActorList.onRemoveCallback(reorderableActorList);
+                    }
+                }
 
-            public void PlayInstant(AnimationClip clip)
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(actorList.Count == 0))
+                {
+                    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                    {
+                        foreach (var actor in actorList.ToArray())
+                        {
+                            RemoveActor(actor);
+                        }
+                    }
+                }
+            };
+            reorderableActorList.drawElementCallback = (position, index, isActive, isFocused) =>
             {
-                if (clipInfoList.Where(x => x.clip == clip).Any())
+                if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
+                {
+                    Selection.activeGameObject = actorList[index].instance;
+                    SceneView.lastActiveSceneView.pivot = actorList[index].instance.transform.position + actorList[index].bounds.center;
+                }
+
+                float rectWidth = position.width;
+                float rectHeight = position.height;
+                float tglWidth = 15;
+                float btnWidth = 55;
+                position.width = tglWidth;
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    actorList[index].enabled = EditorGUI.Toggle(position, actorList[index].enabled);
+                    if (check.changed)
+                    {
+                    }
+                }
+
+                position.x += position.width;
+                position.width = rectWidth - btnWidth - tglWidth;
+                EditorGUI.LabelField(position, actorList[index].name, EditorStyles.miniBoldLabel);
+                var style = new GUIStyle(EditorStyles.miniLabel);
+                style.alignment = TextAnchor.MiddleRight;
+                style.normal.textColor = Color.gray;
+                bool animatorExist = actorList[index].animator != null;
+                if (animatorExist)
+                    EditorGUI.LabelField(position, actorList[index].animator.isHuman ? "Humanoid" : "Generic", style);
+                position.x += position.width;
+                position.width = btnWidth;
+                position.height = 16;
+                if (animatorExist)
+                {
+                    if (GUI.Button(position, "GetClips", EditorStyles.miniButton))
+                    {
+                        InitAnimatorAndClips(actorList[index].animator);
+                    }
+                }
+            };
+
+            reorderableActorList.drawFooterCallback = position =>
+            {
+
+                var start = position;
+                var btn50 = position.width * 0.5f;
+                position.height *= 0.5f;
+                var labelwidth = 60;
+                EditorGUIUtility.labelWidth = labelwidth;
+                position.width = btn50;
+                var controlPos = EditorGUI.PrefixLabel(position, new GUIContent(string.Format(" Rows : {0}", _actorRow)), EditorStyles.miniLabel);
+                _actorRow = (int)GUI.HorizontalSlider(controlPos, _actorRow, 1, 8);
+                position.x += position.width;
+                controlPos = EditorGUI.PrefixLabel(position, new GUIContent(string.Format(" Dist : {0}", _actorDistance)), EditorStyles.miniLabel);
+                _actorDistance = (int)GUI.HorizontalSlider(controlPos, _actorDistance, 1, 8);
+                EditorGUIUtility.labelWidth = labelwidth;
+                position.x = start.x;
+                position.y += position.height;
+                position.width = btn50;
+                if (GUI.Button(position, "Grid", EditorStyles.miniButtonLeft))
+                {
+                    SetActorPosition(true);
+                }
+                position.x += position.width;
+                if (GUI.Button(position, "Reset", EditorStyles.miniButtonRight))
+                {
+                    SetActorPosition(false);
+                }
+                position.x += position.width;
+            };
+            //btn callback
+            reorderableActorList.onAddDropdownCallback = (buttonRect, list) =>
+            {
+                var selection = Selection.gameObjects;
+                foreach (var go in selection)
+                {
+                    var root = go.transform.root;
+                    if (root)
+                    {
+                        if (!AssetDatabase.Contains(root.gameObject) && !(Enumerable.Any(actorList, x => x.instance == root.gameObject)))
+                        {
+                            this.actorList.Add(new Actor(root.gameObject, true));
+                        }
+                    }
+                }
+            };
+            reorderableActorList.onRemoveCallback = (list) =>
+            {
+                reorderableActorList.index = Mathf.Clamp(reorderableActorList.index, 0, reorderableActorList.count - 1);
+                if (actorList.Count > 0)
+                {
+                    var actor = actorList[reorderableActorList.index];
+                    RemoveActor(actor);
+                }
+
+                reorderableActorList.index = Mathf.Clamp(reorderableActorList.index, 0, reorderableActorList.count - 1);
+            };
+            reorderableActorList.onChangedCallback = list => { };
+        }
+
+        private void InitClipList()
+        {
+            clipInfoList = new List<ClipInfo>();
+            reorderableClipList = new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
+            //fields
+            reorderableClipList.showDefaultBackground = false;
+            reorderableClipList.headerHeight = 20;
+            reorderableClipList.elementHeight = 18;
+            reorderableClipList.footerHeight = 20;
+            //draw callback
+            reorderableClipList.drawHeaderCallback = (position) =>
+            {
+                Event evt = Event.current;
+                var btn30 = position.width * 0.3333f;
+                position.width = btn30;
+                if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
+                {
+                    reorderableClipList.onAddDropdownCallback.Invoke(position, reorderableClipList);
+                }
+
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(reorderableClipList.index < 0))
+                {
+                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
+                    {
+                        reorderableClipList.onRemoveCallback(reorderableClipList);
+                    }
+                }
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
+                {
+                    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                    {
+                        clipInfoList.Clear();
+                    }
+                }
+                string commandName = Event.current.commandName;
+                if (commandName == "ObjectSelectorUpdated")
+                {
+                    var clip = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
+                    if (clip)
+                    {
+                        if (!Enumerable.Any(clipInfoList, x => x.clip == clip))
+                        {
+                            clipInfoList.Add(new ClipInfo(clip));
+                            RefreshPlayList();
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        }
+                    }
+                }
+                else if (commandName == "ObjectSelectorClosed")
+                {
+                    var clip = EditorGUIUtility.GetObjectPickerObject() as AnimationClip;
+                    if (clip)
+                    {
+                        if (!Enumerable.Any(clipInfoList, x => x.clip == clip))
+                        {
+                            clipInfoList.Add(new ClipInfo(clip));
+                            RefreshPlayList();
+                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        }
+                    }
+                }
+
+            };
+            reorderableClipList.drawElementCallback = (position, index, isActive, isFocused) =>
+            {
+                if (Event.current.type == EventType.MouseDown && Event.current.clickCount == 2 && position.Contains(Event.current.mousePosition))
+                {
+                    PlayInstant(index);
+                }
+                float rectWidth = position.width;
+                float rectHeight = position.height;
+                float tglWidth = 15;
+                float btnWidth = 55;
+                position.width = tglWidth;
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    clipInfoList[index].enabled = EditorGUI.Toggle(position, clipInfoList[index].enabled);
+                    if (check.changed)
+                    {
+                        RefreshPlayList();
+                    }
+                }
+                position.x += position.width;
+                position.width = rectWidth - btnWidth - tglWidth;
+                bool playing = isPlayable && playList[0] == clipInfoList[index].clip;
+                var style0 = new GUIStyle(EditorStyles.miniLabel);
+                style0.normal.textColor = playing ? Color.white : Color.gray;
+                EditorGUI.LabelField(position, string.Format("{0}", clipInfoList[index].clip.name), style0);
+                var style1 = new GUIStyle(EditorStyles.miniLabel);
+                style1.alignment = TextAnchor.MiddleRight;
+                style1.normal.textColor = Color.gray;
+                EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic", style1);
+                position.x += position.width;
+                position.width = btnWidth;
+                position.height = 16;
+                if (GUI.Button(position, "Select", EditorStyles.miniButton))
+                {
+                    Selection.activeObject = clipInfoList[index].clip;
+                }
+            };
+            reorderableClipList.drawFooterCallback = position =>
+            {
+                //var btn20 = position.width * 0.2f;
+                //var btn25 = position.width * 0.25f;
+                //var btn30 = position.width * 0.3f;
+                var btn50 = position.width * 0.5f;
+                position.width = btn50;
+                if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
+                {
+                    foreach (var info in clipInfoList)
+                    {
+                        info.enabled = true;
+                    }
+
+                    RefreshPlayList();
+                }
+
+                position.x += position.width;
+                position.width = btn50;
+                if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
                 {
                     foreach (var info in clipInfoList)
                     {
                         info.enabled = false;
                     }
-                    var index = clipInfoList.IndexOf(clipInfoList.Where(x => x.clip == clip).FirstOrDefault());
-                    clipInfoList[index].enabled = true;
+
                     RefreshPlayList();
-                    Play();
                 }
+
+                position.x += position.width;
+            };
+            //btn callback
+            reorderableClipList.onAddDropdownCallback = (buttonRect, list) =>
+            {
+                int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
+                EditorGUIUtility.ShowObjectPicker<AnimationClip>(null, false, string.Empty, currentPickerWindow);
+            };
+            reorderableClipList.onRemoveCallback = (list) =>
+            {
+                reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
+                if (clipInfoList.Count > 0)
+                {
+                    clipInfoList.RemoveAt(reorderableClipList.index);
+                    RefreshPlayList();
+                }
+                reorderableClipList.index = Mathf.Clamp(reorderableClipList.index, 0, reorderableClipList.count - 1);
+            };
+            reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
+        }
+
+        public void PlayInstant(int index)
+        {
+            foreach (var info in clipInfoList)
+            {
+                info.enabled = false;
             }
 
-            void InitAnimatorAndClips(Animator animator)
+            clipInfoList[index].enabled = true;
+            RefreshPlayList();
+            Play();
+        }
+
+        public void PlayInstant(AnimationClip clip)
+        {
+            if (clipInfoList.Where(x => x.clip == clip).Any())
             {
-                foreach (var actor in actorList.ToArray())
+                foreach (var info in clipInfoList)
                 {
-                    if (animator)
-                    {
-                        _isOptimized = !animator.hasTransformHierarchy;
-                        //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
-                        //DeOptimizeObject();
-                        var clips = AnimationUtility.GetAnimationClips(actor.instance);
-                        foreach (var clip in clips)
-                        {
-                            if (Enumerable.Any(clipInfoList, x => x.clip == clip)) continue;
-                            clipInfoList.Add(new ClipInfo(clip));
-                        }
-                    }
+                    info.enabled = false;
                 }
+                var index = clipInfoList.IndexOf(clipInfoList.Where(x => x.clip == clip).FirstOrDefault());
+                clipInfoList[index].enabled = true;
                 RefreshPlayList();
+                Play();
             }
+        }
 
-            public void AddActor(GameObject go, bool isSceneObject, bool collectClip = true)
+        void InitAnimatorAndClips(Animator animator)
+        {
+            foreach (var actor in actorList.ToArray())
             {
-                if (actorList.Any(x => (isSceneObject ? x.instance : x.prefab) == go)) return;
-                var actor = new Actor(go, isSceneObject);
-                actorList.Add(actor);
-                if (collectClip)
+                if (animator)
                 {
-                    InitAnimatorAndClips(actor.animator);
-                }
-            }
-
-            public void RemoveActor(Actor actor)
-            {
-                if (!actor.isSceneObject) GameObject.DestroyImmediate(actor.instance);
-                actorList.Remove(actor);
-            }
-
-            public void SetActorPosition(bool grid)
-            {
-                for (int i = 0; i < actorList.Count; i++)
-                {
-                    if (grid)
+                    _isOptimized = !animator.hasTransformHierarchy;
+                    //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
+                    //DeOptimizeObject();
+                    var clips = AnimationUtility.GetAnimationClips(actor.instance);
+                    foreach (var clip in clips)
                     {
-                        var row = i / _actorRow;
-                        var column = i - (row * _actorRow);
-                        var xpos = column * _actorDistance;
-                        var zpos = row * _actorDistance;
-                        actorList[i].instance.transform.position = new Vector3(-xpos, 0, -zpos);
-                    }
-                    else
-                    {
-                        actorList[i].instance.transform.position = Vector3.zero;
+                        if (Enumerable.Any(clipInfoList, x => x.clip == clip)) continue;
+                        clipInfoList.Add(new ClipInfo(clip));
                     }
                 }
             }
+            RefreshPlayList();
+        }
 
-            public void AddClip(AnimationClip clip)
+        public void AddActor(GameObject go, bool isSceneObject, bool collectClip = true)
+        {
+            if (actorList.Any(x => (isSceneObject ? x.instance : x.prefab) == go)) return;
+            var actor = new Actor(go, isSceneObject);
+            actorList.Add(actor);
+            if (collectClip)
             {
-                var clips = clipInfoList.Select(x => x.clip).ToList();
-                if (clips.Contains(clip)) return;
-                clipInfoList.Add(new ClipInfo(clip));
-                RefreshPlayList();
+                InitAnimatorAndClips(actor.animator);
             }
+        }
 
-            void ToggleAnimationMode()
+        public void RemoveActor(Actor actor)
+        {
+            if (!actor.isSceneObject) GameObject.DestroyImmediate(actor.instance);
+            actorList.Remove(actor);
+        }
+
+        public void SetActorPosition(bool grid)
+        {
+            for (int i = 0; i < actorList.Count; i++)
             {
-                if (AnimationMode.InAnimationMode())
-                    AnimationMode.StopAnimationMode();
+                if (grid)
+                {
+                    var row = i / _actorRow;
+                    var column = i - (row * _actorRow);
+                    var xpos = column * _actorDistance;
+                    var zpos = row * _actorDistance;
+                    actorList[i].instance.transform.position = new Vector3(-xpos, 0, -zpos);
+                }
                 else
-                    AnimationMode.StartAnimationMode();
+                {
+                    actorList[i].instance.transform.position = Vector3.zero;
+                }
             }
+        }
 
-            public void Update(double delta)
+        public void AddClip(AnimationClip clip)
+        {
+            var clips = clipInfoList.Select(x => x.clip).ToList();
+            if (clips.Contains(clip)) return;
+            clipInfoList.Add(new ClipInfo(clip));
+            RefreshPlayList();
+        }
+
+        void ToggleAnimationMode()
+        {
+            if (AnimationMode.InAnimationMode())
+                AnimationMode.StopAnimationMode();
+            else
+                AnimationMode.StartAnimationMode();
+        }
+
+        public void Update(double delta)
+        {
+            if (!isPlayable)
             {
-                if (!isPlayable)
-                {
-                    Stop();
-                    return;
-                }
-
-                if (actorList.Count > 0)
-                {
-                    if (AnimationMode.InAnimationMode())
-                    {
-                        AnimationMode.BeginSampling();
-                        for (var i = 0; i < actorList.Count; i++)
-                        {
-                            var animated = actorList[i];
-                            if (animated.enabled)
-                            {
-                                AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
-                            }
-                        }
-                        AnimationMode.EndSampling();
-
-                        //_currentClip.SampleAnimation(animatedObject, (float) time);
-                        time += isPlaying ? delta * timeSpeed : 0;
-
-                        if (time > _currentClip.length)
-                        {
-                            time = 0.0f;
-                            if (isLooping)
-                            {
-                                //remove it and add it back to the end
-                                AnimationClip ac = _currentClip;
-                                playList.Remove(_currentClip);
-                                playList.Add(ac);
-                            }
-                            else
-                            {
-                                //uncheck it and then remove it
-                                clipInfoList.FirstOrDefault(x => x.clip == _currentClip).enabled = false;
-                                playList.Remove(_currentClip);
-                            }
-                        }
-                    }
-                }
+                Stop();
+                return;
             }
 
-            public void OnGUI_Control()
-            {
-                //if (animInfoList.Count < 1) return;
-                if (isPlayable)
-                {
-                    //var ect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight * 1.1f,
-                    //    EditorStyles.label);
-                    //using (new GUILayout.AreaScope(ect))
-                    //{
-                    //    //GUILayout.Label(animatedObject.name, "LODSliderTextSelected");
-                    //    //GUILayout.FlexibleSpace();
-                    //    GUILayout.Label(string.Format("Play Speed : {0}", timeSpeed.ToString("0.0")),
-                    //        "LODSliderTextSelected");
-                    //}
-                    GUILayout.Space(20);
-                    var progressRect =
-                        EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
-                    progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
-                    time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none,
-                        GUIStyle.none);
-                    float length = GetCurrentClipLength();
-                    float progress = (float)time / length;
-                    EditorGUI.ProgressBar(progressRect, progress,
-                        string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
-
-                    if (_showEvent)
-                    {
-                        foreach (var animEvent in _currentClip.events)
-                        {
-                            var timePos = progressRect.x + (progressRect.width * animEvent.time / _currentClip.length);
-                            //marker
-                            GUIContent marker = GUIContent.none;
-                            var markerPos = new Vector2(timePos, progressRect.y);
-                            Rect markerRect = new Rect(markerPos, GUIStyle.none.CalcSize(marker));
-                            //if (GUI.Button(markerRect, "", "Icon.Event"))
-                            //{
-
-                            //}
-                            //button
-                            GUIContent btn = new GUIContent(animEvent.functionName);
-                            var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
-                            Rect btnRect = new Rect(btnPos, GUIStyle.none.CalcSize(btn));
-                            if (GUI.Button(btnRect, btn, EditorStyles.miniButton))
-                            {
-
-                            }
-
-                        }
-                    }
-
-                    using (var hr = new EditorGUILayout.HorizontalScope())
-                    {
-                        var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
-                        EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
-                        GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
-                        style.alignment = TextAnchor.MiddleRight;
-                        EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
-                        GUILayout.FlexibleSpace();
-
-                        //if (GUILayout.Button(isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50),
-                        //    GUILayout.Height(30)))
-                        //{
-                        //    if (isPlaying) Pause();
-                        //    else Play();
-                        //}
-
-                        using (var check = new EditorGUI.ChangeCheckScope())
-                        {
-                            if (AnimationMode.InAnimationMode()) GUI.backgroundColor = Color.red;
-                            isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30));
-                            if (check.changed)
-                            {
-                                if (isPlaying) Play();
-                            }
-                            GUI.backgroundColor = Color.white;
-                        }
-
-                        if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
-                        {
-                            Stop();
-                        }
-
-                        isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
-
-                        if (GUILayout.Button("-", "ButtonLeft", GUILayout.Height(30)))
-                        {
-                            timeSpeed = Mathf.Max(0, (timeSpeed * 10 - 1f) * 0.1f);
-
-                        }
-
-                        if (Mathf.Approximately(timeSpeed, 0.5f)) GUI.backgroundColor = Color.cyan;
-                        if (GUILayout.Button("0.5x", "ButtonMid", GUILayout.Height(30)))
-                        {
-                            timeSpeed = 0.5f;
-
-                        }
-                        GUI.backgroundColor = Color.white;
-
-                        if (Mathf.Approximately(timeSpeed, 1.0f)) GUI.backgroundColor = Color.cyan;
-                        if (GUILayout.Button("1.0x", "ButtonMid", GUILayout.Height(30)))
-                        {
-                            timeSpeed = 1.0f;
-
-                        }
-                        GUI.backgroundColor = Color.white;
-
-                        if (Mathf.Approximately(timeSpeed, 2.0f)) GUI.backgroundColor = Color.cyan;
-                        if (GUILayout.Button("2.0x", "ButtonMid", GUILayout.Height(30)))
-                        {
-                            timeSpeed = 2.0f;
-
-                        }
-                        GUI.backgroundColor = Color.white;
-
-                        if (GUILayout.Button("+", "ButtonRight", GUILayout.Height(30)))
-                        {
-                            timeSpeed = Mathf.Min(2, (timeSpeed * 10 + 1f) * 0.1f);
-
-                        }
-
-                        _showEvent = GUILayout.Toggle(_showEvent, "Event", "Button", GUILayout.Height(30));
-
-                        GUILayout.FlexibleSpace();
-                    }
-                }
-            }
-
-            void RefreshPlayList()
-            {
-                playList.Clear();
-                for (int i = 0; i < clipInfoList.Count; i++)
-                {
-                    {
-                        if (clipInfoList[i].enabled)
-                        {
-                            if (!playList.Contains(clipInfoList[i].clip))
-                                playList.Add(clipInfoList[i].clip);
-                        }
-                        else
-                        {
-                            playList.Remove(clipInfoList[i].clip);
-                        }
-                    }
-                }
-            }
-
-            internal void Stop()
+            if (actorList.Count > 0)
             {
                 if (AnimationMode.InAnimationMode())
                 {
-                    isPlaying = false;
-                    time = 0.0f;
-                    ResetToInitialState();
-                    AnimationMode.StopAnimationMode();
-                    if (onStopPlaying != null) onStopPlaying.Invoke();
-                }
-            }
-
-            internal void DeOptimizeObject()
-            {
-                for (var i = 0; i < actorList.Count; i++)
-                {
-                    var animated = actorList[i];
-                    AnimatorUtility.OptimizeTransformHierarchy(animated.instance, new string[] { });
-                    AnimatorUtility.DeoptimizeTransformHierarchy(animated.instance);
-                }
-            }
-
-            internal void Play()
-            {
-                for (var i = 0; i < actorList.Count; i++)
-                {
-                    var animated = actorList[i];
-                    isPlaying = true;
-                    if (PrefabUtility.IsPartOfModelPrefab(animated.instance))
-                    {
-
-                    }
-                    else if (PrefabUtility.IsOutermostPrefabInstanceRoot(animated.instance))
-                    {
-                        PrefabUtility.UnpackPrefabInstance(animated.instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-                        AnimatorUtility.DeoptimizeTransformHierarchy(animated.instance);
-                    }
-                    if (!AnimationMode.InAnimationMode())
-                        AnimationMode.StartAnimationMode();
-                }
-            }
-
-            internal void Pause()
-            {
-                isPlaying = false;
-            }
-
-            public void ResetToInitialState()
-            {
-                if (_isOptimized)
-                {
+                    AnimationMode.BeginSampling();
                     for (var i = 0; i < actorList.Count; i++)
                     {
                         var animated = actorList[i];
-                        AnimatorUtility.OptimizeTransformHierarchy(animated.instance, null);
-                        ReflectionRestoreToBindPose(animated.instance);
+                        if (animated.enabled)
+                        {
+                            AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
+                        }
                     }
-                }
-            }
+                    AnimationMode.EndSampling();
 
-            private void ReflectionRestoreToBindPose(Object _target)
-            {
-                if (_target == null)
-                    return;
-                Type type = Type.GetType("UnityEditor.AvatarSetupTool, UnityEditor");
-                if (type != null)
-                {
-                    MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
-                    if (info != null)
+                    //_currentClip.SampleAnimation(animatedObject, (float) time);
+                    time += isPlaying ? delta * timeSpeed : 0;
+
+                    if (time > _currentClip.length)
                     {
-                        info.Invoke(null, new object[] { _target });
+                        time = 0.0f;
+                        if (isLooping)
+                        {
+                            //remove it and add it back to the end
+                            AnimationClip ac = _currentClip;
+                            playList.Remove(_currentClip);
+                            playList.Add(ac);
+                        }
+                        else
+                        {
+                            //uncheck it and then remove it
+                            clipInfoList.FirstOrDefault(x => x.clip == _currentClip).enabled = false;
+                            playList.Remove(_currentClip);
+                        }
                     }
                 }
-            }
-
-            public static void ForceBindPose(string path, bool reimportModel = true)
-            {
-                var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-
-                Type type = Type.GetType("UnityEditor.AvatarSetupTool, UnityEditor");
-                if (type != null)
-                {
-                    MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
-                    if (info != null)
-                        info.Invoke(null, new object[] { asset });
-                }
-                if (!reimportModel) return;
-
-                var modelImporter = AssetImporter.GetAtPath(path) as ModelImporter;
-                if (modelImporter != null) modelImporter.SaveAndReimport();
-            }
-
-            internal string GetCurrentClipName()
-            {
-                if (playList != null)
-                {
-                    if (playList.Count > 0)
-                    {
-                        return _currentClip.name;
-                    }
-                }
-
-                return string.Empty;
-            }
-
-            internal float GetCurrentClipLength()
-            {
-                if (playList.Count > 0)
-                {
-                    return _currentClip.length;
-                }
-
-                return 0;
-            }
-
-            internal float GetPlayListLength()
-            {
-                float length = 0;
-                foreach (var clip in playList)
-                {
-                    length += clip.length;
-                }
-
-                return length;
             }
         }
-        // simple update checker. wip.
-        class Updater
+
+        public void OnGUI_Control()
         {
-            public class Update
+            //if (animInfoList.Count < 1) return;
+            if (isPlayable)
             {
-                public string version = string.Empty;
-                public string url = string.Empty;
-            }
+                //var ect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight * 1.1f,
+                //    EditorStyles.label);
+                //using (new GUILayout.AreaScope(ect))
+                //{
+                //    //GUILayout.Label(animatedObject.name, "LODSliderTextSelected");
+                //    //GUILayout.FlexibleSpace();
+                //    GUILayout.Label(string.Format("Play Speed : {0}", timeSpeed.ToString("0.0")),
+                //        "LODSliderTextSelected");
+                //}
+                GUILayout.Space(20);
+                var progressRect =
+                    EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
+                progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
+                time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none,
+                    GUIStyle.none);
+                float length = GetCurrentClipLength();
+                float progress = (float)time / length;
+                EditorGUI.ProgressBar(progressRect, progress,
+                    string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
 
-            public static Update update;
-            public static string updateCheck = "";
-            public static bool outOfDate = false;
-
-            public static int versionNumPrimary = 0;
-
-            //public static string version;
-            public static int versionNumSecondary = 9;
-
-            public static string url =
-                "https://gist.githubusercontent.com/See1Studios/58d573487d07e11e221a7a499545c1f4/raw/23c3a5ebac03b894fd307c86eedec00b5be05e19/AssetStudioVersion.txt";
-
-            public static string downloadUrl = string.Empty;
-
-            public static void CheckForUpdates()
-            {
-                EditorCoroutineUtility.StartCoroutineOwnerless(Request(url, SetVersion));
-                updateCheck = "Checking for updates...";
-            }
-
-            static void SetVersion(string json)
-            {
-                update = JsonUtility.FromJson<Update>(json);
-                if (update != null)
+                if (_showEvent)
                 {
-                    string[] split = update.version.Split('.');
-                    int latestMajor = int.Parse(split[0]);
-                    int latestMinor = int.Parse(split[1]);
-                    outOfDate = (latestMajor > versionNumPrimary ||
-                                 latestMajor == versionNumPrimary && latestMinor > versionNumSecondary);
-                    updateCheck = outOfDate
-                        ? "See1View is out of date!\nThe latest version is " + update.version
-                        : "See1View is up to date!";
-                    downloadUrl = update.url;
-                }
-            }
-
-            internal static IEnumerator Request(string url, Action<string> actionWithText)
-            {
-                using (UnityWebRequest request = UnityWebRequest.Get(url))
-                {
-                    request.SendWebRequest();
-                    while (!request.isDone)
+                    foreach (var animEvent in _currentClip.events)
                     {
-                        yield return null;
+                        var timePos = progressRect.x + (progressRect.width * animEvent.time / _currentClip.length);
+                        //marker
+                        GUIContent marker = GUIContent.none;
+                        var markerPos = new Vector2(timePos, progressRect.y);
+                        Rect markerRect = new Rect(markerPos, GUIStyle.none.CalcSize(marker));
+                        //if (GUI.Button(markerRect, "", "Icon.Event"))
+                        //{
+
+                        //}
+                        //button
+                        GUIContent btn = new GUIContent(animEvent.functionName);
+                        var btnPos = new Vector2(timePos, progressRect.y - progressRect.height);
+                        Rect btnRect = new Rect(btnPos, GUIStyle.none.CalcSize(btn));
+                        if (GUI.Button(btnRect, btn, EditorStyles.miniButton))
+                        {
+
+                        }
+
+                    }
+                }
+
+                using (var hr = new EditorGUILayout.HorizontalScope())
+                {
+                    var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
+                    EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
+                    GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
+                    style.alignment = TextAnchor.MiddleRight;
+                    EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
+                    GUILayout.FlexibleSpace();
+
+                    //if (GUILayout.Button(isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50),
+                    //    GUILayout.Height(30)))
+                    //{
+                    //    if (isPlaying) Pause();
+                    //    else Play();
+                    //}
+
+                    using (var check = new EditorGUI.ChangeCheckScope())
+                    {
+                        if (AnimationMode.InAnimationMode()) GUI.backgroundColor = Color.red;
+                        isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30));
+                        if (check.changed)
+                        {
+                            if (isPlaying) Play();
+                        }
+                        GUI.backgroundColor = Color.white;
                     }
 
-                    if (!request.isNetworkError)
+                    if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
                     {
-                        actionWithText(request.downloadHandler.text);
+                        Stop();
+                    }
+
+                    isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
+
+                    if (GUILayout.Button("-", "ButtonLeft", GUILayout.Height(30)))
+                    {
+                        timeSpeed = Mathf.Max(0, (timeSpeed * 10 - 1f) * 0.1f);
+
+                    }
+
+                    if (Mathf.Approximately(timeSpeed, 0.5f)) GUI.backgroundColor = Color.cyan;
+                    if (GUILayout.Button("0.5x", "ButtonMid", GUILayout.Height(30)))
+                    {
+                        timeSpeed = 0.5f;
+
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    if (Mathf.Approximately(timeSpeed, 1.0f)) GUI.backgroundColor = Color.cyan;
+                    if (GUILayout.Button("1.0x", "ButtonMid", GUILayout.Height(30)))
+                    {
+                        timeSpeed = 1.0f;
+
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    if (Mathf.Approximately(timeSpeed, 2.0f)) GUI.backgroundColor = Color.cyan;
+                    if (GUILayout.Button("2.0x", "ButtonMid", GUILayout.Height(30)))
+                    {
+                        timeSpeed = 2.0f;
+
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    if (GUILayout.Button("+", "ButtonRight", GUILayout.Height(30)))
+                    {
+                        timeSpeed = Mathf.Min(2, (timeSpeed * 10 + 1f) * 0.1f);
+
+                    }
+
+                    _showEvent = GUILayout.Toggle(_showEvent, "Event", "Button", GUILayout.Height(30));
+
+                    GUILayout.FlexibleSpace();
+                }
+            }
+        }
+
+        void RefreshPlayList()
+        {
+            playList.Clear();
+            for (int i = 0; i < clipInfoList.Count; i++)
+            {
+                {
+                    if (clipInfoList[i].enabled)
+                    {
+                        if (!playList.Contains(clipInfoList[i].clip))
+                            playList.Add(clipInfoList[i].clip);
                     }
                     else
                     {
-                        actionWithText("");
+                        playList.Remove(clipInfoList[i].clip);
                     }
                 }
             }
         }
 
-        //Base on EditorHelper from Bitstrap (https://assetstore.unity.com/packages/tools/utilities/bitstrap-51416)
-        public static class EditorHelper
+        internal void Stop()
         {
-            private class ObjectNameComparer : IComparer<Object>
+            if (AnimationMode.InAnimationMode())
             {
-                public readonly static ObjectNameComparer Instance = new ObjectNameComparer();
+                isPlaying = false;
+                time = 0.0f;
+                ResetToInitialState();
+                AnimationMode.StopAnimationMode();
+                if (onStopPlaying != null) onStopPlaying.Invoke();
+            }
+        }
 
-                int IComparer<Object>.Compare(Object a, Object b)
+        internal void DeOptimizeObject()
+        {
+            for (var i = 0; i < actorList.Count; i++)
+            {
+                var animated = actorList[i];
+                AnimatorUtility.OptimizeTransformHierarchy(animated.instance, new string[] { });
+                AnimatorUtility.DeoptimizeTransformHierarchy(animated.instance);
+            }
+        }
+
+        internal void Play()
+        {
+            for (var i = 0; i < actorList.Count; i++)
+            {
+                var animated = actorList[i];
+                isPlaying = true;
+                if (PrefabUtility.IsPartOfModelPrefab(animated.instance))
                 {
-                    return System.String.Compare(a.name, b.name, System.StringComparison.OrdinalIgnoreCase);
+
+                }
+                else if (PrefabUtility.IsOutermostPrefabInstanceRoot(animated.instance))
+                {
+                    PrefabUtility.UnpackPrefabInstance(animated.instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                    AnimatorUtility.DeoptimizeTransformHierarchy(animated.instance);
+                }
+                if (!AnimationMode.InAnimationMode())
+                    AnimationMode.StartAnimationMode();
+            }
+        }
+
+        internal void Pause()
+        {
+            isPlaying = false;
+        }
+
+        public void ResetToInitialState()
+        {
+            if (_isOptimized)
+            {
+                for (var i = 0; i < actorList.Count; i++)
+                {
+                    var animated = actorList[i];
+                    AnimatorUtility.OptimizeTransformHierarchy(animated.instance, null);
+                    ReflectionRestoreToBindPose(animated.instance);
+                }
+            }
+        }
+
+        private void ReflectionRestoreToBindPose(Object _target)
+        {
+            if (_target == null)
+                return;
+            Type type = Type.GetType("UnityEditor.AvatarSetupTool, UnityEditor");
+            if (type != null)
+            {
+                MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
+                if (info != null)
+                {
+                    info.Invoke(null, new object[] { _target });
+                }
+            }
+        }
+
+        public static void ForceBindPose(string path, bool reimportModel = true)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+
+            Type type = Type.GetType("UnityEditor.AvatarSetupTool, UnityEditor");
+            if (type != null)
+            {
+                MethodInfo info = type.GetMethod("SampleBindPose", BindingFlags.Static | BindingFlags.Public);
+                if (info != null)
+                    info.Invoke(null, new object[] { asset });
+            }
+            if (!reimportModel) return;
+
+            var modelImporter = AssetImporter.GetAtPath(path) as ModelImporter;
+            if (modelImporter != null) modelImporter.SaveAndReimport();
+        }
+
+        internal string GetCurrentClipName()
+        {
+            if (playList != null)
+            {
+                if (playList.Count > 0)
+                {
+                    return _currentClip.name;
                 }
             }
 
-            /// <summary>
-            /// Collection of some cool and useful GUI styles.
-            /// </summary>
-            public static class Styles
+            return string.Empty;
+        }
+
+        internal float GetCurrentClipLength()
+        {
+            if (playList.Count > 0)
             {
-                public static GUIStyle Header
-                {
-                    get { return GUI.skin.GetStyle("HeaderLabel"); }
-                }
-
-                public static GUIStyle Selection
-                {
-                    get { return GUI.skin.GetStyle("MeTransitionSelectHead"); }
-                }
-
-                public static GUIStyle PreDrop
-                {
-                    get { return GUI.skin.GetStyle("TL SelectionButton PreDropGlow"); }
-                }
-
-                public static GUIStyle SearchTextField
-                {
-                    get { return GUI.skin.GetStyle("SearchTextField"); }
-                }
-
-                public static GUIStyle SearchCancelButtonEmpty
-                {
-                    get { return GUI.skin.GetStyle("SearchCancelButtonEmpty"); }
-                }
-
-                public static GUIStyle SearchCancelButton
-                {
-                    get { return GUI.skin.GetStyle("SearchCancelButton"); }
-                }
-
-                public static GUIStyle Plus
-                {
-                    get { return GUI.skin.GetStyle("OL Plus"); }
-                }
-
-                public static GUIStyle Minus
-                {
-                    get { return GUI.skin.GetStyle("OL Minus"); }
-                }
-
-                public static GUIStyle Input
-                {
-                    get { return GUI.skin.GetStyle("flow shader in 0"); }
-                }
-
-                public static GUIStyle Output
-                {
-                    get { return GUI.skin.GetStyle("flow shader out 0"); }
-                }
-
-                public static GUIStyle Warning
-                {
-                    get { return GUI.skin.GetStyle("CN EntryWarn"); }
-                }
+                return _currentClip.length;
             }
 
-            private static string searchField = "";
-            private static Vector2 scroll = Vector2.zero;
-            private static Texture[] unityIcons = null;
+            return 0;
+        }
 
-            private static GUIStyle boxStyle = null;
-
-            /// <summary>
-            /// The drop down button stored Rect. For use with GenericMenu
-            /// </summary>
-            public static Rect DropDownRect { get; private set; }
-
-            private static GUIStyle BoxStyle
+        internal float GetPlayListLength()
+        {
+            float length = 0;
+            foreach (var clip in playList)
             {
-                get
+                length += clip.length;
+            }
+
+            return length;
+        }
+    }
+    // simple update checker. wip.
+    class Updater
+    {
+        public class Update
+        {
+            public string version = string.Empty;
+            public string url = string.Empty;
+        }
+
+        public static Update update;
+        public static string updateCheck = "";
+        public static bool outOfDate = false;
+
+        public static int versionNumPrimary = 0;
+
+        //public static string version;
+        public static int versionNumSecondary = 9;
+
+        public static string url =
+            "https://gist.githubusercontent.com/See1Studios/58d573487d07e11e221a7a499545c1f4/raw/23c3a5ebac03b894fd307c86eedec00b5be05e19/AssetStudioVersion.txt";
+
+        public static string downloadUrl = string.Empty;
+
+        public static void CheckForUpdates()
+        {
+            EditorCoroutineUtility.StartCoroutineOwnerless(Request(url, SetVersion));
+            updateCheck = "Checking for updates...";
+        }
+
+        static void SetVersion(string json)
+        {
+            update = JsonUtility.FromJson<Update>(json);
+            if (update != null)
+            {
+                string[] split = update.version.Split('.');
+                int latestMajor = int.Parse(split[0]);
+                int latestMinor = int.Parse(split[1]);
+                outOfDate = (latestMajor > versionNumPrimary ||
+                             latestMajor == versionNumPrimary && latestMinor > versionNumSecondary);
+                updateCheck = outOfDate
+                    ? "See1View is out of date!\nThe latest version is " + update.version
+                    : "See1View is up to date!";
+                downloadUrl = update.url;
+            }
+        }
+
+        internal static IEnumerator Request(string url, Action<string> actionWithText)
+        {
+            using (UnityWebRequest request = UnityWebRequest.Get(url))
+            {
+                request.SendWebRequest();
+                while (!request.isDone)
                 {
-                    if (boxStyle == null)
+                    yield return null;
+                }
+
+                if (!request.isNetworkError)
+                {
+                    actionWithText(request.downloadHandler.text);
+                }
+                else
+                {
+                    actionWithText("");
+                }
+            }
+        }
+    }
+
+    //Base on EditorHelper from Bitstrap (https://assetstore.unity.com/packages/tools/utilities/bitstrap-51416)
+    public static class EditorHelper
+    {
+        private class ObjectNameComparer : IComparer<Object>
+        {
+            public readonly static ObjectNameComparer Instance = new ObjectNameComparer();
+
+            int IComparer<Object>.Compare(Object a, Object b)
+            {
+                return System.String.Compare(a.name, b.name, System.StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// Collection of some cool and useful GUI styles.
+        /// </summary>
+        public static class Styles
+        {
+            public static GUIStyle Header
+            {
+                get { return GUI.skin.GetStyle("HeaderLabel"); }
+            }
+
+            public static GUIStyle Selection
+            {
+                get { return GUI.skin.GetStyle("MeTransitionSelectHead"); }
+            }
+
+            public static GUIStyle PreDrop
+            {
+                get { return GUI.skin.GetStyle("TL SelectionButton PreDropGlow"); }
+            }
+
+            public static GUIStyle SearchTextField
+            {
+                get { return GUI.skin.GetStyle("SearchTextField"); }
+            }
+
+            public static GUIStyle SearchCancelButtonEmpty
+            {
+                get { return GUI.skin.GetStyle("SearchCancelButtonEmpty"); }
+            }
+
+            public static GUIStyle SearchCancelButton
+            {
+                get { return GUI.skin.GetStyle("SearchCancelButton"); }
+            }
+
+            public static GUIStyle Plus
+            {
+                get { return GUI.skin.GetStyle("OL Plus"); }
+            }
+
+            public static GUIStyle Minus
+            {
+                get { return GUI.skin.GetStyle("OL Minus"); }
+            }
+
+            public static GUIStyle Input
+            {
+                get { return GUI.skin.GetStyle("flow shader in 0"); }
+            }
+
+            public static GUIStyle Output
+            {
+                get { return GUI.skin.GetStyle("flow shader out 0"); }
+            }
+
+            public static GUIStyle Warning
+            {
+                get { return GUI.skin.GetStyle("CN EntryWarn"); }
+            }
+        }
+
+        private static string searchField = "";
+        private static Vector2 scroll = Vector2.zero;
+        private static Texture[] unityIcons = null;
+
+        private static GUIStyle boxStyle = null;
+
+        /// <summary>
+        /// The drop down button stored Rect. For use with GenericMenu
+        /// </summary>
+        public static Rect DropDownRect { get; private set; }
+
+        private static GUIStyle BoxStyle
+        {
+            get
+            {
+                if (boxStyle == null)
+                {
+                    boxStyle = EditorStyles.helpBox;
+
+                    boxStyle.padding.left = 1;
+                    boxStyle.padding.right = 1;
+                    boxStyle.padding.top = 4;
+                    boxStyle.padding.bottom = 8;
+
+                    boxStyle.margin.left = 16;
+                    boxStyle.margin.right = 16;
+                }
+
+                return boxStyle;
+            }
+        }
+
+        /// <summary>
+        /// Begins drawing a box.
+        /// Draw its header here.
+        /// </summary>
+        public static void BeginBoxHeader()
+        {
+            EditorGUI.BeginChangeCheck();
+            EditorGUILayout.BeginVertical(BoxStyle);
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+        }
+
+        /// <summary>
+        /// Ends drawing the box header.
+        /// Draw its contents here.
+        /// </summary>
+        public static void EndBoxHeaderBeginContent()
+        {
+            EndBoxHeaderBeginContent(Vector2.zero);
+        }
+
+        /// <summary>
+        /// Ends drawing the box header.
+        /// Draw its contents here (scroll version).
+        /// </summary>
+        /// <param name="scroll"></param>
+        /// <returns></returns>
+        public static Vector2 EndBoxHeaderBeginContent(Vector2 scroll)
+        {
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(1.0f);
+            return EditorGUILayout.BeginScrollView(scroll);
+        }
+
+        /// <summary>
+        /// Begins drawing a box with a label header.
+        /// </summary>
+        /// <param name="label"></param>
+        public static void BeginBox(string label)
+        {
+            BeginBoxHeader();
+            Rect rect = GUILayoutUtility.GetRect(GUIContent.none, GUI.skin.label);
+            rect.y -= 2.0f;
+            rect.height += 2.0f;
+            EditorGUI.LabelField(rect, Label(label), Styles.Header);
+            EndBoxHeaderBeginContent();
+        }
+
+        /// <summary>
+        /// Begins drawing a box with a label header (scroll version).
+        /// </summary>
+        /// <param name="scroll"></param>
+        /// <param name="label"></param>
+        /// <returns></returns>
+        public static Vector2 BeginBox(Vector2 scroll, string label)
+        {
+            BeginBoxHeader();
+            EditorGUILayout.LabelField(Label(label), Styles.Header);
+            return EndBoxHeaderBeginContent(scroll);
+        }
+
+        /// <summary>
+        /// Finishes drawing the box.
+        /// </summary>
+        /// <returns></returns>
+        public static bool EndBox()
+        {
+            EditorGUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
+            return EditorGUI.EndChangeCheck();
+        }
+
+        /// <summary>
+        /// Reserves a Rect in a layout setup given a style.
+        /// </summary>
+        /// <param name="style"></param>
+        /// <returns></returns>
+        public static Rect Rect(GUIStyle style)
+        {
+            return GUILayoutUtility.GetRect(GUIContent.none, style);
+        }
+
+        /// <summary>
+        /// Reserves a Rect with an explicit height in a layout.
+        /// </summary>
+        /// <param name="height"></param>
+        /// <returns></returns>
+        public static Rect Rect(float height)
+        {
+            return GUILayoutUtility.GetRect(0.0f, height, GUILayout.ExpandWidth(true));
+        }
+
+        /// <summary>
+        /// Returns a GUIContent containing a label and the tooltip defined in GUI.tooltip.
+        /// </summary>
+        /// <param name="label"></param>
+        /// <returns></returns>
+        public static GUIContent Label(string label)
+        {
+            return new GUIContent(label, GUI.tooltip);
+        }
+
+        /// <summary>
+        /// Draws a drop down button and stores its Rect in DropDownRect variable.
+        /// </summary>
+        /// <param name="label"></param>
+        /// <param name="style"></param>
+        /// <returns></returns>
+        public static bool DropDownButton(string label, GUIStyle style)
+        {
+            var content = new GUIContent(label);
+            DropDownRect = GUILayoutUtility.GetRect(content, style);
+            return GUI.Button(DropDownRect, content, style);
+        }
+
+        /// <summary>
+        /// Draws a search field like those of Project window.
+        /// </summary>
+        /// <param name="search"></param>
+        /// <returns></returns>
+        public static string SearchField(string search)
+        {
+            using (Horizontal.Do())
+            {
+                search = EditorGUILayout.TextField(search, Styles.SearchTextField);
+
+                GUIStyle buttonStyle = Styles.SearchCancelButtonEmpty;
+                if (!string.IsNullOrEmpty(search))
+                    buttonStyle = Styles.SearchCancelButton;
+
+                if (GUILayout.Button(GUIContent.none, buttonStyle))
+                    search = "";
+            }
+
+            return search;
+        }
+
+        /// <summary>
+        /// Draws a delayed search field like those of Project window.
+        /// </summary>
+        /// <param name="search"></param>
+        /// <returns></returns>
+        public static string DelayedSearchField(string search)
+        {
+            using (Horizontal.Do())
+            {
+                search = EditorGUILayout.DelayedTextField(search, Styles.SearchTextField);
+
+                GUIStyle buttonStyle = Styles.SearchCancelButtonEmpty;
+                if (!string.IsNullOrEmpty(search))
+                    buttonStyle = Styles.SearchCancelButton;
+
+                if (GUILayout.Button(GUIContent.none, buttonStyle))
+                    search = "";
+            }
+
+            return search;
+        }
+
+        /// <summary>
+        /// This is a debug method that draws all Unity styles found in GUI.skin.customStyles
+        /// together with its name, so you can later use some specific style.
+        /// </summary>
+        public static void DrawAllStyles()
+        {
+            searchField = SearchField(searchField);
+
+            string searchLower = searchField.ToLower(System.Globalization.CultureInfo.InvariantCulture);
+            EditorGUILayout.Space();
+
+            using (ScrollView.Do(ref scroll))
+            {
+                foreach (GUIStyle style in GUI.skin.customStyles)
+                {
+                    if (string.IsNullOrEmpty(searchField) ||
+                        style.name.ToLower(System.Globalization.CultureInfo.InvariantCulture).Contains(searchLower))
                     {
-                        boxStyle = EditorStyles.helpBox;
-
-                        boxStyle.padding.left = 1;
-                        boxStyle.padding.right = 1;
-                        boxStyle.padding.top = 4;
-                        boxStyle.padding.bottom = 8;
-
-                        boxStyle.margin.left = 16;
-                        boxStyle.margin.right = 16;
+                        using (Horizontal.Do())
+                        {
+                            EditorGUILayout.TextField(style.name, EditorStyles.label);
+                            GUILayout.Label(style.name, style);
+                        }
                     }
-
-                    return boxStyle;
                 }
             }
+        }
 
-            /// <summary>
-            /// Begins drawing a box.
-            /// Draw its header here.
-            /// </summary>
-            public static void BeginBoxHeader()
+        /// <summary>
+        /// This is a debug method that draws all Unity icons
+        /// together with its name, so you can later use them.
+        /// </summary>
+        public static void DrawAllIcons()
+        {
+            if (unityIcons == null)
             {
-                EditorGUI.BeginChangeCheck();
-                EditorGUILayout.BeginVertical(BoxStyle);
-                EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+                unityIcons = Resources.FindObjectsOfTypeAll<Texture>();
+                System.Array.Sort(unityIcons, ObjectNameComparer.Instance);
             }
 
-            /// <summary>
-            /// Ends drawing the box header.
-            /// Draw its contents here.
-            /// </summary>
-            public static void EndBoxHeaderBeginContent()
+            searchField = SearchField(searchField);
+
+            string searchLower = searchField.ToLower(System.Globalization.CultureInfo.InvariantCulture);
+            EditorGUILayout.Space();
+
+            using (ScrollView.Do(ref scroll))
             {
-                EndBoxHeaderBeginContent(Vector2.zero);
+                foreach (Texture texture in unityIcons)
+                {
+                    if (texture == null || texture.name == "")
+                        continue;
+
+                    if (!AssetDatabase.GetAssetPath(texture).StartsWith("Library/"))
+                        continue;
+
+                    if (string.IsNullOrEmpty(searchField) ||
+                        texture.name.ToLower(System.Globalization.CultureInfo.InvariantCulture)
+                            .Contains(searchLower))
+                    {
+                        using (Horizontal.Do())
+                        {
+                            EditorGUILayout.TextField(texture.name, EditorStyles.label);
+                            GUILayout.Label(new GUIContent(texture));
+                        }
+                    }
+                }
+            }
+        }
+
+        //Disposables 
+        public struct BoxGroup : System.IDisposable
+        {
+            public static BoxGroup Do(string label)
+            {
+                EditorHelper.BeginBox(label);
+                return new BoxGroup();
             }
 
-            /// <summary>
-            /// Ends drawing the box header.
-            /// Draw its contents here (scroll version).
-            /// </summary>
-            /// <param name="scroll"></param>
-            /// <returns></returns>
-            public static Vector2 EndBoxHeaderBeginContent(Vector2 scroll)
+            public static BoxGroup Do(ref Vector2 scroll, string label)
+            {
+                scroll = EditorHelper.BeginBox(scroll, label);
+                return new BoxGroup();
+            }
+
+            public void Dispose()
+            {
+                EditorHelper.EndBox();
+            }
+        }
+
+        public struct DisabledGroup : System.IDisposable
+        {
+            public static DisabledGroup Do(bool disabled)
+            {
+                EditorGUI.BeginDisabledGroup(disabled);
+                return new DisabledGroup();
+            }
+
+            public void Dispose()
+            {
+                EditorGUI.EndDisabledGroup();
+            }
+        }
+
+        public struct FadeGroup : System.IDisposable
+        {
+            public readonly bool visible;
+
+            public static FadeGroup Do(float value)
+            {
+                var visible = EditorGUILayout.BeginFadeGroup(value);
+                return new FadeGroup(visible);
+            }
+
+            private FadeGroup(bool visible)
+            {
+                this.visible = visible;
+            }
+
+            public void Dispose()
+            {
+                EditorGUILayout.EndFadeGroup();
+            }
+        }
+
+        public struct FieldWidth : System.IDisposable
+        {
+            private readonly float savedFieldWidth;
+
+            public static FieldWidth Do(float fieldWidth)
+            {
+                var savedFieldWidth = EditorGUIUtility.fieldWidth;
+                EditorGUIUtility.fieldWidth = fieldWidth;
+
+                return new FieldWidth(savedFieldWidth);
+            }
+
+            private FieldWidth(float savedFieldWidth)
+            {
+                this.savedFieldWidth = savedFieldWidth;
+            }
+
+            public void Dispose()
+            {
+                EditorGUIUtility.fieldWidth = savedFieldWidth;
+            }
+        }
+
+        public sealed class Horizontal : System.IDisposable
+        {
+            public readonly Rect rect;
+
+            public static Horizontal Do(params GUILayoutOption[] options)
+            {
+                var rect = EditorGUILayout.BeginHorizontal(options);
+                return new Horizontal(rect);
+            }
+
+            public static Horizontal Do(GUIStyle style, params GUILayoutOption[] options)
+            {
+                var rect = EditorGUILayout.BeginHorizontal(style, options);
+                return new Horizontal(rect);
+            }
+
+            private Horizontal(Rect rect)
+            {
+                this.rect = rect;
+            }
+
+            public void Dispose()
             {
                 EditorGUILayout.EndHorizontal();
-                GUILayout.Space(1.0f);
-                return EditorGUILayout.BeginScrollView(scroll);
             }
+        }
 
-            /// <summary>
-            /// Begins drawing a box with a label header.
-            /// </summary>
-            /// <param name="label"></param>
-            public static void BeginBox(string label)
+        public struct IndentLevel : System.IDisposable
+        {
+            private readonly int savedIndentLevel;
+
+            public static IndentLevel Do(int indentLevel)
             {
-                BeginBoxHeader();
-                Rect rect = GUILayoutUtility.GetRect(GUIContent.none, GUI.skin.label);
-                rect.y -= 2.0f;
-                rect.height += 2.0f;
-                EditorGUI.LabelField(rect, Label(label), Styles.Header);
-                EndBoxHeaderBeginContent();
+                var savedIndentLevel = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = indentLevel;
+
+                return new IndentLevel(savedIndentLevel);
             }
 
-            /// <summary>
-            /// Begins drawing a box with a label header (scroll version).
-            /// </summary>
-            /// <param name="scroll"></param>
-            /// <param name="label"></param>
-            /// <returns></returns>
-            public static Vector2 BeginBox(Vector2 scroll, string label)
+            private IndentLevel(int savedIndentLevel)
             {
-                BeginBoxHeader();
-                EditorGUILayout.LabelField(Label(label), Styles.Header);
-                return EndBoxHeaderBeginContent(scroll);
+                this.savedIndentLevel = savedIndentLevel;
             }
 
-            /// <summary>
-            /// Finishes drawing the box.
-            /// </summary>
-            /// <returns></returns>
-            public static bool EndBox()
+            public void Dispose()
+            {
+                EditorGUI.indentLevel = savedIndentLevel;
+            }
+        }
+
+        public struct LabelWidth : System.IDisposable
+        {
+            private readonly float savedLabelWidth;
+
+            public static LabelWidth Do(float labelWidth)
+            {
+                var savedLabelWidth = EditorGUIUtility.labelWidth;
+                EditorGUIUtility.labelWidth = labelWidth;
+
+                return new LabelWidth(savedLabelWidth);
+            }
+
+            private LabelWidth(float savedLabelWidth)
+            {
+                this.savedLabelWidth = savedLabelWidth;
+            }
+
+            public void Dispose()
+            {
+                EditorGUIUtility.labelWidth = savedLabelWidth;
+            }
+        }
+
+        public struct Property : System.IDisposable
+        {
+            public static Property Do(Rect totalPosition, GUIContent label, SerializedProperty property)
+            {
+                EditorGUI.BeginProperty(totalPosition, label, property);
+                return new Property();
+            }
+
+            public void Dispose()
+            {
+                EditorGUI.EndProperty();
+            }
+        }
+
+        public struct ScrollView : System.IDisposable
+        {
+            public static ScrollView Do(ref Vector2 scrollPosition, params GUILayoutOption[] options)
+            {
+                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, options);
+                return new ScrollView();
+            }
+
+            public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal,
+                bool alwaysShowVertical, params GUILayoutOption[] options)
+            {
+                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal,
+                    alwaysShowVertical, options);
+                return new ScrollView();
+            }
+
+            public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle horizontalScrollbar,
+                GUIStyle verticalScrollbar, params GUILayoutOption[] options)
+            {
+                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, horizontalScrollbar,
+                    verticalScrollbar, options);
+                return new ScrollView();
+            }
+
+            public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle style,
+                params GUILayoutOption[] options)
+            {
+                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, style, options);
+                return new ScrollView();
+            }
+
+            public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal,
+                bool alwaysShowVertical, GUIStyle horizontalScrollbar, GUIStyle verticalScrollbar,
+                GUIStyle background, params GUILayoutOption[] options)
+            {
+                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal,
+                    alwaysShowVertical, horizontalScrollbar, verticalScrollbar, background, options);
+                return new ScrollView();
+            }
+
+            public void Dispose()
             {
                 EditorGUILayout.EndScrollView();
+            }
+        }
+
+        public struct Vertical : System.IDisposable
+        {
+            public readonly Rect rect;
+
+            public static Vertical Do(params GUILayoutOption[] options)
+            {
+                var rect = EditorGUILayout.BeginVertical(options);
+                return new Vertical(rect);
+            }
+
+            public static Vertical Do(GUIStyle style, params GUILayoutOption[] options)
+            {
+                var rect = EditorGUILayout.BeginVertical(style, options);
+                return new Vertical(rect);
+            }
+
+            private Vertical(Rect rect)
+            {
+                this.rect = rect;
+            }
+
+            public void Dispose()
+            {
                 EditorGUILayout.EndVertical();
-                return EditorGUI.EndChangeCheck();
+            }
+        }
+
+        public struct Fade : System.IDisposable
+        {
+            public static Fade Do(float faded)
+            {
+                GUI.color = Color.white * faded;
+                GUI.backgroundColor = Color.white * faded;
+                return new Fade();
             }
 
-            /// <summary>
-            /// Reserves a Rect in a layout setup given a style.
-            /// </summary>
-            /// <param name="style"></param>
-            /// <returns></returns>
-            public static Rect Rect(GUIStyle style)
+            public static Fade Do(Rect r, Color backgroundColor, float faded)
             {
-                return GUILayoutUtility.GetRect(GUIContent.none, style);
+                EditorGUI.DrawRect(r, backgroundColor * faded);
+                GUI.color = Color.white * faded;
+                GUI.backgroundColor = Color.white * faded;
+                return new Fade();
             }
 
-            /// <summary>
-            /// Reserves a Rect with an explicit height in a layout.
-            /// </summary>
-            /// <param name="height"></param>
-            /// <returns></returns>
-            public static Rect Rect(float height)
+            public void Dispose()
             {
-                return GUILayoutUtility.GetRect(0.0f, height, GUILayout.ExpandWidth(true));
-            }
-
-            /// <summary>
-            /// Returns a GUIContent containing a label and the tooltip defined in GUI.tooltip.
-            /// </summary>
-            /// <param name="label"></param>
-            /// <returns></returns>
-            public static GUIContent Label(string label)
-            {
-                return new GUIContent(label, GUI.tooltip);
-            }
-
-            /// <summary>
-            /// Draws a drop down button and stores its Rect in DropDownRect variable.
-            /// </summary>
-            /// <param name="label"></param>
-            /// <param name="style"></param>
-            /// <returns></returns>
-            public static bool DropDownButton(string label, GUIStyle style)
-            {
-                var content = new GUIContent(label);
-                DropDownRect = GUILayoutUtility.GetRect(content, style);
-                return GUI.Button(DropDownRect, content, style);
-            }
-
-            /// <summary>
-            /// Draws a search field like those of Project window.
-            /// </summary>
-            /// <param name="search"></param>
-            /// <returns></returns>
-            public static string SearchField(string search)
-            {
-                using (Horizontal.Do())
-                {
-                    search = EditorGUILayout.TextField(search, Styles.SearchTextField);
-
-                    GUIStyle buttonStyle = Styles.SearchCancelButtonEmpty;
-                    if (!string.IsNullOrEmpty(search))
-                        buttonStyle = Styles.SearchCancelButton;
-
-                    if (GUILayout.Button(GUIContent.none, buttonStyle))
-                        search = "";
-                }
-
-                return search;
-            }
-
-            /// <summary>
-            /// Draws a delayed search field like those of Project window.
-            /// </summary>
-            /// <param name="search"></param>
-            /// <returns></returns>
-            public static string DelayedSearchField(string search)
-            {
-                using (Horizontal.Do())
-                {
-                    search = EditorGUILayout.DelayedTextField(search, Styles.SearchTextField);
-
-                    GUIStyle buttonStyle = Styles.SearchCancelButtonEmpty;
-                    if (!string.IsNullOrEmpty(search))
-                        buttonStyle = Styles.SearchCancelButton;
-
-                    if (GUILayout.Button(GUIContent.none, buttonStyle))
-                        search = "";
-                }
-
-                return search;
-            }
-
-            /// <summary>
-            /// This is a debug method that draws all Unity styles found in GUI.skin.customStyles
-            /// together with its name, so you can later use some specific style.
-            /// </summary>
-            public static void DrawAllStyles()
-            {
-                searchField = SearchField(searchField);
-
-                string searchLower = searchField.ToLower(System.Globalization.CultureInfo.InvariantCulture);
-                EditorGUILayout.Space();
-
-                using (ScrollView.Do(ref scroll))
-                {
-                    foreach (GUIStyle style in GUI.skin.customStyles)
-                    {
-                        if (string.IsNullOrEmpty(searchField) ||
-                            style.name.ToLower(System.Globalization.CultureInfo.InvariantCulture).Contains(searchLower))
-                        {
-                            using (Horizontal.Do())
-                            {
-                                EditorGUILayout.TextField(style.name, EditorStyles.label);
-                                GUILayout.Label(style.name, style);
-                            }
-                        }
-                    }
-                }
-            }
-
-            /// <summary>
-            /// This is a debug method that draws all Unity icons
-            /// together with its name, so you can later use them.
-            /// </summary>
-            public static void DrawAllIcons()
-            {
-                if (unityIcons == null)
-                {
-                    unityIcons = Resources.FindObjectsOfTypeAll<Texture>();
-                    System.Array.Sort(unityIcons, ObjectNameComparer.Instance);
-                }
-
-                searchField = SearchField(searchField);
-
-                string searchLower = searchField.ToLower(System.Globalization.CultureInfo.InvariantCulture);
-                EditorGUILayout.Space();
-
-                using (ScrollView.Do(ref scroll))
-                {
-                    foreach (Texture texture in unityIcons)
-                    {
-                        if (texture == null || texture.name == "")
-                            continue;
-
-                        if (!AssetDatabase.GetAssetPath(texture).StartsWith("Library/"))
-                            continue;
-
-                        if (string.IsNullOrEmpty(searchField) ||
-                            texture.name.ToLower(System.Globalization.CultureInfo.InvariantCulture)
-                                .Contains(searchLower))
-                        {
-                            using (Horizontal.Do())
-                            {
-                                EditorGUILayout.TextField(texture.name, EditorStyles.label);
-                                GUILayout.Label(new GUIContent(texture));
-                            }
-                        }
-                    }
-                }
-            }
-
-            //Disposables 
-            public struct BoxGroup : System.IDisposable
-            {
-                public static BoxGroup Do(string label)
-                {
-                    EditorHelper.BeginBox(label);
-                    return new BoxGroup();
-                }
-
-                public static BoxGroup Do(ref Vector2 scroll, string label)
-                {
-                    scroll = EditorHelper.BeginBox(scroll, label);
-                    return new BoxGroup();
-                }
-
-                public void Dispose()
-                {
-                    EditorHelper.EndBox();
-                }
-            }
-
-            public struct DisabledGroup : System.IDisposable
-            {
-                public static DisabledGroup Do(bool disabled)
-                {
-                    EditorGUI.BeginDisabledGroup(disabled);
-                    return new DisabledGroup();
-                }
-
-                public void Dispose()
-                {
-                    EditorGUI.EndDisabledGroup();
-                }
-            }
-
-            public struct FadeGroup : System.IDisposable
-            {
-                public readonly bool visible;
-
-                public static FadeGroup Do(float value)
-                {
-                    var visible = EditorGUILayout.BeginFadeGroup(value);
-                    return new FadeGroup(visible);
-                }
-
-                private FadeGroup(bool visible)
-                {
-                    this.visible = visible;
-                }
-
-                public void Dispose()
-                {
-                    EditorGUILayout.EndFadeGroup();
-                }
-            }
-
-            public struct FieldWidth : System.IDisposable
-            {
-                private readonly float savedFieldWidth;
-
-                public static FieldWidth Do(float fieldWidth)
-                {
-                    var savedFieldWidth = EditorGUIUtility.fieldWidth;
-                    EditorGUIUtility.fieldWidth = fieldWidth;
-
-                    return new FieldWidth(savedFieldWidth);
-                }
-
-                private FieldWidth(float savedFieldWidth)
-                {
-                    this.savedFieldWidth = savedFieldWidth;
-                }
-
-                public void Dispose()
-                {
-                    EditorGUIUtility.fieldWidth = savedFieldWidth;
-                }
-            }
-
-            public sealed class Horizontal : System.IDisposable
-            {
-                public readonly Rect rect;
-
-                public static Horizontal Do(params GUILayoutOption[] options)
-                {
-                    var rect = EditorGUILayout.BeginHorizontal(options);
-                    return new Horizontal(rect);
-                }
-
-                public static Horizontal Do(GUIStyle style, params GUILayoutOption[] options)
-                {
-                    var rect = EditorGUILayout.BeginHorizontal(style, options);
-                    return new Horizontal(rect);
-                }
-
-                private Horizontal(Rect rect)
-                {
-                    this.rect = rect;
-                }
-
-                public void Dispose()
-                {
-                    EditorGUILayout.EndHorizontal();
-                }
-            }
-
-            public struct IndentLevel : System.IDisposable
-            {
-                private readonly int savedIndentLevel;
-
-                public static IndentLevel Do(int indentLevel)
-                {
-                    var savedIndentLevel = EditorGUI.indentLevel;
-                    EditorGUI.indentLevel = indentLevel;
-
-                    return new IndentLevel(savedIndentLevel);
-                }
-
-                private IndentLevel(int savedIndentLevel)
-                {
-                    this.savedIndentLevel = savedIndentLevel;
-                }
-
-                public void Dispose()
-                {
-                    EditorGUI.indentLevel = savedIndentLevel;
-                }
-            }
-
-            public struct LabelWidth : System.IDisposable
-            {
-                private readonly float savedLabelWidth;
-
-                public static LabelWidth Do(float labelWidth)
-                {
-                    var savedLabelWidth = EditorGUIUtility.labelWidth;
-                    EditorGUIUtility.labelWidth = labelWidth;
-
-                    return new LabelWidth(savedLabelWidth);
-                }
-
-                private LabelWidth(float savedLabelWidth)
-                {
-                    this.savedLabelWidth = savedLabelWidth;
-                }
-
-                public void Dispose()
-                {
-                    EditorGUIUtility.labelWidth = savedLabelWidth;
-                }
-            }
-
-            public struct Property : System.IDisposable
-            {
-                public static Property Do(Rect totalPosition, GUIContent label, SerializedProperty property)
-                {
-                    EditorGUI.BeginProperty(totalPosition, label, property);
-                    return new Property();
-                }
-
-                public void Dispose()
-                {
-                    EditorGUI.EndProperty();
-                }
-            }
-
-            public struct ScrollView : System.IDisposable
-            {
-                public static ScrollView Do(ref Vector2 scrollPosition, params GUILayoutOption[] options)
-                {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, options);
-                    return new ScrollView();
-                }
-
-                public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal,
-                    bool alwaysShowVertical, params GUILayoutOption[] options)
-                {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal,
-                        alwaysShowVertical, options);
-                    return new ScrollView();
-                }
-
-                public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle horizontalScrollbar,
-                    GUIStyle verticalScrollbar, params GUILayoutOption[] options)
-                {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, horizontalScrollbar,
-                        verticalScrollbar, options);
-                    return new ScrollView();
-                }
-
-                public static ScrollView Do(ref Vector2 scrollPosition, GUIStyle style,
-                    params GUILayoutOption[] options)
-                {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, style, options);
-                    return new ScrollView();
-                }
-
-                public static ScrollView Do(ref Vector2 scrollPosition, bool alwaysShowHorizontal,
-                    bool alwaysShowVertical, GUIStyle horizontalScrollbar, GUIStyle verticalScrollbar,
-                    GUIStyle background, params GUILayoutOption[] options)
-                {
-                    scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, alwaysShowHorizontal,
-                        alwaysShowVertical, horizontalScrollbar, verticalScrollbar, background, options);
-                    return new ScrollView();
-                }
-
-                public void Dispose()
-                {
-                    EditorGUILayout.EndScrollView();
-                }
-            }
-
-            public struct Vertical : System.IDisposable
-            {
-                public readonly Rect rect;
-
-                public static Vertical Do(params GUILayoutOption[] options)
-                {
-                    var rect = EditorGUILayout.BeginVertical(options);
-                    return new Vertical(rect);
-                }
-
-                public static Vertical Do(GUIStyle style, params GUILayoutOption[] options)
-                {
-                    var rect = EditorGUILayout.BeginVertical(style, options);
-                    return new Vertical(rect);
-                }
-
-                private Vertical(Rect rect)
-                {
-                    this.rect = rect;
-                }
-
-                public void Dispose()
-                {
-                    EditorGUILayout.EndVertical();
-                }
-            }
-
-            public struct Fade : System.IDisposable
-            {
-                public static Fade Do(float faded)
-                {
-                    GUI.color = Color.white * faded;
-                    GUI.backgroundColor = Color.white * faded;
-                    return new Fade();
-                }
-
-                public static Fade Do(Rect r, Color backgroundColor, float faded)
-                {
-                    EditorGUI.DrawRect(r, backgroundColor * faded);
-                    GUI.color = Color.white * faded;
-                    GUI.backgroundColor = Color.white * faded;
-                    return new Fade();
-                }
-
-                public void Dispose()
-                {
-                    GUI.color = Color.white;
-                    GUI.backgroundColor = Color.white;
-                }
-            }
-
-            public struct Colorize : System.IDisposable
-            {
-                public static Colorize Do(Color color, Color bgColor)
-                {
-                    GUI.color = color;
-                    GUI.backgroundColor = bgColor;
-                    return new Colorize();
-                }
-
-                public static Colorize Do(Rect r, Color color, Color backgroundColor)
-                {
-                    GUI.color = color;
-                    GUI.backgroundColor = backgroundColor;
-                    return new Colorize();
-                }
-
-                public void Dispose()
-                {
-                    GUI.color = Color.white;
-                    GUI.backgroundColor = Color.white;
-                }
-            }
-
-            public struct PrefixLabelSize : System.IDisposable
-            {
-                private readonly Font savedFont;
-                private readonly int savedFontSize;
-
-                public static PrefixLabelSize Do(Font font, int fontSize)
-                {
-                    var savedFont = EditorStyles.label.font;
-                    var savedFontSize = EditorStyles.label.fontSize;
-                    EditorStyles.label.font = font;
-                    EditorStyles.label.fontSize = fontSize;
-
-                    return new PrefixLabelSize(savedFont, savedFontSize);
-                }
-
-                private PrefixLabelSize(Font savedFont, int savedFontSize)
-                {
-                    this.savedFont = savedFont;
-                    this.savedFontSize = savedFontSize;
-                }
-
-                public void Dispose()
-                {
-                    EditorStyles.label.font = savedFont;
-                    EditorStyles.label.fontSize = savedFontSize;
-                }
-            }
-
-            //Custom
-            public static void GridLayout(int count, int column, Action<int> action)
-            {
-                using (EditorHelper.Horizontal.Do())
-                {
-                    for (int x = 0; x < column; x++)
-                    {
-                        int temp = x;
-                        using (EditorHelper.Vertical.Do())
-                        {
-                            for (int y = temp; y < count; y += column)
-                            {
-                                using (EditorHelper.Horizontal.Do())
-                                {
-                                    action(y);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            public static bool Foldout(bool display, string title)
-            {
-                GUI.backgroundColor = GetDefaultBackgroundColor() * 0.5f;
-                var style = new GUIStyle("ShurikenModuleTitle");
-                style.font = new GUIStyle(EditorStyles.label).font;
-                style.normal.textColor = Color.white;
-                style.fontSize = 10;
-                style.border = new RectOffset(15, 7, 4, 4);
-                style.fixedHeight = 20;
-                style.contentOffset = new Vector2(20f, -2f);
-                var rect = GUILayoutUtility.GetRect(16f, style.fixedHeight, style);
-                GUI.Box(rect, title, style);
+                GUI.color = Color.white;
                 GUI.backgroundColor = Color.white;
-                style.margin = new RectOffset(4, 4, 4, 4);
-                var e = Event.current;
+            }
+        }
 
-                var toggleRect = new Rect(rect.x + 4f, rect.y + 2f, 13f, 13f);
-                if (e.type == EventType.Repaint)
-                {
-                    EditorStyles.foldout.Draw(toggleRect, false, false, display, false);
-                }
-
-                if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
-                {
-                    display = !display;
-                    e.Use();
-                }
-
-                return display;
+        public struct Colorize : System.IDisposable
+        {
+            public static Colorize Do(Color color, Color bgColor)
+            {
+                GUI.color = color;
+                GUI.backgroundColor = bgColor;
+                return new Colorize();
             }
 
-            public class FoldGroup
+            public static Colorize Do(Rect r, Color color, Color backgroundColor)
             {
-                static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
+                GUI.color = color;
+                GUI.backgroundColor = backgroundColor;
+                return new Colorize();
+            }
 
-                public static void Do(string label, bool initValue, UnityAction action)
+            public void Dispose()
+            {
+                GUI.color = Color.white;
+                GUI.backgroundColor = Color.white;
+            }
+        }
+
+        public struct PrefixLabelSize : System.IDisposable
+        {
+            private readonly Font savedFont;
+            private readonly int savedFontSize;
+
+            public static PrefixLabelSize Do(Font font, int fontSize)
+            {
+                var savedFont = EditorStyles.label.font;
+                var savedFontSize = EditorStyles.label.fontSize;
+                EditorStyles.label.font = font;
+                EditorStyles.label.fontSize = fontSize;
+
+                return new PrefixLabelSize(savedFont, savedFontSize);
+            }
+
+            private PrefixLabelSize(Font savedFont, int savedFontSize)
+            {
+                this.savedFont = savedFont;
+                this.savedFontSize = savedFontSize;
+            }
+
+            public void Dispose()
+            {
+                EditorStyles.label.font = savedFont;
+                EditorStyles.label.fontSize = savedFontSize;
+            }
+        }
+
+        //Custom
+        public static void GridLayout(int count, int column, Action<int> action)
+        {
+            using (EditorHelper.Horizontal.Do())
+            {
+                for (int x = 0; x < column; x++)
                 {
-                    if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
-                    dict[label].target = EditorHelper.Foldout(dict[label].target, label);
-                    using (var fade = new EditorGUILayout.FadeGroupScope(dict[label].faded))
+                    int temp = x;
+                    using (EditorHelper.Vertical.Do())
                     {
-                        if (fade.visible)
+                        for (int y = temp; y < count; y += column)
                         {
-                            action.Invoke();
+                            using (EditorHelper.Horizontal.Do())
+                            {
+                                action(y);
+                            }
                         }
                     }
                 }
             }
-
-            public class FoldGroup2 : IDisposable //미완성
-            {
-                static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
-                private static string current;
-
-                public static FoldGroup2 Do(string label, bool initValue)
-                {
-                    if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
-                    current = label;
-                    dict[label].target = EditorHelper.Foldout(dict[label].target, label);
-                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
-                    {
-                        EditorGUILayout.BeginFadeGroup(dict[label].faded);
-                    }
-
-                    return new FoldGroup2(label, dict[label].faded);
-                }
-
-                public FoldGroup2(string label, float value)
-                {
-                    current = label;
-                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
-                    {
-                        EditorGUILayout.BeginFadeGroup(value);
-                    }
-                }
-
-                public void Dispose()
-                {
-                    if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
-                        return;
-                    EditorGUILayout.EndFadeGroup();
-                    dict.Remove(current);
-                }
-            }
-
-            public static List<string> StringSelector(List<string> result, string[] src)
-            {
-                if (src != null)
-                {
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        for (int i = 0; i < src.Length; i++)
-                        {
-                            bool enabled = result.Contains(src[i]);
-                            var style = GUIStyle.none;
-                            if (i == 0) style = EditorStyles.miniButtonLeft;
-                            else if (i == src.Length - 1) style = EditorStyles.miniButtonRight;
-                            else style = EditorStyles.miniButtonMid;
-                            enabled = GUILayout.Toggle(enabled, src[i].Replace(".", "").ToUpper(), style,
-                                GUILayout.Height(30));
-                            if (enabled && !result.Contains(src[i])) result.Add(src[i]);
-                            else if (enabled && result.Contains(src[i])) continue;
-                            else result.Remove(src[i]);
-                        }
-                    }
-                }
-
-                return result;
-            }
-
-            public static void IconLabel(Type type, string text, int fontSize = 18)
-            {
-                GUIContent title = new GUIContent(text, EditorGUIUtility.ObjectContent(null, type).image, text);
-                var style = new GUIStyle(EditorStyles.label);
-                style.fontSize = fontSize;
-                style.normal.textColor = Color.gray * 0.75f;
-                style.fontStyle = FontStyle.BoldAndItalic;
-                style.alignment = TextAnchor.MiddleLeft;
-                style.stretchWidth = true;
-                style.stretchHeight = true;
-                GUILayout.Label(title, style, GUILayout.Width(200), GUILayout.Height(fontSize * 2));
-            }
-
-            static Texture2D staticTex;
-
-            public static GUIStyle GetStyle(GUIStyle baseStyle, Color bgColor, int fontSize, FontStyle fontStyle,
-                TextAnchor alignment)
-            {
-                var dragOKstyle = new GUIStyle(GUI.skin.box)
-                { fontSize = 10, fontStyle = fontStyle, alignment = alignment };
-                staticTex = new Texture2D(1, 1);
-                staticTex.hideFlags = HideFlags.HideAndDontSave;
-                Color[] colors = new Color[1] { bgColor };
-                staticTex.SetPixels(colors);
-                staticTex.Apply();
-                dragOKstyle.normal.background = staticTex;
-                return dragOKstyle;
-            }
-
-            public static float GetToolbarHeight()
-            {
-                return 18;
-                //return EditorStyles.toolbar.CalcHeight(GUIContent.none, 0f);
-            }
-
-            public static Color GetDefaultBackgroundColor()
-            {
-                float kViewBackgroundIntensity = EditorGUIUtility.isProSkin ? 0.22f : 0.76f;
-                return new Color(kViewBackgroundIntensity, kViewBackgroundIntensity, kViewBackgroundIntensity, 1f);
-            }
-
         }
 
-        class Styles
+        public static bool Foldout(bool display, string title)
         {
-            public static GUIStyle centeredBigLabel;
-            public static GUIStyle centeredBoldLabel;
+            GUI.backgroundColor = GetDefaultBackgroundColor() * 0.5f;
+            var style = new GUIStyle("ShurikenModuleTitle");
+            style.font = new GUIStyle(EditorStyles.label).font;
+            style.normal.textColor = Color.white;
+            style.fontSize = 10;
+            style.border = new RectOffset(15, 7, 4, 4);
+            style.fixedHeight = 20;
+            style.contentOffset = new Vector2(20f, -2f);
+            var rect = GUILayoutUtility.GetRect(16f, style.fixedHeight, style);
+            GUI.Box(rect, title, style);
+            GUI.backgroundColor = Color.white;
+            style.margin = new RectOffset(4, 4, 4, 4);
+            var e = Event.current;
 
-            public static GUIStyle header;
-            public static GUIStyle blackHeader;
-            public static GUIStyle headerCheckbox;
-            public static GUIStyle headerFoldout;
-
-            public static GUIStyle miniHeader;
-            //public static GUIStyle miniHeaderCheckbox;
-            //public static GUIStyle miniHeaderFoldout;
-
-            //public static Texture2D playIcon;
-            //public static Texture2D checkerIcon;
-
-            public static GUIStyle miniButton;
-
-            public static GUIStyle transButton;
-            //public static GUIStyle miniTransButton;
-            //public static GUIStyle transFoldout;
-
-            //public static GUIStyle tabToolBar;
-
-            public static GUIStyle centeredMiniLabel;
-            public static GUIStyle centeredMiniBoldLabel;
-
-            public static GUIStyle rightAlignedMiniLabel;
-            //public static GUIStyle tabToolBar;
-
-            static Styles()
+            var toggleRect = new Rect(rect.x + 4f, rect.y + 2f, 13f, 13f);
+            if (e.type == EventType.Repaint)
             {
-                centeredBigLabel = new GUIStyle(EditorStyles.label)
-                {
-                    alignment = TextAnchor.UpperCenter,
-                    fontStyle = FontStyle.Bold,
-                    fontSize = 24
-                };
-                centeredBoldLabel = new GUIStyle(EditorStyles.label)
-                {
-                    alignment = TextAnchor.UpperCenter,
-                    fontStyle = FontStyle.Bold
-                };
-
-                centeredMiniLabel = new GUIStyle(EditorStyles.miniLabel)
-                {
-                    alignment = TextAnchor.UpperCenter
-                };
-                rightAlignedMiniLabel = new GUIStyle(EditorStyles.miniLabel)
-                {
-                    alignment = TextAnchor.MiddleRight
-                };
-                header = new GUIStyle("ShurikenModuleTitle")
-                {
-                    font = (new GUIStyle("Label")).font,
-                    border = new RectOffset(15, 7, 4, 4),
-                    fixedHeight = 22,
-                    contentOffset = new Vector2(20f, -2f)
-                };
-
-                headerCheckbox = new GUIStyle("ShurikenCheckMark");
-                headerFoldout = new GUIStyle("Foldout");
-
-
-                blackHeader = new GUIStyle("AnimationEventTooltip");
-                //blackHeader.contentOffset = Vector2.zero;
-                //blackHeader.margin = new RectOffset(2, 2, 2, 2);
-                //blackHeader.padding = new RectOffset(2, 2, 2, 2);
-                blackHeader.overflow = new RectOffset(0, 0, 0, 0);
-                miniHeader = new GUIStyle("ShurikenModuleTitle")
-                {
-                    font = (new GUIStyle("Label")).font,
-                    fontSize = 8,
-                    fontStyle = FontStyle.Bold,
-                    border = new RectOffset(15, 7, 4, 4),
-                    fixedHeight = 18,
-                    contentOffset = new Vector2(8f, -2f)
-                };
-
-                //playIcon = (Texture2D)EditorGUIUtility.LoadRequired(
-                //    "Builtin Skins/DarkSkin/Images/IN foldout act.png");
-                //checkerIcon = (Texture2D)EditorGUIUtility.LoadRequired("Icons/CheckerFloor.png");
-
-                miniButton = new GUIStyle("miniButton");
-                transButton = new GUIStyle("Button");
-                //transButton.active.background = Texture2D.blackTexture;
-                //transButton.hover.background = Texture2D.blackTexture;
-                //transButton.focused.background = Texture2D.blackTexture;
-                //transButton.normal.background = Texture2D.blackTexture;
-                //transButton.active.textColor = Color.white;
-                //transButton.normal.textColor = Color.gray;
-                //transButton.onActive.background = Texture2D.blackTexture;
-                //transButton.onFocused.background = Texture2D.blackTexture;
-                //transButton.onNormal.background = Texture2D.blackTexture;
-                //transButton.onHover.background = Texture2D.blackTexture;
-                //transButton.fontStyle = FontStyle.Bold;
-
-                //miniTransButton = new GUIStyle("miniButton");
-                //miniTransButton.active.background = Texture2D.blackTexture;
-                //miniTransButton.hover.background = Texture2D.blackTexture;
-                //miniTransButton.focused.background = Texture2D.blackTexture;
-                //miniTransButton.normal.background = Texture2D.blackTexture;
-                //miniTransButton.onActive.background = Texture2D.blackTexture;
-                //miniTransButton.onFocused.background = Texture2D.blackTexture;
-                //miniTransButton.onNormal.background = Texture2D.blackTexture;
-                //miniTransButton.onHover.background = Texture2D.blackTexture;
-                //miniTransButton.active.textColor = Color.white;
-                //miniTransButton.normal.textColor = Color.gray;
-                //miniTransButton.normal.background = null;
-                //miniTransButton.fontStyle = FontStyle.Normal;
-                //miniTransButton.alignment = TextAnchor.MiddleLeft;
-
-                //transFoldout = new GUIStyle("Foldout");
-                //transFoldout.alignment = TextAnchor.MiddleCenter;
-                //transFoldout.contentOffset = Vector2.zero;
-
-                //tabToolBar = new GUIStyle("dragtab");
-                ////tabToolBar.onNormal.textColor = Color.white;
-                //tabToolBar.fontSize = 9;
-                //tabToolBar.alignment = TextAnchor.MiddleCenter;
-                //centeredMiniLabel = new GUIStyle();
-                //centeredMiniLabel.alignment = TextAnchor.MiddleCenter;
-                //centeredMiniBoldLabel = new GUIStyle();
-                //centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
-                //rightAlignedMinilabel = new GUIStyle();
-                //rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
-                //tabToolBar = new GUIStyle("dragtab");
-                //tabToolBar.onNormal.textColor = Color.white;
-                //tabToolBar.fontSize = 9;
-                //tabToolBar.alignment = TextAnchor.MiddleCenter;
-                //
+                EditorStyles.foldout.Draw(toggleRect, false, false, display, false);
             }
+
+            if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
+            {
+                display = !display;
+                e.Use();
+            }
+
+            return display;
         }
 
-        class Tooltip
+        public class FoldGroup
         {
-            public static void Generate(string text)
-            {
-                var propRect = GUILayoutUtility.GetLastRect();
-                GUI.Label(propRect, new GUIContent("", text));
-            }
+            static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
 
-            public static void Get()
+            public static void Do(string label, bool initValue, UnityAction action)
             {
-
+                if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
+                dict[label].target = EditorHelper.Foldout(dict[label].target, label);
+                using (var fade = new EditorGUILayout.FadeGroupScope(dict[label].faded))
+                {
+                    if (fade.visible)
+                    {
+                        action.Invoke();
+                    }
+                }
             }
         }
 
-        #endregion
+        public class FoldGroup2 : IDisposable //미완성
+        {
+            static Dictionary<string, AnimBoolS> dict = new Dictionary<string, AnimBoolS>();
+            private static string current;
 
-        #region Properties & Fields
+            public static FoldGroup2 Do(string label, bool initValue)
+            {
+                if (!dict.ContainsKey(label)) dict.Add(label, new AnimBoolS(initValue));
+                current = label;
+                dict[label].target = EditorHelper.Foldout(dict[label].target, label);
+                if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                {
+                    EditorGUILayout.BeginFadeGroup(dict[label].faded);
+                }
+
+                return new FoldGroup2(label, dict[label].faded);
+            }
+
+            public FoldGroup2(string label, float value)
+            {
+                current = label;
+                if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                {
+                    EditorGUILayout.BeginFadeGroup(value);
+                }
+            }
+
+            public void Dispose()
+            {
+                if ((double)dict[current].faded == 0.0 || (double)dict[current].faded == 1.0)
+                    return;
+                EditorGUILayout.EndFadeGroup();
+                dict.Remove(current);
+            }
+        }
+
+        public static List<string> StringSelector(List<string> result, string[] src)
+        {
+            if (src != null)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    for (int i = 0; i < src.Length; i++)
+                    {
+                        bool enabled = result.Contains(src[i]);
+                        var style = GUIStyle.none;
+                        if (i == 0) style = EditorStyles.miniButtonLeft;
+                        else if (i == src.Length - 1) style = EditorStyles.miniButtonRight;
+                        else style = EditorStyles.miniButtonMid;
+                        enabled = GUILayout.Toggle(enabled, src[i].Replace(".", "").ToUpper(), style,
+                            GUILayout.Height(30));
+                        if (enabled && !result.Contains(src[i])) result.Add(src[i]);
+                        else if (enabled && result.Contains(src[i])) continue;
+                        else result.Remove(src[i]);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        public static void IconLabel(Type type, string text, int fontSize = 18)
+        {
+            GUIContent title = new GUIContent(text, EditorGUIUtility.ObjectContent(null, type).image, text);
+            var style = new GUIStyle(EditorStyles.label);
+            style.fontSize = fontSize;
+            style.normal.textColor = Color.gray * 0.75f;
+            style.fontStyle = FontStyle.BoldAndItalic;
+            style.alignment = TextAnchor.MiddleLeft;
+            style.stretchWidth = true;
+            style.stretchHeight = true;
+            GUILayout.Label(title, style, GUILayout.Width(200), GUILayout.Height(fontSize * 2));
+        }
+
+        static Texture2D staticTex;
+
+        public static GUIStyle GetStyle(GUIStyle baseStyle, Color bgColor, int fontSize, FontStyle fontStyle,
+            TextAnchor alignment)
+        {
+            var dragOKstyle = new GUIStyle(GUI.skin.box)
+            { fontSize = 10, fontStyle = fontStyle, alignment = alignment };
+            staticTex = new Texture2D(1, 1);
+            staticTex.hideFlags = HideFlags.HideAndDontSave;
+            Color[] colors = new Color[1] { bgColor };
+            staticTex.SetPixels(colors);
+            staticTex.Apply();
+            dragOKstyle.normal.background = staticTex;
+            return dragOKstyle;
+        }
+
+        public static float GetToolbarHeight()
+        {
+            return 18;
+            //return EditorStyles.toolbar.CalcHeight(GUIContent.none, 0f);
+        }
+
+        public static Color GetDefaultBackgroundColor()
+        {
+            float kViewBackgroundIntensity = EditorGUIUtility.isProSkin ? 0.22f : 0.76f;
+            return new Color(kViewBackgroundIntensity, kViewBackgroundIntensity, kViewBackgroundIntensity, 1f);
+        }
+
+    }
+
+    class Styles
+    {
+        public static GUIStyle centeredBigLabel;
+        public static GUIStyle centeredBoldLabel;
+
+        public static GUIStyle header;
+        public static GUIStyle blackHeader;
+        public static GUIStyle headerCheckbox;
+        public static GUIStyle headerFoldout;
+
+        public static GUIStyle miniHeader;
+        //public static GUIStyle miniHeaderCheckbox;
+        //public static GUIStyle miniHeaderFoldout;
+
+        //public static Texture2D playIcon;
+        //public static Texture2D checkerIcon;
+
+        public static GUIStyle miniButton;
+
+        public static GUIStyle transButton;
+        //public static GUIStyle miniTransButton;
+        //public static GUIStyle transFoldout;
+
+        //public static GUIStyle tabToolBar;
+
+        public static GUIStyle centeredMiniLabel;
+        public static GUIStyle centeredMiniBoldLabel;
+
+        public static GUIStyle rightAlignedMiniLabel;
+        //public static GUIStyle tabToolBar;
+
+        static Styles()
+        {
+            centeredBigLabel = new GUIStyle(EditorStyles.label)
+            {
+                alignment = TextAnchor.UpperCenter,
+                fontStyle = FontStyle.Bold,
+                fontSize = 24
+            };
+            centeredBoldLabel = new GUIStyle(EditorStyles.label)
+            {
+                alignment = TextAnchor.UpperCenter,
+                fontStyle = FontStyle.Bold
+            };
+
+            centeredMiniLabel = new GUIStyle(EditorStyles.miniLabel)
+            {
+                alignment = TextAnchor.UpperCenter
+            };
+            rightAlignedMiniLabel = new GUIStyle(EditorStyles.miniLabel)
+            {
+                alignment = TextAnchor.MiddleRight
+            };
+            header = new GUIStyle("ShurikenModuleTitle")
+            {
+                font = (new GUIStyle("Label")).font,
+                border = new RectOffset(15, 7, 4, 4),
+                fixedHeight = 22,
+                contentOffset = new Vector2(20f, -2f)
+            };
+
+            headerCheckbox = new GUIStyle("ShurikenCheckMark");
+            headerFoldout = new GUIStyle("Foldout");
+
+
+            blackHeader = new GUIStyle("AnimationEventTooltip");
+            //blackHeader.contentOffset = Vector2.zero;
+            //blackHeader.margin = new RectOffset(2, 2, 2, 2);
+            //blackHeader.padding = new RectOffset(2, 2, 2, 2);
+            blackHeader.overflow = new RectOffset(0, 0, 0, 0);
+            miniHeader = new GUIStyle("ShurikenModuleTitle")
+            {
+                font = (new GUIStyle("Label")).font,
+                fontSize = 8,
+                fontStyle = FontStyle.Bold,
+                border = new RectOffset(15, 7, 4, 4),
+                fixedHeight = 18,
+                contentOffset = new Vector2(8f, -2f)
+            };
+
+            //playIcon = (Texture2D)EditorGUIUtility.LoadRequired(
+            //    "Builtin Skins/DarkSkin/Images/IN foldout act.png");
+            //checkerIcon = (Texture2D)EditorGUIUtility.LoadRequired("Icons/CheckerFloor.png");
+
+            miniButton = new GUIStyle("miniButton");
+            transButton = new GUIStyle("Button");
+            //transButton.active.background = Texture2D.blackTexture;
+            //transButton.hover.background = Texture2D.blackTexture;
+            //transButton.focused.background = Texture2D.blackTexture;
+            //transButton.normal.background = Texture2D.blackTexture;
+            //transButton.active.textColor = Color.white;
+            //transButton.normal.textColor = Color.gray;
+            //transButton.onActive.background = Texture2D.blackTexture;
+            //transButton.onFocused.background = Texture2D.blackTexture;
+            //transButton.onNormal.background = Texture2D.blackTexture;
+            //transButton.onHover.background = Texture2D.blackTexture;
+            //transButton.fontStyle = FontStyle.Bold;
+
+            //miniTransButton = new GUIStyle("miniButton");
+            //miniTransButton.active.background = Texture2D.blackTexture;
+            //miniTransButton.hover.background = Texture2D.blackTexture;
+            //miniTransButton.focused.background = Texture2D.blackTexture;
+            //miniTransButton.normal.background = Texture2D.blackTexture;
+            //miniTransButton.onActive.background = Texture2D.blackTexture;
+            //miniTransButton.onFocused.background = Texture2D.blackTexture;
+            //miniTransButton.onNormal.background = Texture2D.blackTexture;
+            //miniTransButton.onHover.background = Texture2D.blackTexture;
+            //miniTransButton.active.textColor = Color.white;
+            //miniTransButton.normal.textColor = Color.gray;
+            //miniTransButton.normal.background = null;
+            //miniTransButton.fontStyle = FontStyle.Normal;
+            //miniTransButton.alignment = TextAnchor.MiddleLeft;
+
+            //transFoldout = new GUIStyle("Foldout");
+            //transFoldout.alignment = TextAnchor.MiddleCenter;
+            //transFoldout.contentOffset = Vector2.zero;
+
+            //tabToolBar = new GUIStyle("dragtab");
+            ////tabToolBar.onNormal.textColor = Color.white;
+            //tabToolBar.fontSize = 9;
+            //tabToolBar.alignment = TextAnchor.MiddleCenter;
+            //centeredMiniLabel = new GUIStyle();
+            //centeredMiniLabel.alignment = TextAnchor.MiddleCenter;
+            //centeredMiniBoldLabel = new GUIStyle();
+            //centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
+            //rightAlignedMinilabel = new GUIStyle();
+            //rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
+            //tabToolBar = new GUIStyle("dragtab");
+            //tabToolBar.onNormal.textColor = Color.white;
+            //tabToolBar.fontSize = 9;
+            //tabToolBar.alignment = TextAnchor.MiddleCenter;
+            //
+        }
+    }
+
+    class Tooltip
+    {
+        public static void Generate(string text)
+        {
+            var propRect = GUILayoutUtility.GetLastRect();
+            GUI.Label(propRect, new GUIContent("", text));
+        }
+
+        public static void Get()
+        {
+
+        }
+    }
+
+#endregion
+
+    public class See1View : EditorWindow
+    {
+
+#region Properties & Fields
         //settings shortcut (singleton)
         private See1ViewSettings settings
         {
@@ -5233,7 +4803,9 @@ namespace See1Studios.See1View.Editor
         ReflectionProbe _probe;
 
         Transform _lightPivot;
-        //private ModelAssembler modelAssembler;
+#if SEE1VIEWPLUS
+        private ModelAssembler modelAssembler = new ModelAssembler();
+#endif
 
         //Animation
         List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
@@ -5353,9 +4925,9 @@ namespace See1Studios.See1View.Editor
         GUIContent _viewInfo;
         readonly StringBuilder _sb0 = new StringBuilder();
 
-        #endregion
+#endregion
 
-        #region Unity Events & Callbacks
+#region Unity Events & Callbacks
 
         void Awake()
         {
@@ -5482,7 +5054,7 @@ namespace See1Studios.See1View.Editor
 
                         using (EditorHelper.Colorize.Do(Color.white * logoFaded, Color.white * logoFaded))
                         {
-                            using(new EditorGUI.DisabledScope(helpEnabled.target))
+                            using (new EditorGUI.DisabledScope(helpEnabled.target))
                             {
                                 //var logo = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
                                 GUI.DrawTexture(logoRect, logo, ScaleMode.ScaleToFit, true, 1, new Color(0.85f, 0.85f, 0.85f) * logoFaded, 0, 0);
@@ -5493,7 +5065,7 @@ namespace See1Studios.See1View.Editor
                                     helpEnabled.target = true;
                                 }
                             }
-   
+
                         }
                         var helpFaded = helpEnabled.faded * splashEnabled.faded;
 
@@ -5532,9 +5104,9 @@ namespace See1Studios.See1View.Editor
             Create();
         }
 
-        #endregion
+#endregion
 
-        #region MainMehods
+#region MainMehods
 
         void RegisterShortcut()
         {
@@ -5826,6 +5398,9 @@ namespace See1Studios.See1View.Editor
             See1ViewSettings.onDataChanged.AddListener(InitializePipeline);
             See1ViewSettings.onDataChanged.AddListener(InitializePostProcess);
 
+#if SEE1VIEWPLUS
+            //modelAssembler.Init();
+#endif
             _prefab = currentData.lastTarget;
             AddModel(_prefab, true);
             ApplyView(settings.current.lastView);
@@ -5862,7 +5437,7 @@ namespace See1Studios.See1View.Editor
                 //_urpRenderer = (UniversalRendererData)ScriptableObject.CreateInstance<UniversalRendererData>();                
             }
 #endif
-#if HDRP            
+#if HDRP
             if (currentData.renderPipelineMode == RenderPipelineMode.HighDefinition)
             {
                 bool hdrpCamExists = _preview.camera.gameObject.TryGetComponent<HDAdditionalCameraData>(out _hdrpCamera);
@@ -6072,9 +5647,9 @@ namespace See1Studios.See1View.Editor
         //    See1ViewSettings.SetDirty();
         //}
 
-        #endregion
+#endregion
 
-        #region CommandBuffer and Render
+#region CommandBuffer and Render
 
         void SetGridBuffer(bool set)
         {
@@ -6332,9 +5907,9 @@ namespace See1Studios.See1View.Editor
             _guiEnabled = false;
         }
 
-        #endregion
+#endregion
 
-        #region Animation
+#region Animation
 
         public void InitAnimation(GameObject root, bool reset)
         {
@@ -6385,15 +5960,20 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region GUIContents
+#region GUIContents
 
         public class GUIContents
         {
+#if SEE1VIEWPLUS
+            internal static string titleString = "See1View+";
+#else
+            internal static string titleString = "See1View";
+#endif
             internal static string logoTextureStr = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAfU0lEQVR4Ae2dB3xU1fLHNwFC7yAdqdIFEQTFwgMB9SEoYgNEsCA+USzPrvjsBbuofytW8PkooiIKSLEgRaRKx0R6qKEG0vb//cXcuBt29567Jdmwmc9ncje7c+eUmXvOzJw558a53W5XEcRuD8THbtOLWq4eKFKAGNeDIgUoUoAY74EYb37RCFCkADHeAzHe/KIRoEgBYrwHYrz5RSNAkQLEeA/EePOLRoAYV4DiTtsfFxfn9JaCoK9EofXAcmDtcuXK1apQoULtkiVLVihRokT50qVLV2UNJAu0FkLc8fHxxTMyMlKPHDmyKzMz8+ihQ4d2HDx4MDk9PX0LPFLAzeBOMOrh72bZV9WxAtizLBCKMpRaG+xQq1atxvXr1+/SvHnzji1btnSdfPLJJevWrVuidu3aCShBfNmyZV2lSpXyW8m9e/e6jh075kpOTk7ftm1b2p9//pm2ceNG14oVK1YmJSUtALekpaWtgMFKsFAohN/G8kOcE20RoygaATQUnQ2edd5553U47bTTmp911lnN27RpUxwFcJUpI50IL2zdutWFArh++umnfb8Bs2bNWrJ79+75lPITmBze0oLn5kSmhVEBajFc90Pgva+++uoWZ5xxxsmnn356RARuJ4K1a9e6li5denDixIkrvv7669mpqalfco9Gh1S7eyP5uxMFcInYCUay4ja825100kmPDBgw4Ncvv/zywNGjR6l2dEBWVpZ75cqVWQ899FBi27Ztp9KOvmBlm/ZE7Gd6xVimxoQW04jV2j/jtg0bNnzu4YcfTly1alV0SDxALTAe3e+///7Rrl27zqJJV4MV/DctMr9YsjK5RrMCNK1WrdoLo0aN2paYmBigy6P3p08++SQLRZiOmAdGRtS+uZoI3qKJRgUoXbx48XtvuummlVjf0Stdw5odPnzY/c477xzEG5mMuLr7Fll4v7WEa3KNNgXoceqpp46bOXNmmmH/Fhoy3En37bffvoE4xD2Iu2p4Re7NzUTwFk20KEDdhISEUU8//fQ2PTEnMkydOtWNB/MjIjvTW2zh+88Srsk1GhTgdAI2s/CtT2S5e7UtJSXFPXz48ERE3h9MCJ/o/+JkIniLpqAV4J+4dcuJunl1UKz88+abb+4nOjkWsTUIpxJYwjW5FqQCXPn4449viBVh+2vnDz/84D7llFO+QQGah0sJTARv0RSEApQvVqzYqA8++GCrv06Jte//+OMPd8eOHeeiAKeGQwks4Zpc81sBalSsWPH9L774ItZkbNveffv2uXv06LEQBegcqhKYCN6iyc+1gKqEcl/9+OOPB/Ts2TOoNrI06+Jpydy0aVMaq3ZyFV3MoSUaN25cBnQRPwiKb7TcpFXIQYMGrZgwYcK/qJMWmIIC9YsxWJpgejVm7E1YDuG8880331CMc9ixY0f6mDFj9rLqt6J69eoz4TUe9q+DLzOdvIlifdG9e/d50Bzevn278wKi6A65wX379l1M2zp6d6H5fzTHeGQ3JrSYmlfjb0qCH48GO+yPHz9+X7NmzZbA7V1wGHgGWBMsD2rNtzRYHTwNvLNJkyZfv/feewejSKaOq6LpAJtAsYLWoGOwZGVyzQ8FuOzdd9/d5rQXGA4zhg4dKl9Zq2saEusb9sRJ0A278cYbNx44cMBpsVFDT+6Bu0WLFjNoS1PDdueSmQjeoom0AvS47777HLt6LK9m9O/fX8L/COwBBpO72PvKK69cxRp91AjVaUUWLVrkZkHsc9qvFDdjsIRrco2kArTr06fPMvLsnLbbfc8992yhtf8Fuxi32jdhn7vvvrtQryh9+umnR2jaLb6b5/tbE8FbNBFTAHLwPtcCiFOYPXv2YZqltfQ+vpvn7FsMxrumT5+e6bQe0UR/5513KiG1t2nLqbuxXI0JLaYmlSD7dtiMGTOOOO1E5n35wmsp40EwXDHyal26dJku3oUVNI1hFMoQPsWk/y1ZmVwjoQDnsOwZlC/2888/K5dORl97k4Y6oLmRBM7CKv/sei9cuNBNRvNo2lzMrt0mgrdogjGuApVfqmnTpv8hfUtummNASPu4aR24wfHNgW9Y89133ym3v9ACI4Br5MiRA2jAFWFthKUJplebwkdMnjw5aN+rV69eyqi9Fgz37pPKvXv3nhqMQUq/RA3s37/f3bp1a9lHinv4BSpsPLKHcwQ4qV+/fkMuueQSBWgcg7J8MRoPceNG0EEs06ioA/jVycQFjIijlYiwt+vJJ5+UZ6SAWFggbApARs8w0qKDnrsRThY7btJp1f6wtMybSSb8j6Bk3t8Wwv9wrRMuvvhiZRsHFSXM2+RwKUCDa6+9diCpTkEP3ezkicdl0/2ZeSsZjv/xTErAPxysCpwHwbVWbI65KhwVCYsCILz+t956a0gJDWzgjCPqVZJGKb4fbihNXKIyS9Hh5lsg/NgC57r00kv7UXjbUCsQDgWoe/nllw9hT16odXGxzasKTBqHzOh4Bi1ZLu7ENHX8L4X0G9LmG9KeS6l+SDIM6Wb1HUNr3xtuuKFVOPqRIJDcx3bh4JWHRwt4my4m5bk1Ov+lPaVwDS+kdk1CqqETl0G0eaAia/Q/h8tP0jIoK2DaSRNUHCFP3ax/i/H0jxXvEw3efvttxU1GWg21rpKTKYY6AnS84oorGlkFh3qtVKmSi7h3J/goXTpccCGRyf7ifaIBLnelOnXqaLU0+MaZaopF59mJHMbwxpYtW7JP2uD3sIDiAaSMKRZwrmdZQX4+5YILLpgdlopFKRNWTpPom76e/UNVjUcAY0KLqUdBDW655ZblkegXpXVhVE6mrJM9ynP6sUG7du2+JX8wElWMGp5z5szRvPycZ+dYsjK5hqIAV/zvf/87FKmeYCt4OmFP5QToFBCn0ET79JcsWRKp6kUNX4WHaet3dFDuw2IieIsmWAWI49yd1zZv3hzRjuCMHvfNN9+cROOUEpbbQD77A1n6w4cMGbJo586dEa1bNDEfMWLENtp9sdUplnBNrsEqQHWOZ5mTX51AQkfW9ddfv4BAzrMSMNgZlOvZDOwO/hsj70lo5mvzZawBaeSKnt4LZoOJ4C2aoPYFcFDUJaz6TSImHff555+nVK1aNaFbt25lSNG26hCR67p161zLly93szcgcdeuXQcpJKtKlSpVOUGkfvv27V1ssYpIudHIlCny4K+//ppGu6uQNR3HOUlfc5KZHg7tuDKvsqUJpldx5ml74OWXX3aff/75i/n3I2Lsb1111VUrNB8VQeR7gE2l2wibK2diHPsk3nvjjTd2XnTRRUd5MOUSOhrVHRFLSQRE/87iMgpUKFKPnQ5kPJMY9XRtffYEzsxxnhXqySCGP5PGlkkOg5eb/cwzz2ynr78ENR2q77V+cg0yeRsF6MBnRzJ1RIwsxD8QnMOZPtmWIZszduKDryK+v5RkjA1TpkwpGh4MlRnXNRXDLpFcxqXnnHPO0ttuu20LW+gzmQIz2WQzDwEM9CMEzcHZ07pkZYJGRJ6M/BRsfV2ycuXKU84999xFfPEBOAw8B+ymHcFPPfWU8zRhw047UcjmzZt3AA/rN/rsJVCZwHqq+5Fq91WrVq2W8flhsALoFzzlZfc53AqgSlUGW4AankqDnvDwL7/8Unh3akRYyxjys1hbWU2HPQ3mdXur8Z0SbuqBAcFO6J6/R0IBAlWuJXkD6yLcj4WWPcfkKCv6K7BtoE60+81TwHafg1kMUkLii2AwS8Br2C/wG4ahXRti8ve5c+cqc3k9uDGIDghGls6TCWrUqPGPCy+88A6SETS3O4UsInSrFaVzemMs0G/YsEGxDbl32g7mCLAbRuGe93F0E8SOtaZRo0Z9MOZcKIKSEss6LRDF0SkhQecOOi2vMNET1CpBfY+BWQ7rXZeM7MHkUihNLKCBmJevYwVgTqnGKpuLJIszYdYgL0Ob/9uTP9CLyKENWWz+TN/UJNlTVr98e2PgBRh9yMpqyAjQjJsaGN8IoWMFIASbpAJIT1bu3mn6bAg1UJwHyWtvZEgfc2TETEoRR7mShst9NoVKnTp1GqScTGyrUtzkLDnEzkrM+3u9evVe0MELivgRhhxHgYoC2kF14vTjOV8fdkVg1wOk2G+jQ6+x69Sc33sRCs4+O58HbAHf/QP+xt6dMaHFlLdxvKxlWsG9996rffzapBAI6nP+76daxCkCsx7Q+weGDRumvr0JDGgvsRD2trUGQ/7EL9CfSynGcjUmtJhKAZSxI5A1zynY31KoL8ND08t1nPQxz99JoKR/xfw6Abuh/PYBT3YKaXeKCDYEfcENnESem+3KNCAFONuSlcnVsQI0aNDgVc9kCw5xksuihSFP6MX5v+MnTZrkd1M+2TopZ5555jI8ih1SpliExYsXHyLev5wtdUn+2r969Wr3wIEDFQK+Aazo0ck1cccX84az3FvzRQFq1qz5+Pr16720dvDgwWupWE/wbBTkQ46A3eapJLk1zPnA69iOde7ceSX0j4D36ywfXsaUl+yE/Z/zDt2vv/76bryhn2m/Ejme44j8gO/AYTFNbyGZxoqfFoKa4fePyfsijXxRAHaojiSe71VZpoR09q6v1tm/JkmYNH4PjfgI1JqB4Cymlo9Z6tzjb7o4EbSBpzWL9x0dInlG0b4J4GBQRrROMZkhxQgETBdusn92YyQu5SVV3uvu3IitNR9ekZ0CeOfeTRzk4Pj4F6thnPCZwcrWEio6FPQEBZUu431/U1EQRQytW06EayZh3kPs50uijVPAu0GF0j3d8MEIN+gkW00FGIHz4BlZBaCA3h9++GHQa/ucGXgAHu+DDUBfoF1BN7H0+QVn/W3mgMmDWLleSRGFRSOwcw4xKm7niV/DcrgE/xDYCSwO5oVSLKNPtxsF/LV9z549mXgEs2F6JjTGtp0xocWUAs547LHHdvmrSKDvNYQxj62Ch7J87UCLTtl5BEQdvyHStXratGl7dbJ2tJ70wejmnj9//uFnn312Czl6SwjtTqMNz4A62qU1qFBvIBjJ8fFBjQLkCKYSl9FKYntLViZXX5oYqIL6LVXGB1dhQB9VxJ6wYMGC1B9//DGR7+Su2MEuCGYxtM3h5VHlwBaMHr3YRt6A+bIq810LImCNmU7iOSvYRY5cvh4WTSDMxX5DF32RiTW/n6d9PdcdZO1oqXMdqKDMdnAzuA80gRnstbiNLCDH0VJ2aKUxUqqcwyYFWTTBKEAywtiIYKo5zQL+6quv9nDf7xSuFS9fkMBC0QAs3E6///67LOSpoBqlaaOChMzLnRM58Gk5+CnfNcEmacz+uBq4nbUxJOsRDy/JWQDFGA6L47HEESd3qZ4sXhXDgnZx0hbhds+pFy4eoBxGEfA061QRDWguwt+ZHDGThbDTEXwmh1cfQNB76Iad0EnIErhGrDIoYzr2Szqft4LydATNqdNQ0rkOcAzOGP7fn/3t8X/Wkta++IknnmiIse3o4cIzO8YIuwWW6itjCEYBdqJtc7D8OyMo44I46y7r22+/TeYGPf1a9vQFJ5Fp/BjBjXqknQ8fO3bsBJIkJiDY80ePHj2Qp740WTMunrZkopDj6OinCSYdRBB1wFowrA/KmNQhEzVQhpoogF5QUQLBVEauJVAApa2VI9rmUsIldBo54qGJo44ZvAv4MJ+zEOxhFECHTmfw+QC0OyHdDeoJkwClmEmg2vRP7JXB11xzTUuUzoWCxBHEufyzzz57imG5NX78ADa4NOV1wxm8Imc3PN/iHl+go/C/5Li8f+Ljqw3GQKQ1FeI/QdPR5i/e0nAnqLvoyJvYrMFt5kAO+yFOEtEcJevXH5THl51tzfFab+Co1EO+wsjff/+9m9HiCX+M+F4LI3oqG4JNQM3Bp4Myws4Fu+dgN67C83NQeQ6iaQ+2BHWvFEuLLL6eyi533HGHz8OweXHkfs+6P/rooxotHgAD2QKtcal98vPX24qokpG9Ar69QWfyhKmzG1QCQR8MHUeuIPO3nqBXQbu9///gnEE9JbZw1113yZ7oBRYUJHA8/UwrFh+owrxb+DBG4Y9UtC/ofw4iLoDX4OjpYvQ7ygg3A74d1RHUwxgDVUS8/MEyYJG/H319zwigIWoNaDdEzX7ppZeexOLXUBsQ2J5WnwSTSyAKth0B+Rv82BDfvq6ObwsETCFpcmm5zoZOU2D21OPnHr30Yi12h5+fj/8a41N2h+wqjTCOINiOS8ZdWY4tYFwYWioF2AQes7sJQ+xlhPsxcfCApEwX8R06dNDhRKcEJIzQjxiVV+HW1gvEHr8+i5FqC9HTH6AbD2okDARuDM5NbLwNROP1m1xHvshXBXAh/J/weY1y17DcM5nPVUl/1q9Xg/jHzbC6CqMp7/de//P0u1hQkiV6qtcP+fQPw24rDNOAxhrKHEeuv0LfU8HAGp1Tb4zPZJbcjVoBrQvXWsR/gJlGN3kQBTsCiMVCDidQobaAv5yFQGX5axQwAizxCrhOtrQsR1eEqI4tYfgJyuJ6lsG9DMgZLySOOhaDSEpgCntZHDMSJh5ROtOxnn4F2BxDKAqQyHLvTwxXCggFBLluoIRvrAB4GsXw8QPy1Y8oiZ5AKUF+QxUEWwnfPmC5+p12JEAk99QUMhg5jBSAF3HJptoIyiB2DKEogAtjZTLLlPKDAwLDvzUC2M7/noxkzdoBgSWRBJaCHZPgfs9EqW2FZFnkFKFRwBTiGDFteWMoyk2W8LUKmGbK3JMuJAWA0QLOB7CdBhRRQ6MdTQEmwldDiC2oY0uDTjpYt4YKJQlLlzRkIk221+a/mW1i2kz6+1/fn1go28cIrKXlxb4p7L8NVQH2Ywh+pjd/ByqKiFyx8uXLm3ZWNisidcWxoAOxzf4NFywea1wK4Ii/LWN7grJEFAMagGKhEUqeAB+FplATA9PWrmFVdgcMfwFtR2F/BYeqAJrbJxO6lX/vFxSPZx6UkDQXGgEKkERY1NbLIHSr7CTZFk462KgONkQpTIG2Xg0jn6ZKR6Mf5ZakvwIaQGyxS+GtYjL+FoIZNnX1+3PICgDnLSQyfEiky28hctc4wEBPqJO5+g/cR5MOVuOPgkHNgX4rbf9DKsK1tWkIa7t4G6gU1FaZPYrMwgj2FXbOJXnrrbf2sfjzA1+sy/0yiA/hUACt0E147bXX/FaEmH0xhupy1M94BIA2ixi37RyAu6T4gqKG+T0C7CPOv88uYofwXeRASkGdKEB5FsCKc49PIK5wmMWytfyo4V/tDxrCogCUvpHXwY/DJ/VpC6AA8aAUIOCwlqcVm4gEbs/z3XH/kgihHbVBz4HHMTT/IospahsK6LPNFhuWjRWm3c3/diFw6xYtX1dlidvvCEDu5G6myHncsDT3piA/hEsBXAxHb7OOvcRXPWiQi4UQ+eq2RpPH/TsIcKQwCnh85f1RCRm8TUvClyuU74Bx9z1KGlD51qxZo9FJNMbBfZaQZQT6bA9JpUfIq9DK3wzQyajik1/YFADu2wkMfaQcPl8lkS6uQIjvVvm6gXmdRY65CNjvPKtQNEkaGiX+8M0i4t8uJTHFb4RP8z99ogUTDdemhlo8ClDDlwLInX7wwQel7BL+IjB0sAIVplebEsuQovU9CYqw8wY8BQ2Dd4FO/PU6vEp9mTenv//jLWOyO+4FS4MFAsQCHiHV7e9KeXwiRqL5eTLYykHlyrLA9A1DvAenvz4+8MADcvs+ABsF4ge18XKwMaHFNFDBOb919fXiSJ7kI3g270BT3oCHJ8l1r7zyitfr4JkWsthNoyF1EtjRk7gAPtchAXSBklU9AaU4xkZazdEjQCe2T0sO4dZhj14Av4MEvebC6zLQr33Ab45k6oiYGom/LeDxjcBP9doWhtDc6ihuPsWWwfEEw3gtzUoOp0x78cUXU3ny10PyGXgR6MS1PJ5zeL5pwprEG2ztTmFPQxovddpD4OsHWN8H1nFSBO7fIFLnvA7SIlUtnbeDrIHPg2AlO36SkykaE1oM7QrP+T2eDpmU9+XR7APUfDjEkEdesrZ8MRS8FRwCtgEDPgn8np+gOIcU8hbwXzmfZfg6gQS2eE/Ww+IJvERjK0w+AluaMLNkZXKNlAKonh04RGKFld+nBmGwZbEfTk9uGZOGxCBNd0a5ZPWVBSz2KMt3Oni+aX9wr7FcjQktpqaVyKHrzXCYZDVGVzZ4JPHbBQ75xAQ5GcWfkVGc212k0R0hFV5ZMTeDxlMdDIzlakxoMQ1CEteSEJqr1eSvu1lE+QQ+TryBIIotdLcMJKSe6z6xyneU7XG/04onwGpOWmPJyuSaHwoQR1LEs8QHcv2acePGKcZ/p5NGhYG2qQMedaGt7IA+VFKdvJa73Y4AVxq5jqtg+gLY0ClzE8FbNPmhAKp/RTZfjCV7hXL/gueee05xgeFOGxcEfQuOtpvCCaW/kcHzKfc3C8SDhavrOO9gIcevz4FuQCDacPzGUvZlOk/B6hflTxL7SIL3/4HBeEyOZOqImEqG0maFN/9L5MxqqxuDZyeKIVepbCiMA9xbjN1Lo1mpzC6TQxjUgHcD0DfijZxrRSzjlcxkuV5nBaAP5acyjIy3vPDCC1ssq1/xDdzdzTD9GDw9WOZU31iuxoQW02ArlXNfXRaFPmE6UB9nA9unZBMooFMvRN6+bm9DSvYGqyxdOVBxJYS+hKoFq9FavLHoCUVnMiK8BH04Q+aqZ028oUlMhVZRbg37vA1UYd4PwZCCWzA1lqsxocVUtQ8RqrA4NJpsltw5j71wevPVHPieESLvvLe34qz97Cfa6mmMqyzecq4gzbkexBUIXj0yceJEr+AVy65pPKXyvyt40Ib6sQ3lz+TACFUp2y4iiniEMwJXw/gNsF2oBViyMrkWhAJY7fsXq4db1AsCsmbcbK7cwI+PguHyEOLZJfwuO3L+KiTnr1wtFGMNodUxPOH3czDDNPY6ekXfRAqNAjBPguXAUEFBq0fYKLqaeEhOTdxunRzC+skKfnseDGrOz1sxmBvL1ZjQYpq3sBD/pz8GrvNcPBozZswxkiE+gO9pIfK2bu9y3XXXHRdblwSWLl3qZlPFUa2y5QVC2QdywrmK7kl4oUBTEmJeef7559Os+V7l8e6ffXz/K4z/A54cSgGe98LaWK7GhBZTz4LC9LkrW7wYbeepT7KBE0XTsMRlID5MGdXDUM61d999d+6UY5Xj78pTeZAAzCLKvR20jb0HqJ9WKUew5X0b27cOW+WR8p02fPjwLfw2DbwBDKvLSTnGcjUmtJhS2UhAE+bgl3ENd7HwYfWTm6cwi3DyXApUJKxKiAUP5c1mmxSI8gc8nZkErfayxLuAsrR0HYpgrmbb2BRsnaN4FEpczQY2vabwqjcN+e+B54HhNjAdydQRMS2gvhGFQRiD09n7n5bTX9kXXMdM3lE4h/n635TeOIQanM3Jm2Pvv//+P8mpO4AHksIe/n1KYuFAh10EX5bBezwo/9/pQo6qpSe+P3GHiSxhp3hObeylTMcj2UYbZkMj5QqlHdzuHyQnUzQmtBj6LzZsv9Rn6H+WITLRc41dCRLsPzjG1LCM7KIxlNYDDGZUUMyhH8uuz3B9BXyJz69ylRE2BGwNlgBNoRyEbXEhR7JRdRaCT/YUvHx73qC2H2N0MXQK7vQBw+lVwM4bLFmZXKNRAazWdGUe/og19t1KvPQEbYmio/cTrZuLPz2KG7qANa0bDa8aevXECrU6KSwOmkB5iBRLGIYHMQX7Yo8SQDzryOcsjtFN6d69+zro/gteD9YGIw6UbSzX7HfMOamRDlrKR9DTdR5Pz9WDBg3qxvk61TlI0ktIWPIuhvB9nD+wDJvhV04aVTBlJyiXUngEDBVqwaAp2ASszfsQT+eksq488ZU4zcPl2SfazcTUspu5fy9TmaYUZe/OBBWAyheQAphCtCuA1Q4N290IJV+CRd0ZY65Bz549y/y118QiYXtsYqLOLXCxt/4gOfubCDAl4lEcIC8/GcEkgTpZW0mkSjTNADWFaARIBjNBaXc5BFqeaaENxmATQsnF8VJqcCRdQ4y6+krW5NUs2SePQZsLZP9mENnbySlfuzjXQAs5CjbNB2XwiXe+wYmoAFbnSRHaIZyLyJw5mxFBZwVWJ11KO48smtyrnkYdoEBevs70S+WaSi7/IRZcMnRoJevvpTg1rDincRyWoY7gdfBUSQzFUgSJyrF4VFpnFLC3MZen5weUK4MRKJ0I4jbO7k3Eg9HagYS+FNTo4zejmd8iBieyAnh2WgP+OQdsy8sWOxJebcJJWVV5WktgJMaRgBruucrNyJLOKJOJMXqUTTD7GeI3sjdRU47SviV4hXNTQPMxGOJwQ6wogGe/teCfRmBbnurmKACmQvPaoJQhQcM4O20SiOwVZ1iP9zVaWMwIG2ex4TULWyJNAiev8Rj2RTqvZj+IMSqDdCujx3rok0A95Rrud4FRA7GoAJ6dr8ihPIJ6oIy3+gi+NlgVwZfBD9fO25J0kpf9w7SSfXAk00MaW7rT2fh5CNshhWlkBzxkN2wF9Xl3zvUA16iEWFcAT6FoGpDPLbdN9oMMhQRQfn4x0BfIYEsH08BU8BAoYR8GCwVEVAEKRQ8UVdK4B8IehzYuuYgwKnqgSAGiQgwFV4kiBSi4vo+KkosUICrEUHCVKFKAguv7qCi5SAGiQgwFV4kiBSi4vo+KkosUICrEUHCVKFKAguv7qCi5SAGiQgwFV4n/B3+aaw53d5doAAAAAElFTkSuQmCC";
-            internal static GUIContent title = new GUIContent("See1View", EditorGUIUtility.IconContent("ViewToolOrbit").image, "See1View");
-            internal static GUIContent startup = new GUIContent("See1View");
+            internal static GUIContent title = new GUIContent(titleString, EditorGUIUtility.IconContent("ViewToolOrbit").image, titleString);
+            internal static GUIContent startup = new GUIContent(titleString);
             internal static GUIContent copyright = new GUIContent("ver.2023.4\nDeveloped by Jongwoo Park\nCopyright (c) See1Studios.\nsee1studios@gmail.com");
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
@@ -6417,15 +5997,11 @@ namespace See1Studios.See1View.Editor
             {
                 public static string createMode = "모델을 생성하는 방법을 선택합니다.";
             }
-            public class Info
-            {
-                public static string assemblerInfo = "The assembler is a See1View Pro feature.\nNot implemented yet.";
-            }
         }
 
-        #endregion
+#endregion
 
-        #region GUI
+#region GUI
 
         void OnGUI_Top(Rect r)
         {
@@ -6630,7 +6206,7 @@ namespace See1Studios.See1View.Editor
                             }
 #endif
                         }
-                        menu.AddSeparator(""); 
+                        menu.AddSeparator("");
                         menu.AddItem(new GUIContent("Clear"), false, () =>
                         {
 
@@ -6653,7 +6229,7 @@ namespace See1Studios.See1View.Editor
 #if URP || HDRP
                                 int currentPickerWindow = EditorGUIUtility.GetControlID(FocusType.Passive);
                                 EditorGUIUtility.ShowObjectPicker<RenderPipelineAsset>(null, false, string.Empty, currentPickerWindow);
-#endif                                
+#endif
                             });
                         menu.AddSeparator("");
 
@@ -7646,9 +7222,11 @@ namespace See1Studios.See1View.Editor
                     case ModelCreateMode.Preview:
                         EditorGUILayout.HelpBox("GameObjects selected in the Project view are automatically created.", MessageType.None);
                         break;
+#if SEE1VIEWPLUS
                     case ModelCreateMode.Assembler:
-                        EditorGUILayout.HelpBox(GUIContents.Info.assemblerInfo, MessageType.None);
+                        modelAssembler.OnGUI();
                         break;
+#endif
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -8009,7 +7587,7 @@ namespace See1Studios.See1View.Editor
             style.alignment = TextAnchor.LowerLeft;
             style.normal.textColor = Color.white;
 
-            _sb0.Append(string.Format("{0} : {1}({2})", "RenderPipeline",  currentData.renderPipelineAsset ? currentData.renderPipelineAsset.name : string.Empty, currentData.renderPipelineMode.ToString()));
+            _sb0.Append(string.Format("{0} : {1}({2})", "RenderPipeline", currentData.renderPipelineAsset ? currentData.renderPipelineAsset.name : string.Empty, currentData.renderPipelineMode.ToString()));
             _sb0.AppendLine();
             _sb0.Append(string.Format("{0} : {1}", "ColorSpace", PlayerSettings.colorSpace.ToString()));
             _sb0.AppendLine();
@@ -8203,9 +7781,9 @@ namespace See1Studios.See1View.Editor
                 }
             }
         }
-        #endregion
+#endregion
 
-        #region Gizmos
+#region Gizmos
         void DrawWorldAxis()
         {
             Color color = Handles.color;
@@ -8267,9 +7845,9 @@ namespace See1Studios.See1View.Editor
             Handles.color = color;
         }
 
-        #endregion
+#endregion
 
-        #region Input
+#region Input
 
         void ProcessInput()
         {
@@ -8546,9 +8124,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region Utils
+#region Utils
 
         public static List<GameObject> FindAllObjectsInScene()
         {
@@ -8796,9 +8374,9 @@ namespace See1Studios.See1View.Editor
             }
         }
 
-        #endregion
+#endregion
 
-        #region Reflection
+#region Reflection
 
         private Scene GetPreviewScene()
         {
@@ -8839,7 +8417,7 @@ namespace See1Studios.See1View.Editor
             return shader;
         }
 
-        #endregion
+#endregion
 
         [MenuItem("Tools/See1Studios/See1View/Open See1View", false, 0)]
         private static void Init()

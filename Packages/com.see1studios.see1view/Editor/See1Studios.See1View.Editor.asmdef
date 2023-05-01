@@ -1,5 +1,5 @@
 {
-    "name": "See1Studios.See1View.Editor",
+    "name": "See1Studios.See1View",
     "references": [
         "Unity.Postprocessing.Runtime",
         "Unity.Postprocessing.Editor",
