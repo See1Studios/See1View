@@ -55,9 +55,333 @@ using See1Studios.See1View;
 
 namespace See1Studios.See1View
 {
+    [Serializable]
+    class AssemblerDataManager
+    {
+        private static AssemblerDataManager _instance;
+
+        public static AssemblerDataManager instance
+        {
+            get { return (_instance != null) ? _instance : Load(); }
+            set { _instance = value; }
+        }
+
+        public List<AssemblerData> dataList = new List<AssemblerData>();
+        public static TextAsset dataAsset;
+
+        public AssemblerData current
+        {
+            get { return dataList[dataIndex]; }
+        }
+
+        private int _dataIndex;
+
+        public int dataIndex
+        {
+            get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
+            set { _dataIndex = value; }
+        }
+
+        public static string[] dataNames
+        {
+            get { return instance.dataList.Select((x) => x.name).ToArray(); }
+        }
+
+        public static string path = "Assets/Editor/See1ViewData.Assembler.json";
+
+        public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view.assembler", GetProjectName().ToLower());
+        public static UnityEvent onDataChanged = new UnityEvent();
+        static bool isAddName;
+        static bool isEditName;
+        private static string inputStr;
+        public static bool _isDirty;
+
+        public bool Add(string name)
+        {
+            bool canAdd = CheckName(name);
+            while (!canAdd)
+            {
+                name += "_1";
+                canAdd = CheckName(name);
+            }
+
+            AssemblerData data = new AssemblerData(name);
+            dataList.Add(data);
+            dataIndex = dataList.Count - 1;
+            return canAdd;
+        }
+
+        public bool RemoveCurrent()
+        {
+            dataList.Remove(dataList[dataIndex]);
+            dataIndex -= 1;
+            return true;
+        }
+
+        public bool Remove(string name)
+        {
+            dataList.Remove(dataList.FirstOrDefault(x => x.name == name));
+            dataIndex -= 1;
+            return true;
+        }
+
+        public bool Remove(AssemblerData data)
+        {
+            if (dataList.Contains(data))
+            {
+                dataList.Remove(data);
+                Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static AssemblerDataManager Load()
+        {
+            _instance = new AssemblerDataManager();
+            dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+            string data = string.Empty;
+            if (dataAsset)
+            {
+                data = dataAsset.text;
+                JsonUtility.FromJsonOverwrite(data, _instance);
+                _isDirty = false;
+            }
+            else
+            {
+                _instance.Add("Default");
+                SetDirty();
+            }
+
+            //var json = EditorPrefs.GetString(key);
+            //JsonUtility.FromJsonOverwrite(json, instance);
+            //if (instance.dataList.Count == 0)
+            //{
+            //    instance.dataList.Add(new Data("Data"));
+            //    Debug.Log("There is no data. Default Data Created.");
+            //    Save();
+            //}
+            return _instance;
+        }
+
+        public static void Save()
+        {
+            var json = JsonUtility.ToJson(instance, true);
+            DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
+            if (!di.Exists) di.Create();
+            AssetDatabase.Refresh();
+            File.WriteAllText(path, json);
+            AssetDatabase.Refresh();
+            dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+            EditorPrefs.SetString(key, json);
+        }
+
+        public static void DeleteAll()
+        {
+            if (EditorPrefs.HasKey(key))
+            {
+                if (EditorUtility.DisplayDialog("Removing " + key + "?", "Are you sure you want to " + "delete the editor key " + key + "?, This action cant be undone", "Yes", "No"))
+                    EditorPrefs.DeleteKey(key);
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Could not find " + key, "Seems that " + key + " does not exists or it has been deleted already, " + "check that you have typed correctly the name of the key.", "Ok");
+            }
+        }
+
+        public static bool CheckName(string dataName)
+        {
+            if (string.IsNullOrEmpty(dataName)) return false;
+            if (_instance.dataList.Count(x => x.name == dataName) != 0) return false;
+            return true;
+        }
+
+        public static string GetProjectName()
+        {
+            string[] s = Application.dataPath.Split('/');
+            string projectName = s[s.Length - 2];
+            return projectName;
+        }
+
+        public static void SetDirty()
+        {
+            _isDirty = true;
+        }
+
+        public static void ConfirmSave()
+        {
+            if (_isDirty)
+            {
+                if (EditorUtility.DisplayDialog("", "", "", ""))
+                {
+                    Save();
+                }
+            }
+        }
+
+        public bool Duplicate()
+        {
+            AssemblerData data = current.Clone() as AssemblerData;
+            bool canDuplicate = data != null;
+            if (canDuplicate)
+            {
+                data.name += "_1";
+                canDuplicate = CheckName(data.name);
+                if (canDuplicate)
+                {
+                    dataList.Add(data);
+                    dataIndex = dataList.Count - 1;
+                    SetDirty();
+                }
+            }
+
+            return canDuplicate;
+        }
+
+        static void ResetInputState()
+        {
+            isAddName = false;
+            isEditName = false;
+            inputStr = string.Empty;
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+        }
+
+        internal static void OnManageGUI()
+        {
+            using (var check = new EditorGUI.ChangeCheckScope())
+            {
+                int idx = instance.dataIndex;
+                bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                if (isAddName || isEditName)
+                {
+                    GUI.SetNextControlName("input");
+                    inputStr = EditorGUILayout.TextField(inputStr);
+                    if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
+                    {
+                        if (CheckName(inputStr))
+                        {
+                            if (isAddName)
+                            {
+                                instance.Add(inputStr);
+                            }
+
+                            if (isEditName)
+                            {
+                                instance.current.name = inputStr;
+                            }
+                            ResetInputState();
+                        }
+                        else
+                        {
+                            ResetInputState();
+                        }
+                    }
+
+                    bool focusLost = GUI.GetNameOfFocusedControl() != "input";
+                    if (focusLost || escapePressed)
+                    {
+                        ResetInputState();
+                    }
+                }
+                else
+                {
+                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup);
+                }
+
+                if (GUILayout.Button("+", EditorStyles.toolbarButton))
+                {
+                    isAddName = true;
+                    inputStr = "New";
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                    EditorGUI.FocusTextInControl("input");
+                }
+
+                using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
+                {
+                    if (GUILayout.Button("-", EditorStyles.toolbarButton))
+                    {
+                        if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
+                        {
+                            instance.RemoveCurrent();
+                        }
+                    }
+                }
+
+                if (GUILayout.Button("=", EditorStyles.toolbarButton))
+                {
+                    isEditName = true;
+                    inputStr = instance.current.name;
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                    EditorGUI.FocusTextInControl("input");
+                }
+
+                if (check.changed)
+                {
+                    if (idx != instance.dataIndex)
+                    {
+                        onDataChanged.Invoke();
+                        Notice.Log(string.Format("Assembler Data Chaneged to {0}", instance.current.name));
+                    }
+                }
+            }
+        }
+    }
+
+
+    [Serializable]
+    public class AssemblerData : ICloneable
+    {
+        public string name;
+        public bool reframeOnChange;
+        public bool resetAnimationOnChange;
+        public GameObject Preset;
+        public List<ModelPart> PartDataList = new List<ModelPart>();
+        public List<string> PartNames = new List<string>();
+
+        public void OnEnable()
+        {
+            if (PartDataList == null)
+            {
+                PartDataList = new List<ModelPart>();
+            }
+            if (PartNames == null)
+            {
+                PartNames = new List<string>();
+            }
+        }
+        internal void SetBuiltinNames()
+        {
+            PartNames.Clear();
+            PartNames.Add("Face");
+            PartNames.Add("Hair");
+            PartNames.Add("Head");
+            PartNames.Add("Body");
+            PartNames.Add("Upper");
+            PartNames.Add("Lower");
+            PartNames.Add("Weapon_L");
+            PartNames.Add("Weapon_R");
+            PartNames.Add("Shoulder");
+            PartNames.Add("Hand");
+            PartNames.Add("Leg");
+            PartNames.Add("Foot");
+            PartNames.Add("Acc");
+        }
+
+        public AssemblerData(string name)
+        {
+            this.name = name;
+        }
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
     // base model managing
     [Serializable]
-    public class ModelGroup
+    public class ModelPart
     {
         [Serializable]
         public class AssembleOptions
@@ -86,7 +410,7 @@ namespace See1Studios.See1View
         public bool IsEditingName { get; set; }
         public bool IsExpanded { get; set; }
 
-        public ModelGroup(string name)
+        public ModelPart(string name)
         {
             enabled = new AnimBool(true);
             this.m_Name = name;
@@ -106,7 +430,7 @@ namespace See1Studios.See1View
     public class ModelAssembler
     {
         internal UnityEditorInternal.ReorderableList rol;
-        //internal List<ModelGroup> modelGroupList;
+        internal List<ModelPart> modelGroupList = new List<ModelPart>();
 
         private static string _nameBuffer = string.Empty;
 
@@ -115,14 +439,11 @@ namespace See1Studios.See1View
         //static GUIContent settingsIcon = EditorGUIUtility.IconContent("Inlined TextField Focus");
         private const string MODEL_ROOT_NAME = "Root";
 
-        public static void SetBuiltinNames()
+        //public void Init(GenericMenu.MenuFunction dataChangeHandler,
+        //    GenericMenu.MenuFunction2 targetItemHandler, GenericMenu.MenuFunction2 menuItemHandler)
+        public void Init()
         {
-        }
-
-        public void Init(List<ModelGroup> modelGroupList, GenericMenu.MenuFunction dataChangeHandler,
-            GenericMenu.MenuFunction2 targetItemHandler, GenericMenu.MenuFunction2 menuItemHandler)
-        {
-            rol = new UnityEditorInternal.ReorderableList(modelGroupList, typeof(ModelGroup));
+            rol = new UnityEditorInternal.ReorderableList(modelGroupList, typeof(ModelPart));
             rol.showDefaultBackground = false;
             //Header
             rol.headerHeight = 20;
@@ -135,7 +456,7 @@ namespace See1Studios.See1View
                 position.width = btn50;
                 if (GUI.Button(position, "Reset Names", EditorStyles.miniButton))
                 {
-                    SetBuiltinNames();
+                    AssemblerDataManager.instance.current.SetBuiltinNames();
                 }
 
                 //position.x += position.width;
@@ -449,12 +770,12 @@ namespace See1Studios.See1View
             {
                 EditorGUI.DrawRect(buttonRect, Color.green);
                 var menu = new GenericMenu();
-                menu.AddItem(new GUIContent("Add New Part"), false, menuItemHandler, new ModelGroup("New"));
+                menu.AddItem(new GUIContent("Add New Part"), false, menuItemHandler, new ModelPart("New"));
                 menu.AddSeparator("");
-                //foreach (var partName in AS_Settings.instance.currentData.PartNames)
-                //{
-                //    menu.AddItem(new GUIContent(partName), false, menuItemHandler, new ModelGroup(partName));
-                //}
+                foreach (var partName in AssemblerDataManager.instance.current.PartNames)
+                {
+                    menu.AddItem(new GUIContent(partName), false, menuItemHandler, new ModelPart(partName));
+                }
 
                 menu.ShowAsContext();
             };
@@ -479,6 +800,24 @@ namespace See1Studios.See1View
             //{
             //    //EditorGUI.DrawRect(position, Color.blue);
             //};
+        }
+
+        private void menuItemHandler(object target)
+        {
+            ModelPart pData = target as ModelPart;
+            if (pData != null)
+            {
+                AssemblerDataManager.instance.current.PartDataList.Add(pData);
+                AssemblerDataManager.SetDirty();
+            }
+        }
+
+        private void targetItemHandler(ModelPart pData)
+        {
+        }
+
+        private void dataChangeHandler()
+        {
         }
 
         public static bool Header(string title, bool isExpanded, bool enabledField)

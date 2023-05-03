@@ -1,0 +1,14 @@
+{
+    "dataList": [
+        {
+            "name": "Default",
+            "reframeOnChange": false,
+            "resetAnimationOnChange": false,
+            "Preset": {
+                "instanceID": 0
+            },
+            "PartDataList": [],
+            "PartNames": []
+        }
+    ]
+}

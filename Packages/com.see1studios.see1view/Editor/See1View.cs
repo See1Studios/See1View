@@ -818,7 +818,7 @@ where T : IEquatable<T>
     }
     //Container for all data worth saving
     [Serializable]
-    internal class Data : ICloneable
+    internal class See1ViewData : ICloneable
     {
         public string name;
         public bool reframeToTarget = true;
@@ -859,9 +859,6 @@ where T : IEquatable<T>
         public Lighting lastLighting = new Lighting();
         public List<Lighting> lightingList = new List<Lighting>();
         public List<Vector2> viewportSizes = new List<Vector2>();
-#if SEE1VIEWPLUS
-        public List<ModelGroup> modelGroupList = new List<ModelGroup>();
-#endif
         public List<Steel> steelList = new List<Steel>();
         //Model
         public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
@@ -980,7 +977,7 @@ where T : IEquatable<T>
             }
         }
 #endif
-        public Data(string name)
+        public See1ViewData(string name)
         {
             this.name = name;
         }
@@ -1092,20 +1089,20 @@ where T : IEquatable<T>
     }
     // all configuration and settings
     [Serializable]
-    class See1ViewSettings
+    class DataManager
     {
-        private static See1ViewSettings _instance;
+        private static DataManager _instance;
 
-        public static See1ViewSettings instance
+        public static DataManager instance
         {
             get { return (_instance != null) ? _instance : Load(); }
             set { _instance = value; }
         }
 
-        public List<Data> dataList = new List<Data>();
+        public List<See1ViewData> dataList = new List<See1ViewData>();
         public static TextAsset dataAsset;
 
-        public Data current
+        public See1ViewData current
         {
             get { return dataList[dataIndex]; }
         }
@@ -1123,9 +1120,9 @@ where T : IEquatable<T>
             get { return instance.dataList.Select((x) => x.name).ToArray(); }
         }
 
-        public static string path = "Assets/Editor/See1ViewSettings.json";
+        public static string path = "Assets/Editor/See1ViewData.json";
 
-        public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view.settings", GetProjectName().ToLower());
+        public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view", GetProjectName().ToLower());
         public static UnityEvent onDataChanged = new UnityEvent();
         static bool isAddName;
         static bool isEditName;
@@ -1141,7 +1138,7 @@ where T : IEquatable<T>
                 canAdd = CheckName(name);
             }
 
-            Data data = new Data(name);
+            See1ViewData data = new See1ViewData(name);
             dataList.Add(data);
             dataIndex = dataList.Count - 1;
             return canAdd;
@@ -1161,7 +1158,7 @@ where T : IEquatable<T>
             return true;
         }
 
-        public bool Remove(Data data)
+        public bool Remove(See1ViewData data)
         {
             if (dataList.Contains(data))
             {
@@ -1173,9 +1170,9 @@ where T : IEquatable<T>
             return false;
         }
 
-        private static See1ViewSettings Load()
+        private static DataManager Load()
         {
-            _instance = new See1ViewSettings();
+            _instance = new DataManager();
             dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
             string data = string.Empty;
             if (dataAsset)
@@ -1258,7 +1255,7 @@ where T : IEquatable<T>
 
         public bool Duplicate()
         {
-            Data data = current.Clone() as Data;
+            See1ViewData data = current.Clone() as See1ViewData;
             bool canDuplicate = data != null;
             if (canDuplicate)
             {
@@ -4781,14 +4778,14 @@ where T : IEquatable<T>
 
 #region Properties & Fields
         //settings shortcut (singleton)
-        private See1ViewSettings settings
+        private DataManager dataManager
         {
-            get { return See1ViewSettings.instance; }
+            get { return DataManager.instance; }
         }
         //current data shortcut
-        private Data currentData
+        private See1ViewData currentData
         {
-            get { return settings.current; }
+            get { return dataManager.current; }
         }
 
         //main objects
@@ -4804,7 +4801,7 @@ where T : IEquatable<T>
 
         Transform _lightPivot;
 #if SEE1VIEWPLUS
-        private ModelAssembler modelAssembler = new ModelAssembler();
+        private ModelAssembler _modelAssembler = new ModelAssembler();
 #endif
 
         //Animation
@@ -4973,9 +4970,12 @@ where T : IEquatable<T>
         {
             //기타 작업
             if (_popup) _popup.Close();
-            settings.current.lastLighting = GetCurrentLighting();
-            settings.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
-            See1ViewSettings.Save();
+            dataManager.current.lastLighting = GetCurrentLighting();
+            dataManager.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
+            DataManager.Save();
+#if SEE1VIEWPLUS
+            AssemblerDataManager.Save();
+#endif
             //기본 해제
             EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
             Shortcuts.Clear();
@@ -5167,7 +5167,7 @@ where T : IEquatable<T>
             });
             Shortcuts.Add(KeyCode.F4, new GUIContent("Toggle Shadow"), () =>
             {
-                settings.current.enablePlaneShadows = !settings.current.enablePlaneShadows;
+                dataManager.current.enablePlaneShadows = !dataManager.current.enablePlaneShadows;
                 ApplyModelCommandBuffers();
             });
             Shortcuts.Add(KeyCode.Escape, new GUIContent("Toggle Gizmo"), () => _gizmoMode = ~_gizmoMode);
@@ -5270,7 +5270,7 @@ where T : IEquatable<T>
                 ApplyModelCommandBuffers();
                 Repaint();
             }
-            if (isMain && settings.current.reframeToTarget) FitTargetToViewport();
+            if (isMain && dataManager.current.reframeToTarget) FitTargetToViewport();
             _recentModel.Add(_targetInfo.assetPath);
         }
 
@@ -5395,18 +5395,19 @@ where T : IEquatable<T>
             InitializePostProcess();
             onChangeRenderPipeline.AddListener(InitializePipeline);
             onChangeRenderPipeline.AddListener(InitializePostProcess);
-            See1ViewSettings.onDataChanged.AddListener(InitializePipeline);
-            See1ViewSettings.onDataChanged.AddListener(InitializePostProcess);
+            DataManager.onDataChanged.AddListener(InitializePipeline);
+            DataManager.onDataChanged.AddListener(InitializePostProcess);
 
 #if SEE1VIEWPLUS
-            //modelAssembler.Init();
+            //_modelAssembler.Init(PartChanged, TargetItemHandler, MenuItemHandler);
+            _modelAssembler.Init();
 #endif
             _prefab = currentData.lastTarget;
             AddModel(_prefab, true);
-            ApplyView(settings.current.lastView);
+            ApplyView(dataManager.current.lastView);
             ApplyBackground();
             ApplyReflectionEnvironment();
-            ApplyLighting(settings.current.lastLighting);
+            ApplyLighting(dataManager.current.lastLighting);
             _recentModel = new Recent<GameObject>(10);
             _recentModel.onClickEvent += AddModel;
             _recentAnimation = new Recent<AnimationClip>(10);
@@ -5585,7 +5586,7 @@ where T : IEquatable<T>
         private Lighting GetCurrentLighting()
         {
             var lighting = new Lighting();
-            lighting.ambientSkyColor = settings.current.ambientSkyColor;
+            lighting.ambientSkyColor = dataManager.current.ambientSkyColor;
             foreach (var light in _preview.lights)
             {
                 var info = new Lighting.LightInfo();
@@ -5639,17 +5640,41 @@ where T : IEquatable<T>
 
         //private void DataChanged()
         //{
-        //    //_list = AS_PartList.Create(settings.currentData, PartChanged, TargetItemHandler, MenuItemHandler);
-        //    //Selection.activeObject = settings.currentData;
-        //    _prefab = settings.current.lastTarget;
-        //    AddModel(_prefab, true);
-        //    InitPostProcess();
-        //    See1ViewSettings.SetDirty();
+        //    _list = AS_PartList.Create(settings.currentData, PartChanged, TargetItemHandler, MenuItemHandler);
+        //    Selection.activeObject = settings.currentData;
+        //    SetModel(true);
+        //    EditorUtility.SetDirty(settings);
         //}
 
-#endregion
+        //private void PartChanged()
+        //{
+        //    SetModel(false);
+        //    EditorUtility.SetDirty(settings.currentData);
+        //}
 
-#region CommandBuffer and Render
+        //private void TargetItemHandler(object target)
+        //{
+        //    PartData pData = target as PartData;
+        //    ShowMenu(pData.m_TargetPath, _modelRootHierachy, _modelRootHierachy, (x) =>
+        //    {
+        //        pData.m_TargetPath = (string)x;
+        //        SetModel(false);
+        //        EditorUtility.SetDirty(settings.currentData);
+        //    });
+        //}
+
+        //private void MenuItemHandler(object target)
+        //{
+        //    PartData pData = target as PartData;
+        //    if (pData != null)
+        //    {
+        //        settings.currentData.PartDataList.Add(pData);
+        //        EditorUtility.SetDirty(settings.currentData);
+        //    }
+        //}
+        #endregion
+
+        #region CommandBuffer and Render
 
         void SetGridBuffer(bool set)
         {
@@ -5881,7 +5906,7 @@ where T : IEquatable<T>
             Texture2D tex = RenderToTexture((int)currentData.imageSizeMultiplier, currentData.alphaAppliedImage);
             string baseName = _mainTarget ? _mainTarget.name : "Blank";
             string savedPath = SaveAsFile(tex, Directory.GetParent(Application.dataPath).ToString() + "/Screenshots",
-                baseName, settings.current.imageSaveMode);
+                baseName, dataManager.current.imageSaveMode);
             if (currentData.openSavedImage)
             {
                 EditorUtility.OpenWithDefaultApp(savedPath);
@@ -6055,9 +6080,9 @@ where T : IEquatable<T>
                         menu.AddItem(new GUIContent("Add Current"), false,
                             () => { AddViewportSize(_viewPortRect.size); });
                         menu.AddSeparator("");
-                        for (var i = 0; i < settings.current.viewportSizes.Count; i++)
+                        for (var i = 0; i < dataManager.current.viewportSizes.Count; i++)
                         {
-                            var size = settings.current.viewportSizes[i];
+                            var size = dataManager.current.viewportSizes[i];
                             menu.AddItem(new GUIContent(string.Format("{0}x{1}", size.x, size.y)), false,
                                 x => { ResizeWindow((Vector2)x); }, size);
                         }
@@ -6075,9 +6100,9 @@ where T : IEquatable<T>
                                     _preview.cameraFieldOfView));
                             });
                         menu.AddSeparator("");
-                        for (var i = 0; i < settings.current.viewList.Count; i++)
+                        for (var i = 0; i < dataManager.current.viewList.Count; i++)
                         {
-                            var view = settings.current.viewList[i];
+                            var view = dataManager.current.viewList[i];
                             menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), view.name)), false,
                                 x => { ApplyView(x as View); }, view);
                         }
@@ -6091,9 +6116,9 @@ where T : IEquatable<T>
                         menu.AddItem(new GUIContent("Add Current"), false,
                             () => { currentData.lightingList.Add(GetCurrentLighting()); });
                         menu.AddSeparator("");
-                        for (var i = 0; i < settings.current.lightingList.Count; i++)
+                        for (var i = 0; i < dataManager.current.lightingList.Count; i++)
                         {
-                            var lighting = settings.current.lightingList[i];
+                            var lighting = dataManager.current.lightingList[i];
                             menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), lighting.name)), false,
                                 x => { ApplyLighting(x as Lighting); }, lighting);
                         }
@@ -6211,10 +6236,10 @@ where T : IEquatable<T>
                         {
 
 #if UNITY_POST_PROCESSING_STACK_V2
-                            settings.current.profile = null;
+                            dataManager.current.profile = null;
 #endif
 #if URP || HDRP
-                            settings.current.volumeProfile = null;
+                            dataManager.current.volumeProfile = null;
 #endif
                             InitializePostProcess();
                         });
@@ -6243,7 +6268,7 @@ where T : IEquatable<T>
                                 menu.AddItem(new GUIContent(string.Format("{0}.{1}", i.ToString(), pipeline.name)), false,
                                     x =>
                                     {
-                                        settings.current.renderPipelineAsset = ((RenderPipelineAsset)x);
+                                        dataManager.current.renderPipelineAsset = ((RenderPipelineAsset)x);
                                         InitializePipeline();
                                     }, pipeline);
                             }
@@ -6252,7 +6277,7 @@ where T : IEquatable<T>
                         menu.AddSeparator("");
                         menu.AddItem(new GUIContent("Builtin"), false, () =>
                         {
-                            settings.current.renderPipelineAsset = null;
+                            dataManager.current.renderPipelineAsset = null;
                             InitializePipeline();
                         });
                         menu.ShowAsContext();
@@ -6294,14 +6319,17 @@ where T : IEquatable<T>
                         var pipeline = EditorGUIUtility.GetObjectPickerObject() as RenderPipelineAsset;
                         if (pipeline)
                         {
-                            settings.current.renderPipelineAsset = pipeline;
+                            dataManager.current.renderPipelineAsset = pipeline;
                             InitializePipeline();
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
                         }
 #endif
                     }
                     GUILayout.FlexibleSpace();
-                    See1ViewSettings.OnManageGUI();
+                    DataManager.OnManageGUI();
+#if SEE1VIEWPLUS
+                    AssemblerDataManager.OnManageGUI();
+#endif
                 }
             }
         }
@@ -6880,7 +6908,7 @@ where T : IEquatable<T>
                         var lighting = currentData.lightingList[i];
                         if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                         {
-                            lighting.ambientSkyColor = settings.current.ambientSkyColor;
+                            lighting.ambientSkyColor = dataManager.current.ambientSkyColor;
                             lighting.lightList.Clear();
                             foreach (var light in _preview.lights)
                             {
@@ -7152,10 +7180,10 @@ where T : IEquatable<T>
             EditorHelper.IconLabel(typeof(Avatar), "Model");
             EditorHelper.FoldGroup.Do("Create Mode", true, () =>
             {
-                settings.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)settings.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
+                dataManager.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)dataManager.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
                 Tooltip.Generate(GUIContents.Tooltip.createMode);
 
-                switch (settings.current.modelCreateMode)
+                switch (dataManager.current.modelCreateMode)
                 {
                     case ModelCreateMode.Default:
                         EditorGUILayout.HelpBox("Manually select the GameObject you want to create.", MessageType.None);
@@ -7224,17 +7252,13 @@ where T : IEquatable<T>
                         break;
 #if SEE1VIEWPLUS
                     case ModelCreateMode.Assembler:
-                        modelAssembler.OnGUI();
+                        _modelAssembler.OnGUI();
                         break;
 #endif
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-                using (EditorHelper.Horizontal.Do())
-                {
-                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, GUIContents.reframeToTarget, EditorStyles.miniButtonLeft);
-                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, GUIContents.recalculateBound, EditorStyles.miniButtonRight);
-                }
+
                 if (EditorGUIUtility.GetObjectPickerControlID() != 0) //어떤 object picker 가 안 열렸을 때 0
                 {
                     _tempPickedObject = EditorGUIUtility.GetObjectPickerObject() as GameObject;
@@ -7252,6 +7276,15 @@ where T : IEquatable<T>
                 }
             });
 
+            EditorHelper.FoldGroup.Do("Create Options", true, () =>
+            {
+                using (EditorHelper.Horizontal.Do())
+                {
+                    currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, GUIContents.reframeToTarget, EditorStyles.miniButtonLeft);
+                    currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, GUIContents.recalculateBound, EditorStyles.miniButtonRight);
+                }
+            });
+            
             EditorHelper.FoldGroup.Do("Recent", true, () =>
             {
                 _recentModel.OnGUI();
@@ -7470,7 +7503,7 @@ where T : IEquatable<T>
             {
                 //settings.autoLoad = GUILayout.Toggle(settings.autoLoad, "Auto Load Selection", "Button", GUILayout.Height(32));
 
-                using (new EditorGUI.DisabledScope(!EditorPrefs.HasKey(See1ViewSettings.key)))
+                using (new EditorGUI.DisabledScope(!EditorPrefs.HasKey(DataManager.key)))
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
@@ -7483,31 +7516,31 @@ where T : IEquatable<T>
                                 var json = File.ReadAllText(path);
                                 if (!string.IsNullOrEmpty(json))
                                 {
-                                    JsonUtility.FromJsonOverwrite(json, settings);
-                                    See1ViewSettings.Save();
+                                    JsonUtility.FromJsonOverwrite(json, dataManager);
+                                    DataManager.Save();
                                 }
                             }
                         }
 
                         if (GUILayout.Button("Save", EditorStyles.miniButtonMid))
                         {
-                            See1ViewSettings.Save();
+                            DataManager.Save();
                         }
 
                         if (GUILayout.Button("Delete", EditorStyles.miniButtonRight))
                         {
-                            See1ViewSettings.DeleteAll();
+                            DataManager.DeleteAll();
                         }
                     }
                 }
 
-                EditorHelper.GridLayout(settings.dataList.Count, 2, (i) =>
+                EditorHelper.GridLayout(dataManager.dataList.Count, 2, (i) =>
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
                         using (EditorHelper.LabelWidth.Do(20))
                         {
-                            var data = settings.dataList[i];
+                            var data = dataManager.dataList[i];
                             EditorGUILayout.PrefixLabel(i.ToString());
                             data.name = EditorGUILayout.TextField(data.name);
                         }
@@ -7517,13 +7550,13 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Manage View", false, () =>
             {
-                EditorHelper.GridLayout(settings.current.viewList.Count, 2, (i) =>
+                EditorHelper.GridLayout(dataManager.current.viewList.Count, 2, (i) =>
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
                         using (EditorHelper.LabelWidth.Do(20))
                         {
-                            var view = settings.current.viewList[i];
+                            var view = dataManager.current.viewList[i];
                             EditorGUILayout.PrefixLabel(i.ToString());
                             view.name = EditorGUILayout.TextField(view.name);
                         }
@@ -7532,13 +7565,13 @@ where T : IEquatable<T>
             });
             EditorHelper.FoldGroup.Do("Manage Lighting", false, () =>
             {
-                EditorHelper.GridLayout(settings.current.lightingList.Count, 2, (i) =>
+                EditorHelper.GridLayout(dataManager.current.lightingList.Count, 2, (i) =>
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
                         using (EditorHelper.LabelWidth.Do(20))
                         {
-                            var lighting = settings.current.lightingList[i];
+                            var lighting = dataManager.current.lightingList[i];
                             EditorGUILayout.PrefixLabel(i.ToString());
                             lighting.name = EditorGUILayout.TextField(lighting.name);
                         }
@@ -8108,7 +8141,7 @@ where T : IEquatable<T>
                 }
             }
 
-            settings.current.ambientSkyColor = lighting.ambientSkyColor;
+            dataManager.current.ambientSkyColor = lighting.ambientSkyColor;
             Notice.Log(message, false);
         }
 
