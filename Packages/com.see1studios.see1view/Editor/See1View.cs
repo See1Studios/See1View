@@ -1282,15 +1282,17 @@ where T : IEquatable<T>
 
         internal static void OnManageGUI()
         {
+            GUILayout.Label("View",EditorStyles.miniLabel);
             using (var check = new EditorGUI.ChangeCheckScope())
             {
                 int idx = instance.dataIndex;
                 bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
                 bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                float width = 100f;
                 if (isAddName || isEditName)
                 {
                     GUI.SetNextControlName("input");
-                    inputStr = EditorGUILayout.TextField(inputStr);
+                    inputStr = EditorGUILayout.TextField(inputStr,GUILayout.Width(width));
                     if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
                     {
                         if (CheckName(inputStr))
@@ -1320,7 +1322,7 @@ where T : IEquatable<T>
                 }
                 else
                 {
-                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup);
+                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
                 }
 
                 if (GUILayout.Button("+", EditorStyles.toolbarButton))
@@ -4823,7 +4825,7 @@ where T : IEquatable<T>
         float _deltaTime;
         double _lastTimeSinceStartup = 0f;
         const int _labelWidth = 95;
-        const int _toolbarHeight = 18;
+        const int _toolbarHeight = 21; //oldskin 18 newskin 21
         TransformTreeView _treeView;
         TreeViewState _treeViewState;
         TargetInfo _targetInfo = new TargetInfo();
@@ -6434,10 +6436,10 @@ where T : IEquatable<T>
                     _preview.BeginPreview(renderRectScaled, style);
                     using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
                     {
-                        GL.wireframe = true;
-                        _preview.DrawMesh(Grid.Get(100), Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one),
-                            _gridMaterial, 0);
-                        GL.wireframe = false;
+                        //GL.wireframe = true;
+                        //_preview.DrawMesh(Grid.Get(100), Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one),
+                        //    _gridMaterial, 0);
+                        //GL.wireframe = false;
                         _preview.Render(enableSRP, _updateFOV);
                     }
 

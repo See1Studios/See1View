@@ -249,15 +249,17 @@ namespace See1Studios.See1View
 
         internal static void OnManageGUI()
         {
+            GUILayout.Label("Assembler", EditorStyles.miniLabel);
             using (var check = new EditorGUI.ChangeCheckScope())
             {
                 int idx = instance.dataIndex;
                 bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
                 bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                float width = 100f;
                 if (isAddName || isEditName)
                 {
                     GUI.SetNextControlName("input");
-                    inputStr = EditorGUILayout.TextField(inputStr);
+                    inputStr = EditorGUILayout.TextField(inputStr, GUILayout.Width(width));
                     if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
                     {
                         if (CheckName(inputStr))
@@ -287,7 +289,7 @@ namespace See1Studios.See1View
                 }
                 else
                 {
-                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup);
+                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
                 }
 
                 if (GUILayout.Button("+", EditorStyles.toolbarButton))
