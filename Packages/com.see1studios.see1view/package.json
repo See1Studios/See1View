@@ -1,17 +1,18 @@
 {
-	"name" : "com.see1studios.see1view",
-	"version" : "0.1.0",
-	"unity": "2018.4",
-	"displayName": "See1View",
-	"description": "See1View - Unity asset viewer for look dev and additional asset creation",
-	"keywords": [
-		"lookdev",
-		"unity"
-	],
-	"readme": "See1View",
-	"repository": {
-		"type": "git",
-		"url": "git@github.cds.internal.unity3d.com:unity/com.unity.analytics.git",
-		"revision": "f067e92ace5c4e219c6d2221be78fdad5602011b"
-	}
+  "name": "com.see1studios.see1view",
+  "version": "0.1.0",
+  "unity": "2018.4",
+  "displayName": "See1View",
+  "description": "See1View - Unity asset viewer for look dev and additional asset creation",
+  "keywords": [
+    "lookdev",
+    "unity"
+  ],
+  "readme": "See1View",
+  "repository": {
+    "type": "git",
+    "url": "git@github.cds.internal.unity3d.com:unity/com.unity.analytics.git",
+    "revision": "f067e92ace5c4e219c6d2221be78fdad5602011b"
+  },
+  "type": "tool"
 }

@@ -249,82 +249,85 @@ namespace See1Studios.See1View
 
         internal static void OnManageGUI()
         {
-            GUILayout.Label("Assembler", EditorStyles.miniLabel);
-            using (var check = new EditorGUI.ChangeCheckScope())
+            using (EditorHelper.Horizontal.Do())
             {
-                int idx = instance.dataIndex;
-                bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
-                bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
-                float width = 100f;
-                if (isAddName || isEditName)
+                GUILayout.Label("Data", EditorStyles.miniLabel);
+                using (var check = new EditorGUI.ChangeCheckScope())
                 {
-                    GUI.SetNextControlName("input");
-                    inputStr = EditorGUILayout.TextField(inputStr, GUILayout.Width(width));
-                    if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
+                    int idx = instance.dataIndex;
+                    bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                    bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                    float width = 100f;
+                    if (isAddName || isEditName)
                     {
-                        if (CheckName(inputStr))
+                        GUI.SetNextControlName("input");
+                        inputStr = EditorGUILayout.TextField(inputStr, GUILayout.Width(width));
+                        if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
                         {
-                            if (isAddName)
+                            if (CheckName(inputStr))
                             {
-                                instance.Add(inputStr);
-                            }
+                                if (isAddName)
+                                {
+                                    instance.Add(inputStr);
+                                }
 
-                            if (isEditName)
-                            {
-                                instance.current.name = inputStr;
+                                if (isEditName)
+                                {
+                                    instance.current.name = inputStr;
+                                }
+                                ResetInputState();
                             }
+                            else
+                            {
+                                ResetInputState();
+                            }
+                        }
+
+                        bool focusLost = GUI.GetNameOfFocusedControl() != "input";
+                        if (focusLost || escapePressed)
+                        {
                             ResetInputState();
                         }
-                        else
+                    }
+                    else
+                    {
+                        instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
+                    }
+
+                    if (GUILayout.Button("+", EditorStyles.toolbarButton))
+                    {
+                        isAddName = true;
+                        inputStr = "New";
+                        UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        EditorGUI.FocusTextInControl("input");
+                    }
+
+                    using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
+                    {
+                        if (GUILayout.Button("-", EditorStyles.toolbarButton))
                         {
-                            ResetInputState();
+                            if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
+                            {
+                                instance.RemoveCurrent();
+                            }
                         }
                     }
 
-                    bool focusLost = GUI.GetNameOfFocusedControl() != "input";
-                    if (focusLost || escapePressed)
+                    if (GUILayout.Button("=", EditorStyles.toolbarButton))
                     {
-                        ResetInputState();
+                        isEditName = true;
+                        inputStr = instance.current.name;
+                        UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                        EditorGUI.FocusTextInControl("input");
                     }
-                }
-                else
-                {
-                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
-                }
 
-                if (GUILayout.Button("+", EditorStyles.toolbarButton))
-                {
-                    isAddName = true;
-                    inputStr = "New";
-                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                    EditorGUI.FocusTextInControl("input");
-                }
-
-                using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
-                {
-                    if (GUILayout.Button("-", EditorStyles.toolbarButton))
+                    if (check.changed)
                     {
-                        if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
+                        if (idx != instance.dataIndex)
                         {
-                            instance.RemoveCurrent();
+                            onDataChanged.Invoke();
+                            Notice.Log(string.Format("Assembler Data Chaneged to {0}", instance.current.name));
                         }
-                    }
-                }
-
-                if (GUILayout.Button("=", EditorStyles.toolbarButton))
-                {
-                    isEditName = true;
-                    inputStr = instance.current.name;
-                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                    EditorGUI.FocusTextInControl("input");
-                }
-
-                if (check.changed)
-                {
-                    if (idx != instance.dataIndex)
-                    {
-                        onDataChanged.Invoke();
-                        Notice.Log(string.Format("Assembler Data Chaneged to {0}", instance.current.name));
                     }
                 }
             }
@@ -429,7 +432,7 @@ namespace See1Studios.See1View
     }
 
     // manage and assemble multiple models. wip.
-    public class ModelAssembler
+    public class ModelAssembler : CustomLoader
     {
         internal UnityEditorInternal.ReorderableList rol;
         internal List<ModelPart> modelGroupList = new List<ModelPart>();
@@ -441,9 +444,14 @@ namespace See1Studios.See1View
         //static GUIContent settingsIcon = EditorGUIUtility.IconContent("Inlined TextField Focus");
         private const string MODEL_ROOT_NAME = "Root";
 
+        public ModelAssembler(See1View view) : base(view)
+        {
+            
+        }
+
         //public void Init(GenericMenu.MenuFunction dataChangeHandler,
         //    GenericMenu.MenuFunction2 targetItemHandler, GenericMenu.MenuFunction2 menuItemHandler)
-        public void Init()
+        public override void OnEnable()
         {
             rol = new UnityEditorInternal.ReorderableList(modelGroupList, typeof(ModelPart));
             rol.showDefaultBackground = false;
@@ -770,16 +778,7 @@ namespace See1Studios.See1View
             rol.displayRemove = true;
             rol.onAddDropdownCallback = (buttonRect, list) =>
             {
-                EditorGUI.DrawRect(buttonRect, Color.green);
-                var menu = new GenericMenu();
-                menu.AddItem(new GUIContent("Add New Part"), false, menuItemHandler, new ModelPart("New"));
-                menu.AddSeparator("");
-                foreach (var partName in AssemblerDataManager.instance.current.PartNames)
-                {
-                    menu.AddItem(new GUIContent(partName), false, menuItemHandler, new ModelPart(partName));
-                }
-
-                menu.ShowAsContext();
+                OnClickButton();
             };
             rol.onRemoveCallback = (list) =>
             {
@@ -802,6 +801,19 @@ namespace See1Studios.See1View
             //{
             //    //EditorGUI.DrawRect(position, Color.blue);
             //};
+        }
+
+        public override void OnClickButton()
+        {
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Add New Part"), false, menuItemHandler, new ModelPart("New"));
+            menu.AddSeparator("");
+            foreach (var partName in AssemblerDataManager.instance.current.PartNames)
+            {
+                menu.AddItem(new GUIContent(partName), false, menuItemHandler, new ModelPart(partName));
+            }
+
+            menu.ShowAsContext();
         }
 
         private void menuItemHandler(object target)
@@ -869,14 +881,19 @@ namespace See1Studios.See1View
             else return i;
         }
 
-        internal void OnGUI()
+        public override void OnGUI()
         {
+            AssemblerDataManager.OnManageGUI();
             EditorGUILayout.HelpBox("Work in progress", MessageType.Info);
             if (rol != null)
             {
                 rol.DoLayoutList();
             }
         }
-    }
 
+        public override void OnDisable()
+        {
+            AssemblerDataManager.Save();
+        }
+    }
 }
