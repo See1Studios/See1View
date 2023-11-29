@@ -13,7 +13,7 @@
             "alphaAppliedImage": true,
             "imageSizeMultiplier": 3,
             "cameraType": 1,
-            "viewportMultiplier": 2,
+            "viewportMultiplier": 1,
             "wireLineColor": {
                 "r": 1.0,
                 "g": 1.0,
@@ -49,7 +49,7 @@
             "urpData": {
                 "renderPostProcessing": true,
                 "dithering": true,
-                "antialiasing": 0
+                "antialiasing": 1
             },
             "hdrpData": {
                 "renderPostProcessing": true,
@@ -57,9 +57,9 @@
                 "antialiasing": 0
             },
             "bgColor": {
-                "r": 0.3215686082839966,
-                "g": 0.3215686082839966,
-                "b": 0.3215686082839966,
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
                 "a": 1.0
             },
             "ambientSkyColor": {
@@ -72,14 +72,14 @@
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": 166.00914001464845,
-                    "y": 9.364461898803711
+                    "x": 89.53324890136719,
+                    "y": 0.6807055473327637
                 },
-                "distance": 2.489023208618164,
+                "distance": 2.489022731781006,
                 "pivot": {
                     "x": 1.1920928955078126e-7,
-                    "y": 0.6330089569091797,
-                    "z": -0.21189892292022706
+                    "y": 0.6330088376998901,
+                    "z": -0.21189895272254945
                 },
                 "fieldOfView": 30.0
             },
@@ -112,10 +112,10 @@
                             "y": 0.0
                         },
                         "rotation": {
-                            "x": -0.9323148727416992,
-                            "y": 0.03214016556739807,
-                            "z": 0.3162141740322113,
-                            "w": 0.1725243479013443
+                            "x": 0.3162142038345337,
+                            "y": -0.1725243479013443,
+                            "z": 0.9323148727416992,
+                            "w": 0.032140158116817477
                         },
                         "lightColor": {
                             "r": 0.2800000011920929,
@@ -142,9 +142,9 @@
             "_lastTarget": {
                 "instanceID": 0
             },
-            "cubemapPath": "",
-            "profilePath": "",
-            "renderPipelinePath": ""
+            "cubemapPath": "Assets/Common/CasualDay4K.tga",
+            "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
+            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
         },
         {
             "name": "-_-",

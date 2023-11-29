@@ -43,7 +43,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using Codice.Client.Common;
 using static See1Studios.See1View.DataManager;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -1709,7 +1708,7 @@ where T : IEquatable<T>
         public int imageSizeMultiplier = 1;
         //Render
         public CameraType cameraType = CameraType.Game;
-        public int viewportMultiplier = 2;
+        public float renderScale = 2;
         public Color wireLineColor = Color.white;
         public Color wireFillColor = Color.black;
         public float wireThickness = 0.1f;
@@ -1720,6 +1719,7 @@ where T : IEquatable<T>
         public bool enableHeightFog = true;
         public float heightFogHeight = 1;
         public bool enableShadows = true;
+        public float shadowStrength = 1f;
         public float shadowBias = 0.01f;
 
         public bool enablePostProcess = true;
@@ -5708,7 +5708,7 @@ where T : IEquatable<T>
         GameObject _prefab;
         GameObject _tempPickedObject;
         GameObject _mainTarget;
-
+        public GameObject MainTarget => _mainTarget;
         Dictionary<GameObject, GameObject> _targetDic = new Dictionary<GameObject, GameObject>(); //멀티오브젝트 검사용
 
         //GameObject _shadowGo; //Hacky ShadowCaster
@@ -5812,6 +5812,7 @@ where T : IEquatable<T>
         bool _autoRotateLight;
         int _cameraAutoRotationSpeed;
         int _lightAutoRotationSpeed;
+        int _lightRotationIndex;
 
 #if URP
         UniversalAdditionalCameraData _urpCamera;
@@ -6139,13 +6140,13 @@ where T : IEquatable<T>
         //                //_fade.target = false;
         //            }
         //        }
-        void AddModel(GameObject src)
+        public void AddModel(GameObject src)
         {
             AddModel(src, true);
         }
 
         //메인오브젝트 이외에 하이어라키를 열어 강제로 오브젝트를 추가할 용도.
-        void AddModel(GameObject src, bool isMain = true)
+        public void AddModel(GameObject src, bool isMain = true)
         {
             if (!src) return;
             if (src.GetType() != typeof(GameObject)) return;
@@ -6159,14 +6160,12 @@ where T : IEquatable<T>
                 }
                 _targetDic.Clear();
             }
-            var instance = PrefabUtility.InstantiateAttachedAsset(src) as GameObject;
+            var instance = PrefabUtility.InstantiatePrefab(src) as GameObject;
             _targetDic.Add(src, instance);
             if (isMain) _mainTarget = instance;
             if (instance != null)
             {
-#if UNITY_2017
-                PrefabUtility.DisconnectPrefabInstance(instance); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
-#endif
+                PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
                 instance.name = src.name;
                 SetFlagsAll(instance, HideFlags.HideAndDontSave);
                 SetLayerAll(instance, _previewLayer);
@@ -6186,7 +6185,7 @@ where T : IEquatable<T>
             _recentModel.Add(_targetInfo.assetPath);
         }
 
-        void RemoveModel(GameObject instance)
+        public void RemoveModel(GameObject instance)
         {
             string name = instance.name;
             if (!_targetDic.ContainsValue(instance)) return;
@@ -6756,8 +6755,8 @@ where T : IEquatable<T>
 
         Texture2D RenderToTexture(int multiplyer = 1, bool alpha = false)
         {
-            int w = (int)_viewPortRect.size.x * multiplyer * currentData.viewportMultiplier;
-            int h = (int)_viewPortRect.size.y * multiplyer * currentData.viewportMultiplier;
+            int w = (int)_viewPortRect.size.x * multiplyer;
+            int h = (int)_viewPortRect.size.y * multiplyer;
             _preview.BeginPreview(new Rect(_viewPortRect.position, new Vector2(w, h)), GUIStyle.none);
             bool enableSRP = currentData.renderPipelineMode != RenderPipelineMode.BuiltIn;
             using (new RenderPipelineOverrider(currentData.renderPipelineAsset))
@@ -6788,8 +6787,7 @@ where T : IEquatable<T>
             }
 
             Texture tex = _preview.EndPreview();
-            RenderTexture temp = RenderTexture.GetTemporary(w / currentData.viewportMultiplier,
-                h / currentData.viewportMultiplier, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+            RenderTexture temp = RenderTexture.GetTemporary(w ,                h , 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
             GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
             Graphics.Blit(tex, temp);
             GL.sRGBWrite = false;
@@ -7325,7 +7323,7 @@ where T : IEquatable<T>
             if (Event.current.type != EventType.Repaint) return;
             if (r.size.x < 0 || r.size.y < 0) return;
             if (!_preview.camera.gameObject.activeInHierarchy) return;
-            Rect renderRectScaled = new Rect(r.position, r.size * currentData.viewportMultiplier);
+            Rect renderRectScaled = new Rect(r.position, r.size);
             GUIStyle style = GUIStyle.none;
             bool enableSRP = currentData.renderPipelineMode != RenderPipelineMode.BuiltIn;
             using (new RenderPipelineOverrider(currentData.renderPipelineAsset))
@@ -7681,47 +7679,30 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Environment", true, () =>
             {
-                using (EditorHelper.Horizontal.Do())
-                {
-                    EditorGUILayout.PrefixLabel("Background");
-                    using (var check = new EditorGUI.ChangeCheckScope())
-                    {
-                        bool isSky = (currentData.clearFlag == ClearFlags.Sky);
-                        isSky = !GUILayout.Toggle(!isSky, "Color", EditorStyles.miniButtonLeft);
-                        isSky = GUILayout.Toggle(isSky, "Environment", EditorStyles.miniButtonRight);
-                        if (check.changed)
-                        {
-                            currentData.clearFlag = isSky ? ClearFlags.Sky : ClearFlags.Color;
-
-                        }
-                    }
-                }
-
-                if (currentData.clearFlag == ClearFlags.Sky)
-                {
-                    using (new EditorGUI.DisabledGroupScope(true))
-                    {
-                        EditorGUILayout.ObjectField("Material", _skyMaterial, typeof(Material), false);
-                    }
-
-                    _preview.camera.clearFlags = CameraClearFlags.Skybox;
-                }
-                else
+                using (var check = new EditorGUI.ChangeCheckScope())
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
-                        currentData.bgColor =     EditorGUILayout.ColorField(new GUIContent("Color"), currentData.bgColor, false, false, false);
+                        EditorGUILayout.PrefixLabel("Background");
+                        bool isSky = (currentData.clearFlag == ClearFlags.Sky);
+                        isSky = !GUILayout.Toggle(!isSky, "Color", EditorStyles.miniButtonLeft);
+                        isSky = GUILayout.Toggle(isSky, "Environment", EditorStyles.miniButtonRight);
+                        currentData.clearFlag = isSky ? ClearFlags.Sky : ClearFlags.Color;
+                    }
+                    currentData.bgColor = EditorGUILayout.ColorField(new GUIContent("Color"), currentData.bgColor, false, false, false);
+                    _skyMaterial = (Material)EditorGUILayout.ObjectField("Sky Material", _skyMaterial, typeof(Material), false);
+
+                    currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
+                    currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
+                    if (check.changed)
+                    {
                         _preview.camera.backgroundColor = currentData.bgColor;
                         _preview.camera.clearFlags = CameraClearFlags.SolidColor;
+                        _preview.camera.clearFlags = CameraClearFlags.Skybox;
+                        ApplyBackground();
+                        ApplyReflectionEnvironment();
                     }
                 }
-
-                currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
-                currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
-
-                ApplyBackground();
-                ApplyReflectionEnvironment();
-
             });
 
             EditorHelper.FoldGroup.Do("Lighting", true, () =>
@@ -7730,10 +7711,9 @@ where T : IEquatable<T>
                 {
                     using (EditorHelper.LabelWidth.Do(80))
                     {
-                        _preview.ambientColor = currentData.ambientSkyColor =
-                            EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, false, false, true);
+                        _preview.ambientColor = currentData.ambientSkyColor = EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, false, false, true);
                     }
-
+                    _lightRotationIndex = GUILayout.Toggle(_lightRotationIndex==0, "Rotate MainLight Only",EditorStyles.miniButtonLeft) ? 0 : 1;
                     for (var i = 0; i < _preview.lights.Length; i++)
                     {
                         var previewLight = _preview.lights[i];
@@ -7742,31 +7722,16 @@ where T : IEquatable<T>
                             using (EditorHelper.LabelWidth.Do(40))
                             {
                                 GUILayout.Label(string.Format("Light{0}", i.ToString()), EditorStyles.miniLabel);
-                                previewLight.color = EditorGUILayout.ColorField(new GUIContent(""),
-                                    previewLight.color, true, true, false, GUILayout.Width(50));
+                                previewLight.color = EditorGUILayout.ColorField(new GUIContent(""), previewLight.color, true, true, false, GUILayout.Width(50));
                                 previewLight.intensity = EditorGUILayout.Slider("", previewLight.intensity, 0, 2);
                                 EditorGUIUtility.labelWidth = _labelWidth;
                             }
 
                             if (lightCheck.changed)
                             {
-                                previewLight.shadows =
-                                    currentData.enableShadows ? LightShadows.Soft : LightShadows.None;
-                                previewLight.shadowBias = currentData.shadowBias;
+
                             }
                         }
-                    }
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        currentData.enableShadows =
-                            GUILayout.Toggle(currentData.enableShadows, "Shadow", EditorStyles.miniButton,
-                                GUILayout.Width(80));
-
-                        EditorGUIUtility.labelWidth = 40;
-                        currentData.shadowBias = EditorGUILayout.Slider(currentData.shadowBias, 0, 1);
-                        Tooltip.Generate("Bias");
-                        EditorGUIUtility.labelWidth = _labelWidth;
                     }
 
                     using (EditorHelper.Horizontal.Do())
@@ -7833,10 +7798,27 @@ where T : IEquatable<T>
                     });
                 }
             });
-
+            EditorHelper.FoldGroup.Do("Shadow", true, () =>
+            {
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    currentData.enableShadows = GUILayout.Toggle(currentData.enableShadows, "Enable Shadow", EditorStyles.miniButton);
+                    currentData.shadowStrength = EditorGUILayout.Slider("Stregth", currentData.shadowStrength, 0f, 1f);
+                    currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0f, 1f);
+                    if (check.changed)
+                    {
+                        for (var i = 0; i < _preview.lights.Length; i++)
+                        {
+                            var previewLight = _preview.lights[i];
+                            previewLight.shadows = currentData.enableShadows ? LightShadows.Soft : LightShadows.None;
+                            previewLight.shadowStrength = currentData.shadowStrength;
+                            previewLight.shadowBias = currentData.shadowBias;
+                        }
+                    }
+                }
+            });
             EditorHelper.FoldGroup.Do("Render", true, () =>
             {
-                currentData.viewportMultiplier = GUILayout.Toggle((currentData.viewportMultiplier == 2), "Enable Viewport Supersampling", EditorStyles.miniButton) ? 2 : 1;
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
                     currentData.cameraType = (CameraType)EditorGUILayout.EnumPopup(GUIContents.cameraType.text, currentData.cameraType);
@@ -7856,35 +7838,20 @@ where T : IEquatable<T>
                         Debug.Log("Pipeline Asset Chaned");
                     }
                 }
-#if URP
-                if (currentData.renderPipelineMode == RenderPipelineMode.Universal)
-                {
-                    GUILayout.Label("Universal Render Pipeline", EditorStyles.boldLabel);
-                    EditorGUILayout.HelpBox("Universal Render Pipeline Render Mode is work in progress.", MessageType.Warning);
-                    currentData.urpData.antialiasing = EditorGUILayout.IntPopup(currentData.urpData.antialiasing, Enum.GetNames(typeof(AntialiasingMode)), (int[])Enum.GetValues(typeof(AntialiasingMode)), EditorStyles.miniButton);
-                    _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
-                    _urpCamera.dithering = currentData.urpData.dithering = GUILayout.Toggle(currentData.urpData.dithering, "Enable Dithering", EditorStyles.miniButton);
-                }
-#endif
-#if HDRP
-                if (currentData.renderPipelineMode == RenderPipelineMode.HighDefinition)
-                {
-                    GUILayout.Label("High Definition Render Pipeline", EditorStyles.miniBoldLabel);
-                    EditorGUILayout.HelpBox("Not Implemented Yet", MessageType.Error);
-                    currentData.hdrpData.antialiasing = EditorGUILayout.IntPopup(currentData.hdrpData.antialiasing, Enum.GetNames(typeof(HDAdditionalCameraData.AntialiasingMode)), (int[])Enum.GetValues(typeof(HDAdditionalCameraData.AntialiasingMode)), EditorStyles.miniButton);
-                    _hdrpCamera.antialiasing = (HDAdditionalCameraData.AntialiasingMode)currentData.hdrpData.antialiasing;
-                    _hdrpCamera.dithering = currentData.hdrpData.dithering = GUILayout.Toggle(currentData.hdrpData.dithering, "Enable Dithering", EditorStyles.miniButton);
-                }
-#endif
 
-                if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+
+
+                
+            });
+            // Builtin Pipeline Only Menu
+            if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+            {
+                EditorHelper.FoldGroup.Do("Builtin RP", true, () =>
                 {
-                    GUILayout.Label("Builtin Render Features", EditorStyles.boldLabel);
                     bool wireFrameEnabled = _wireFrameEnabled;
                     bool colorEnabled = _colorEnabled;
                     bool heightFogEnabled = currentData.enableHeightFog;
                     bool shadowEnabled = currentData.enablePlaneShadows;
-
                     using (EditorHelper.Horizontal.Do())
                     {
                         _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton,
@@ -7927,8 +7894,102 @@ where T : IEquatable<T>
                     {
                         ApplyModelCommandBuffers();
                     }
-                }
-            });
+
+                    using (var check = new EditorGUI.ChangeCheckScope())
+                    {
+                        using (EditorHelper.LabelWidth.Do(60))
+                        {
+                            using (EditorHelper.Horizontal.Do())
+                            {
+                                replaceMentShader = (Shader)EditorGUILayout.ObjectField("Shader", replaceMentShader,
+                                    typeof(Shader), false);
+                                if (GUILayout.Button("Clear", EditorStyles.miniButton, GUILayout.Width(40)))
+                                {
+                                    replaceMentShader = null;
+                                    _preview.camera.ResetReplacementShader();
+                                }
+                            }
+                        }
+
+                        if (check.changed)
+                        {
+                            if (replaceMentShader)
+                            {
+                                _preview.camera.SetReplacementShader(replaceMentShader, "");
+
+                            }
+                            else
+                            {
+                                _preview.camera.ResetReplacementShader();
+                            }
+                        }
+                    }
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (var check = new EditorGUI.ChangeCheckScope())
+                        {
+                            _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton,
+                                GUILayout.Width(80));
+                            if (check.changed)
+                            {
+                                //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
+                                SetGridBuffer(_gridEnabled);
+                            }
+                        }
+
+                        _gridColor = EditorGUILayout.ColorField(_gridColor);
+                    }
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (var check = new EditorGUI.ChangeCheckScope())
+                        {
+                            _viewMode = (ViewMode)GUILayout.Toolbar((int)_viewMode, Enum.GetNames(typeof(ViewMode)),
+                                EditorStyles.miniButton);
+                            if (check.changed)
+                            {
+                                ApplyCameraCommandBuffers();
+                            }
+                        }
+                    }
+                    _screenSeparate = EditorGUILayout.Slider("Separate", _screenSeparate, 0, 1);
+                });
+            }
+#if URP
+            if (currentData.renderPipelineMode == RenderPipelineMode.Universal)
+            {
+                EditorHelper.FoldGroup.Do("Universal RP", true, () =>
+                {
+                    using (var check = new EditorGUI.ChangeCheckScope())
+                    {
+                        currentData.renderScale = EditorGUILayout.Slider("Render Scale", currentData.renderScale, 0f, 2f);
+                        currentData.urpData.antialiasing = EditorGUILayout.IntPopup(currentData.urpData.antialiasing, Enum.GetNames(typeof(AntialiasingMode)), (int[])Enum.GetValues(typeof(AntialiasingMode)), EditorStyles.miniButton);
+                        currentData.urpData.dithering = GUILayout.Toggle(currentData.urpData.dithering, "Enable Dithering", EditorStyles.miniButton);
+                        if (check.changed)
+                        {
+                            UniversalRenderPipelineAsset urpPipelineAsset = currentData.renderPipelineAsset as UniversalRenderPipelineAsset;
+                            urpPipelineAsset.renderScale = currentData.renderScale;
+                            _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
+                            _urpCamera.dithering = currentData.urpData.dithering;
+                        }
+                    }
+                });
+            }
+#endif
+#if HDRP
+            if (currentData.renderPipelineMode == RenderPipelineMode.HighDefinition)
+            {
+                EditorHelper.FoldGroup.Do("HDRP", true, () =>
+                {
+                    GUILayout.Label("High Definition Render Pipeline", EditorStyles.miniBoldLabel);
+                    EditorGUILayout.HelpBox("Not Implemented Yet", MessageType.Error);
+                    currentData.hdrpData.antialiasing = EditorGUILayout.IntPopup(currentData.hdrpData.antialiasing, Enum.GetNames(typeof(HDAdditionalCameraData.AntialiasingMode)), (int[])Enum.GetValues(typeof(HDAdditionalCameraData.AntialiasingMode)), EditorStyles.miniButton);
+                    _hdrpCamera.antialiasing = (HDAdditionalCameraData.AntialiasingMode)currentData.hdrpData.antialiasing;
+                    _hdrpCamera.dithering = currentData.hdrpData.dithering = GUILayout.Toggle(currentData.hdrpData.dithering, "Enable Dithering", EditorStyles.miniButton);
+                });
+            }
+#endif          
 
             EditorHelper.FoldGroup.Do("Post Process", true, () =>
             {
@@ -7963,77 +8024,7 @@ where T : IEquatable<T>
                     }
                 }
             });
-            if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
-            {
-                EditorHelper.FoldGroup.Do("Shader Replacement", true, () =>
-                {
-                    using (var check = new EditorGUI.ChangeCheckScope())
-                    {
-                        using (EditorHelper.LabelWidth.Do(60))
-                        {
-                            using (EditorHelper.Horizontal.Do())
-                            {
-                                replaceMentShader = (Shader)EditorGUILayout.ObjectField("Shader", replaceMentShader,
-                                    typeof(Shader), false);
-                                if (GUILayout.Button("Clear", EditorStyles.miniButton, GUILayout.Width(40)))
-                                {
-                                    replaceMentShader = null;
-                                    _preview.camera.ResetReplacementShader();
-                                }
-                            }
-                        }
 
-                        if (check.changed)
-                        {
-                            if (replaceMentShader)
-                            {
-                                _preview.camera.SetReplacementShader(replaceMentShader, "");
-
-                            }
-                            else
-                            {
-                                _preview.camera.ResetReplacementShader();
-                            }
-                        }
-                    }
-                });
-
-                EditorHelper.FoldGroup.Do("View Mode", true, () =>
-                {
-
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (var check = new EditorGUI.ChangeCheckScope())
-                        {
-                            _gridEnabled = GUILayout.Toggle(_gridEnabled, "Grid", EditorStyles.miniButton,
-                                GUILayout.Width(80));
-                            if (check.changed)
-                            {
-                                //_gridSize = EditorGUILayout.IntSlider(_gridSize, 0, 100);
-                                SetGridBuffer(_gridEnabled);
-                            }
-                        }
-
-                        _gridColor = EditorGUILayout.ColorField(_gridColor);
-                    }
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (var check = new EditorGUI.ChangeCheckScope())
-                        {
-                            _viewMode = (ViewMode)GUILayout.Toolbar((int)_viewMode, Enum.GetNames(typeof(ViewMode)),
-                                EditorStyles.miniButton);
-                            if (check.changed)
-                            {
-                                ApplyCameraCommandBuffers();
-                            }
-                        }
-                    }
-
-                    _screenSeparate = EditorGUILayout.Slider("Separate", _screenSeparate, 0, 1);
-                });
-            }
             EditorHelper.FoldGroup.Do("Gizmos", true, () =>
             {
                 using (EditorHelper.Horizontal.Do())
@@ -8220,17 +8211,30 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Materials", true, () =>
             {
-                using (new EditorGUI.DisabledGroupScope(true))
+                using (EditorHelper.LabelWidth.Do(80))
                 {
-                    foreach (var mat in _targetInfo.materials)
+                    foreach (var renderer in _targetInfo.renderers)
                     {
-                        EditorGUILayout.ObjectField("", mat, typeof(Material), false);
+                        for (int i = 0; i < renderer.sharedMaterials.Length; i++)
+                        {
+                            Material mat = renderer.sharedMaterials[i];
+                            using(var check = new EditorGUI.ChangeCheckScope())
+                            {
+                                var material = (Material)EditorGUILayout.ObjectField(renderer.name, mat, typeof(Material), false);
+                                if (check.changed)
+                                {
+#if UNITY_2022_2_OR_NEWER
+                                    List<Material> newMaterialList = renderer.sharedMaterials.ToList();
+                                    newMaterialList[i] = material;
+                                    renderer.SetSharedMaterials(newMaterialList);
+#endif
+                                }
+                            }
+                        }
                     }
                 }
             });
-
         }
-
 
         void OnGUI_Animation()
         {
@@ -8572,10 +8576,7 @@ where T : IEquatable<T>
             {
                 if (Event.current.type == EventType.Repaint)
                 {
-                    Rect gizmoRect = (currentData.viewportMultiplier > 1)
-                        ? r
-                        : new RectOffset((int)(r.x / currentData.viewportMultiplier), 0, 0, 0)
-                            .Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
+                    Rect gizmoRect = new RectOffset((int)(r.x / currentData.renderScale), 0, 0, 0).Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
 
                     //Rect gizmoRect = (settings.viewportMultiplier > 1) ? r : _rs.center;
                     //EditorGUI.DrawRect(gizmoRect, Color.red * 0.5f);
@@ -8712,7 +8713,7 @@ where T : IEquatable<T>
                 }
             }
         }
-        #endregion
+#endregion
 
         #region Gizmos
         void DrawWorldAxis()
@@ -8794,7 +8795,6 @@ where T : IEquatable<T>
             var isScrolling = evt.type == EventType.ScrollWheel && inputEnabledArea.Contains(evt.mousePosition);
             var isLDoubleClicked = evt.isMouse && evt.type == EventType.MouseDown && evt.button == 0 && evt.clickCount == 2 && inputEnabledArea.Contains(evt.mousePosition);
             var isRDoubleClicked = evt.isMouse && evt.type == EventType.MouseDown && evt.button == 1 && evt.clickCount == 2 && inputEnabledArea.Contains(evt.mousePosition);
-
             if (evt.type == EventType.MouseDown)
             {
                 GUI.FocusControl(null); //Text Field Defocus
@@ -8821,7 +8821,6 @@ where T : IEquatable<T>
             zoom *= currentData.zoomSpeed;
             UpdateCamera(axis0, axis2, zoom);
             UpdateLight(axis1);
-
             //Keybord Shortcut
             if (_shortcutEnabled && evt.isKey && evt.type == EventType.KeyDown && !EditorGUIUtility.editingTextField)
             {
@@ -8914,7 +8913,7 @@ where T : IEquatable<T>
         void UpdateLight(Vector2 axis)
         {
             var angle = new Vector3(axis.y, -axis.x, 0) * currentData.rotSpeed;
-            for (int i = 0; i < _preview.lights.Length; i++)
+            for (int i = 0; i < _lightRotationIndex + 1; i++)
             {
                 var lightTr = _preview.lights[i].transform;
                 lightTr.Rotate(angle, Space.World);
@@ -9004,6 +9003,7 @@ where T : IEquatable<T>
         {
             _probe.customBakedTexture = currentData.cubeMap;
             currentData.CubeMapMipMapBias = currentData.CubeMapMipMapBias;
+            DynamicGI.UpdateEnvironment();
         }
 
         private void ApplyBackground()
