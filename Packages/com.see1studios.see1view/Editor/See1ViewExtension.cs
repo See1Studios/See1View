@@ -170,9 +170,7 @@ namespace See1Studios.See1View
             var json = JsonUtility.ToJson(instance, true);
             DirectoryInfo di = new DirectoryInfo(Application.dataPath.Replace("Assets", "") + Path.GetDirectoryName(path));
             if (!di.Exists) di.Create();
-            AssetDatabase.Refresh();
             File.WriteAllText(path, json);
-            AssetDatabase.Refresh();
             dataAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
             EditorPrefs.SetString(key, json);
         }

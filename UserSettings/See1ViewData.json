@@ -11,9 +11,9 @@
             "imageSaveMode": 0,
             "openSavedImage": true,
             "alphaAppliedImage": true,
-            "imageSizeMultiplier": 3,
+            "imageSizeMultiplier": 1,
             "cameraType": 1,
-            "viewportMultiplier": 1,
+            "renderScale": 2.0,
             "wireLineColor": {
                 "r": 1.0,
                 "g": 1.0,
@@ -44,6 +44,7 @@
             "enableHeightFog": true,
             "heightFogHeight": 1.0,
             "enableShadows": true,
+            "shadowStrength": 1.0,
             "shadowBias": 0.009999999776482582,
             "enablePostProcess": true,
             "urpData": {
@@ -57,9 +58,9 @@
                 "antialiasing": 0
             },
             "bgColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
+                "r": 0.28301888704299929,
+                "g": 0.28301888704299929,
+                "b": 0.28301888704299929,
                 "a": 1.0
             },
             "ambientSkyColor": {
@@ -68,22 +69,51 @@
                 "b": 0.5,
                 "a": 1.0
             },
-            "clearFlag": 0,
+            "clearFlag": 1,
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": 89.53324890136719,
-                    "y": 0.6807055473327637
+                    "x": 197.59371948242188,
+                    "y": -2.0692477226257326
                 },
-                "distance": 2.489022731781006,
+                "distance": 8.539994239807129,
                 "pivot": {
-                    "x": 1.1920928955078126e-7,
-                    "y": 0.6330088376998901,
-                    "z": -0.21189895272254945
+                    "x": 5.960464477539063e-8,
+                    "y": 0.0,
+                    "z": -1.1920928955078126e-7
                 },
                 "fieldOfView": 30.0
             },
-            "viewList": [],
+            "viewList": [
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 158.8896942138672,
+                        "y": 10.194765090942383
+                    },
+                    "distance": 3.612171173095703,
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.8849430084228516,
+                        "z": 0.010344117879867554
+                    },
+                    "fieldOfView": 30.0
+                },
+                {
+                    "name": "",
+                    "rotation": {
+                        "x": 228.3514404296875,
+                        "y": 18.445663452148439
+                    },
+                    "distance": 3.612171173095703,
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.8849430084228516,
+                        "z": 0.010344117879867554
+                    },
+                    "fieldOfView": 30.0
+                }
+            ],
             "lastLighting": {
                 "name": "",
                 "lightList": [
@@ -134,17 +164,77 @@
                 },
                 "cubemapPath": ""
             },
-            "lightingList": [],
-            "viewportSizes": [],
+            "lightingList": [
+                {
+                    "name": "",
+                    "lightList": [
+                        {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": {
+                                "x": 0.0038054976612329485,
+                                "y": -0.9622244834899902,
+                                "z": -0.025030959397554399,
+                                "w": -0.27107754349708559
+                            },
+                            "lightColor": {
+                                "r": 1.0,
+                                "g": 1.0,
+                                "b": 1.0,
+                                "a": 1.0
+                            },
+                            "intensity": 1.0
+                        },
+                        {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": {
+                                "x": 0.05300047621130943,
+                                "y": -0.19685325026512147,
+                                "z": 0.9786185622215271,
+                                "w": -0.027304373681545259
+                            },
+                            "lightColor": {
+                                "r": 0.0,
+                                "g": 0.0,
+                                "b": 0.0,
+                                "a": 1.0
+                            },
+                            "intensity": 0.0
+                        }
+                    ],
+                    "ambientSkyColor": {
+                        "r": 0.5,
+                        "g": 0.5,
+                        "b": 0.5,
+                        "a": 1.0
+                    },
+                    "cubemapPath": ""
+                }
+            ],
+            "viewportSizes": [
+                {
+                    "x": 1024.0,
+                    "y": 1024.0
+                },
+                {
+                    "x": 2560.0,
+                    "y": 1440.0
+                }
+            ],
             "steelList": [],
             "modelCreateMode": 0,
             "lastTargetPath": "",
             "_lastTarget": {
                 "instanceID": 0
             },
-            "cubemapPath": "Assets/Common/CasualDay4K.tga",
+            "cubemapPath": "",
             "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
-            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
+            "renderPipelinePath": "Assets/See1ViewURP.asset"
         },
         {
             "name": "-_-",
@@ -159,7 +249,7 @@
             "alphaAppliedImage": true,
             "imageSizeMultiplier": 1,
             "cameraType": 1,
-            "viewportMultiplier": 2,
+            "renderScale": 0.0,
             "wireLineColor": {
                 "r": 1.0,
                 "g": 1.0,
@@ -190,6 +280,7 @@
             "enableHeightFog": true,
             "heightFogHeight": 1.0,
             "enableShadows": true,
+            "shadowStrength": 0.0,
             "shadowBias": 0.009999999776482582,
             "enablePostProcess": true,
             "urpData": {

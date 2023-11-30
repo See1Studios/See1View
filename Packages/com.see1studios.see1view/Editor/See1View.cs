@@ -25,10 +25,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.AnimatedValues;
 using UnityEditor.IMGUI.Controls;
@@ -43,10 +45,7 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using static See1Studios.See1View.DataManager;
-using System.Globalization;
-using System.Text.RegularExpressions;
-using static See1Studios.See1View.See1View;
+using System.Runtime.InteropServices.ComTypes;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -115,44 +114,86 @@ namespace See1Studios.See1View
     #region Classes //-----------------------------------------------------------------------------------------------------------------------------------------------
 
     [InitializeOnLoad]
+    public static class Config
+    {
+        [System.Serializable]
+        class ConfigData
+        {
+            public string title;
+            public string logoTexStr;
+            public string description;
+            public string help;
+        }
+        public const string MENU_PATH = "Tools/See1Studios/See1View/Open See1View";
+
+        public static string title = "See1View";
+        public static string logoTexStr = "";
+        public static string description = "Copyright (c) See1Studios.\nsee1studios@gmail.com";
+        public static string help = "No Help Document";
+        public static Texture2D logoTexture = Texture2D.grayTexture;
+
+        static Config()
+        {
+            string cfgPath = PathHelper.ScriptPath.Replace(".cs", ".cfg");
+            if(File.Exists(cfgPath))
+            {
+                string json = File.ReadAllText(cfgPath);
+                ConfigData data = JsonUtility.FromJson<ConfigData>(json);
+                Config.title = data.title;
+                Config.logoTexStr = data.logoTexStr;
+                Config.description = data.description;
+                Config.logoTexture = ConvertBase64ToTexture(data.logoTexStr);
+                Config.help = data.help;
+            }
+        }
+
+        public static Texture2D ConvertBase64ToTexture(string base64)
+        {
+            byte[] bytes = System.Convert.FromBase64String(base64);
+            var tex = new Texture2D(1, 1);
+            tex.LoadImage(bytes);
+            return tex;
+        }
+    }
+
+    [InitializeOnLoad]
     public static class Initializer
     {
-        public const string MENU_PATH = "Tools/See1Studios/See1View/Open See1View";
-        public const string TITLE_STR = "See1View";
-        public const string LOGO_TEXTURE_STR = "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";
-        public const string DESCRIPTION_STR = "ver.2023.4\nDeveloped by Jongwoo Park\nCopyright (c) See1Studios.\nsee1studios@gmail.com";
-
         static Initializer()
         {
-            var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup);
-            var define = defines.Split(';').ToList();
-            bool isExtensionExists = File.Exists(ScriptPath.Replace(".cs", "Extension.cs"));
-            if (isExtensionExists)
-            {
-                // Add Define Symbol
-                if (!define.Contains("SEE1VIEWPLUS"))
-                {
-                    defines += ";SEE1VIEWPLUS";
-                    Debug.Log("Define Added");
-                }
-                Debug.Log("Extension Initialized");
-            }
-            else
-            {
-                //Remove Define Symbol
-                if (define.Contains("SEE1VIEWPLUS"))
-                {
-                    //defines.Replace(";SEE1VIEWPLUS", "");
-                    defines = string.Empty;
-                    Debug.Log("Define Removed");
-                }
-                Debug.Log("There is no Extension");
-            }
+            //var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup);
+            //var define = defines.Split(';').ToList();
+            //bool isExtensionExists = File.Exists(PathHelper.ScriptPath.Replace(".cs", "Extension.cs"));
+            //if (isExtensionExists)
+            //{
+            //    // Add Define Symbol
+            //    if (!define.Contains("SEE1VIEWPLUS"))
+            //    {
+            //        defines += ";SEE1VIEWPLUS";
+            //        Debug.Log("Define Added");
+            //    }
+            //    Debug.Log("Extension Initialized");
+            //}
+            //else
+            //{
+            //    //Remove Define Symbol
+            //    if (define.Contains("SEE1VIEWPLUS"))
+            //    {
+            //        //defines.Replace(";SEE1VIEWPLUS", "");
+            //        defines = string.Empty;
+            //        Debug.Log("Define Removed");
+            //    }
+            //    Debug.Log("There is no Extension");
+            //}
 
-            // Write Define Symbol
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup, defines);
-            Debug.Log(defines);           
+            //// Write Define Symbol
+            //PlayerSettings.SetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup, defines);
+            //Debug.Log(defines);
         }
+    }
+
+    public static class PathHelper
+    {
         public static string ScriptPath
         {
             get
@@ -518,835 +559,174 @@ where T : IEquatable<T>
             return unityEditorWindowType;
         }
     }
-    public static class INIParser
+
+
+
+    // .Ini file Parser Author: Tristan 'Kennyist' Cunningham - www.tristanjc.com License: Creative commons ShareAlike 3.0 - https://creativecommons.org/licenses/by-sa/3.0/
+    public class INIParser
     {
-        private static object _lock = new object();
 
-        private static string FilePath { get; set; }
+        private ArrayList keys = new ArrayList();
+        private ArrayList vals = new ArrayList();
+        private ArrayList comments = new ArrayList();
 
-        private static string Data { get; set; }
+        public INIParser() { }
 
-        private static bool _autoFlush;
-
-        private static Dictionary<string, Dictionary<string, string>> _sections =
-            new Dictionary<string, Dictionary<string, string>>();
-
-        private static Dictionary<string, Dictionary<string, string>> _modified =
-            new Dictionary<string, Dictionary<string, string>>();
-
-        private static bool _cacheModified;
-
-        /// <summary>
-        /// Open INI file using path
-        /// </summary>
-        /// <param name="path">The path of the INI file</param>
-        /// <param name="autoFlush">Automatically flush changes to file after updating file</param>
-        /// <returns>True if opened / created INI file correctly</returns>
-        public static bool OpenFile(string path, bool autoFlush = false)
+        public INIParser(string file)
         {
-            // Check if path is valid
-            if (string.IsNullOrEmpty(path) || string.IsNullOrWhiteSpace(path))
-            {
-                return false;
-            }
-
-            _autoFlush = _autoFlush;
-
-            FilePath = path;
-
-            if (File.Exists(FilePath))
-            {
-                Data = File.ReadAllText(FilePath);
-            }
-            else
-            {
-                // If file doesn't exist, create one
-                File.Create(FilePath).Close();
-                Data = "";
-            }
-
-            Refresh();
-            return true;
+            Load(file);
         }
 
-        /// <summary>
-        /// Open INI file by TextAsset (All changes are saved to local storage)
-        /// </summary>
-        /// <param name="textAsset"></param>
-        /// <param name="autoFlush">Automatically flush changes to file after updating file</param>
-        public static bool OpenFile(TextAsset textAsset, bool autoFlush = false)
+        public bool DoesExist(string file)
         {
-            // Check if the TextAsset is valid
-            if (textAsset == null)
-            {
-                return false;
-            }
-
-            _autoFlush = _autoFlush;
-
-            FilePath = Application.persistentDataPath + textAsset.name;
-
-            // Find the TextAsset in the local storage first
-            Data = File.Exists(FilePath) ? File.ReadAllText(FilePath) : textAsset.text;
-            Refresh();
-            return true;
+            return File.Exists(Application.dataPath + "/" + file + ".ini") ? true : false;
         }
 
-        /// <summary>
-        /// Close current INI file and save changes
-        /// </summary>
-        public static void Close()
+        public void Set(string key, string val)
         {
-            lock (_lock)
+            for (int i = 0; i < keys.Count; i++)
             {
-                FlushData();
-
-                //Clean up memory
-                FilePath = null;
-                Data = null;
-                _autoFlush = false;
-            }
-        }
-
-        /// <summary>
-        /// Get section name
-        /// </summary>
-        /// <param name="line">line to check</param>
-        /// <returns>Section name</returns>
-        private static string ParseSectionName(string line)
-        {
-            if (!line.StartsWith("[")) return null;
-            if (!line.EndsWith("]")) return null;
-            if (line.Length < 3) return null;
-            return line.Substring(1, line.Length - 2);
-        }
-
-        /// <summary>
-        /// Check if current line has a key and value
-        /// </summary>
-        /// <param name="line">Line to check</param>
-        /// <param name="key">Key to look for</param>
-        /// <param name="value">Value to look for</param>
-        /// <returns>True if line contains Key and Value</returns>
-        private static bool ParseKeyValuePair(string line, ref string key, ref string value)
-        {
-            // Check for Key and Value pair
-            int i;
-            if ((i = line.IndexOf('=')) <= 0)
-            {
-                return false;
-            }
-
-            int j = line.Length - i - 1;
-            key = line.Substring(0, i).Trim();
-            if (key.Length <= 0)
-            {
-                return false;
-            }
-
-            value = j > 0 ? line.Substring(i + 1, j).Trim() : "";
-            return true;
-        }
-
-        /// <summary>
-        /// Check if current line is a comment
-        /// </summary>
-        /// <param name="line">Line to check</param>
-        /// <returns>True if line is a comment</returns>
-        private static bool IsComment(string line)
-        {
-            string tmpKey = null;
-            string tmpValue = null;
-            if (ParseSectionName(line) != null) return false;
-            if (ParseKeyValuePair(line, ref tmpKey, ref tmpValue)) return false;
-            return true;
-        }
-
-        /// <summary>
-        /// Reads file into cache
-        /// </summary>
-        private static void Refresh()
-        {
-            lock (_lock)
-            {
-                StringReader stringReader = null;
-                try
+                if (keys[i] == key)
                 {
-                    // Clear local cache
-                    _sections.Clear();
-                    _modified.Clear();
-
-                    // Set up string reader with INI file data
-                    stringReader = new StringReader(Data);
-
-                    // Read INI file content
-                    Dictionary<string, string> currentSection = null;
-                    string line;
-                    string key = null;
-                    string value = null;
-                    while ((line = stringReader.ReadLine()) != null)
-                    {
-                        line = line.Trim();
-
-                        // Check if line is a section name
-                        string sectionName = ParseSectionName(line);
-                        if (sectionName != null)
-                        {
-                            if (_sections.ContainsKey(sectionName))
-                            {
-                                currentSection = null;
-                            }
-                            else
-                            {
-                                currentSection = new Dictionary<string, string>();
-                                _sections.Add(sectionName, currentSection);
-                            }
-                        }
-                        else if (currentSection != null)
-                        {
-                            // Check for key and value on current line
-                            if (!ParseKeyValuePair(line, ref key, ref value))
-                            {
-                                continue;
-                            }
-
-                            // Check if key has already been found, if not, add to dictionary
-                            if (!currentSection.ContainsKey(key))
-                            {
-                                currentSection.Add(key, value);
-                            }
-                        }
-                    }
-                }
-                finally
-                {
-                    // Close file
-                    stringReader?.Close();
+                    vals[i] = val;
+                    return;
                 }
             }
+
+            keys.Add(key);
+            vals.Add(val);
+            comments.Add("");
         }
 
-        private static void FlushData()
+        public void Set(string key, string val, string comment)
         {
-            // If local cache has not been modified, there is no need to Flush
-            if (!_cacheModified)
+            for (int i = 0; i < keys.Count; i++)
             {
-                return;
+                if (keys[i] == key)
+                {
+                    vals[i] = val;
+                    comments[i] = comment;
+                    return;
+                }
             }
 
-            _cacheModified = false;
-
-            // Copy content of original Data to temporary string, replace modified values
-            StringWriter stringWriter = new StringWriter();
-
-            try
-            {
-                Dictionary<string, string> currentSection = null;
-                Dictionary<string, string> currentSection2 = null;
-                StringReader stringReader = null;
-                try
-                {
-                    // Open original INI file
-                    stringReader = new StringReader(Data);
-
-                    // Read the file original content, replace changes with local cache values
-                    string key = null;
-                    string value = null;
-                    bool reading = true;
-                    bool deleted = false;
-                    string key2 = null;
-                    string value2 = null;
-
-                    while (reading)
-                    {
-                        var line = stringReader.ReadLine();
-                        reading = line != null;
-
-                        // Check for end of data
-                        string sectionName;
-                        bool unmodified;
-                        if (reading)
-                        {
-                            unmodified = true;
-                            line = line.Trim();
-                            sectionName = ParseSectionName(line);
-                        }
-                        else
-                        {
-                            unmodified = false;
-                            sectionName = null;
-                        }
-
-                        // Check for section names
-                        if (sectionName != null || !reading)
-                        {
-                            if (currentSection != null)
-                            {
-                                // Write all remaining modified values before leaving a section
-                                if (currentSection.Count > 0)
-                                {
-                                    var sbTemp = stringWriter.GetStringBuilder();
-                                    while ((sbTemp[sbTemp.Length - 1] == '\n') || (sbTemp[sbTemp.Length - 1] == '\r'))
-                                    {
-                                        sbTemp.Length -= 1;
-                                    }
-
-                                    stringWriter.WriteLine();
-
-                                    foreach (var fkey in currentSection.Keys.Where(fkey =>
-                                        currentSection.TryGetValue(fkey, out value)))
-                                    {
-                                        stringWriter.Write(fkey);
-                                        stringWriter.Write('=');
-                                        stringWriter.WriteLine(value);
-                                    }
-
-                                    stringWriter.WriteLine();
-                                    currentSection.Clear();
-                                }
-                            }
-
-                            if (reading)
-                            {
-                                // Check if current section is in local modified cache
-                                if (!_modified.TryGetValue(sectionName, out currentSection))
-                                {
-                                    currentSection = null;
-                                }
-                            }
-                        }
-                        else if (currentSection != null)
-                        {
-                            // Check for Key and Value on current line
-                            if (ParseKeyValuePair(line, ref key, ref value))
-                            {
-                                if (currentSection.TryGetValue(key, out value))
-                                {
-                                    // Write modified value to temporary file
-                                    unmodified = false;
-                                    currentSection.Remove(key);
-
-                                    stringWriter.Write(key);
-                                    stringWriter.Write('=');
-                                    stringWriter.WriteLine(value);
-                                }
-                            }
-                        }
-
-                        // Check if the section/key in current line has been deleted
-                        if (unmodified)
-                        {
-                            if (sectionName != null)
-                            {
-                                if (!_sections.ContainsKey(sectionName))
-                                {
-                                    deleted = true;
-                                    currentSection2 = null;
-                                }
-                                else
-                                {
-                                    deleted = false;
-                                    _sections.TryGetValue(sectionName, out currentSection2);
-                                }
-                            }
-                            else if (currentSection2 != null)
-                            {
-                                if (ParseKeyValuePair(line, ref key2, ref value2))
-                                {
-                                    deleted = !currentSection2.ContainsKey(key2);
-                                }
-                            }
-                        }
-
-
-                        // Write unmodified lines from the original iniString
-                        if (!unmodified)
-                        {
-                            continue;
-                        }
-
-                        if (IsComment(line)) stringWriter.WriteLine(line);
-                        else if (!deleted) stringWriter.WriteLine(line);
-                    }
-
-                    // Close string reader
-                    stringReader.Close();
-                    stringReader = null;
-                }
-                finally
-                {
-                    // Close string reader                 
-                    stringReader?.Close();
-                }
-
-                // Cycle on all remaining modified values
-                foreach (KeyValuePair<string, Dictionary<string, string>> sectionPair in _modified)
-                {
-                    currentSection = sectionPair.Value;
-                    if (currentSection.Count <= 0)
-                    {
-                        continue;
-                    }
-
-                    stringWriter.WriteLine();
-
-                    // Write the section name
-                    stringWriter.Write('[');
-                    stringWriter.Write(sectionPair.Key);
-                    stringWriter.WriteLine(']');
-
-                    // Cycle on all key+value pairs in the section
-                    foreach (KeyValuePair<string, string> valuePair in currentSection)
-                    {
-                        // Write the key and value pair
-                        stringWriter.Write(valuePair.Key);
-                        stringWriter.Write('=');
-                        stringWriter.WriteLine(valuePair.Value);
-                    }
-
-                    currentSection.Clear();
-                }
-
-                _modified.Clear();
-
-                // Set Data to result
-                Data = stringWriter.ToString();
-                stringWriter.Close();
-                stringWriter = null;
-
-                // Write Data to file
-                if (FilePath != null)
-                {
-                    File.WriteAllText(FilePath, Data);
-                }
-            }
-            finally
-            {
-                // Close writer                 
-                stringWriter?.Close();
-            }
+            keys.Add(key);
+            vals.Add(val);
+            comments.Add(comment);
         }
 
-        /// <summary>
-        /// Check if section exists in INI file
-        /// </summary>
-        /// <param name="sectionName">Name of section</param>
-        /// <returns>True if section exists</returns>
-        public static bool SectionExist(string sectionName)
+        public string Get(string key)
         {
-            return _sections.ContainsKey(sectionName);
-        }
-
-        /// <summary>
-        /// Check if key exists in a section
-        /// </summary>
-        /// <param name="sectionName">Section to check for key</param>
-        /// <param name="key">Key to check</param>
-        /// <returns>True if key exists</returns>
-        public static bool KeyExist(string sectionName, string key)
-        {
-            if (!_sections.ContainsKey(sectionName))
+            for (int i = 0; i < keys.Count; i++)
             {
-                return false;
-            }
-
-            _sections.TryGetValue(sectionName, out var section);
-
-            // If the key exists
-            return section != null && section.ContainsKey(key);
-        }
-
-        /// <summary>
-        /// Delete a section
-        /// </summary>
-        /// <param name="sectionName">Section to delete</param>
-        public static void SectionDelete(string sectionName)
-        {
-            if (!SectionExist(sectionName))
-            {
-                return;
-            }
-
-            lock (_lock)
-            {
-                _cacheModified = true;
-                _sections.Remove(sectionName);
-
-                _modified.Remove(sectionName);
-
-                if (_autoFlush)
+                if (keys[i].Equals(key))
                 {
-                    FlushData();
+                    return vals[i].ToString();
                 }
             }
+            return "";
         }
 
-        /// <summary>
-        /// Delete a key
-        /// </summary>
-        /// <param name="sectionName">Section to check for key</param>
-        /// <param name="key">Key to delete</param>
-        public static void KeyDelete(string sectionName, string key)
+        public string[] GetLine(string key)
         {
-            if (!KeyExist(sectionName, key))
+            string[] list = new string[2];
+
+            for (int i = 0; i < keys.Count; i++)
             {
-                return;
-            }
-
-            lock (_lock)
-            {
-                _cacheModified = true;
-                _sections.TryGetValue(sectionName, out var section);
-                if (section != null)
+                if (keys[i].Equals(key))
                 {
-                    section.Remove(key);
-
-                    if (_modified.TryGetValue(sectionName, out section)) section.Remove(sectionName);
-                }
-
-                if (_autoFlush)
-                {
-                    FlushData();
+                    list[0] = keys[i].ToString();
+                    list[1] = vals[i].ToString();
+                    list[2] = comments[i].ToString();
+                    return list;
                 }
             }
+
+            return list;
         }
 
-        /// <summary>
-        /// Encodes byte array to string
-        /// </summary>
-        /// <param name="value">Value to encode</param>
-        /// <returns>Returns encoded byte value as string</returns>
-        private static string EncodeByteArray(byte[] value)
+        public void Remove(string key)
         {
-            if (value == null)
+            for (int i = 0; i < keys.Count; i++)
             {
-                return null;
-            }
-
-            var stringBuilder = new StringBuilder();
-            foreach (byte b in value)
-            {
-                string hex = Convert.ToString(b, 16);
-                int l = hex.Length;
-                if (l > 2)
+                if (keys[i] == key)
                 {
-                    stringBuilder.Append(hex.Substring(l - 2, 2));
+                    keys.RemoveAt(i);
+                    vals.RemoveAt(i);
+                    comments.RemoveAt(i);
+                    return;
+                }
+            }
+            Debug.LogWarning("Key not found");
+        }
+
+        public void Save(string file)
+        {
+            StreamWriter wr = new StreamWriter(Application.dataPath + "/" + file + ".ini");
+
+            for (int i = 0; i < keys.Count; i++)
+            {
+                if (comments[i].Equals(""))
+                {
+                    wr.WriteLine(keys[i] + "=" + vals[i]);
                 }
                 else
                 {
-                    if (l < 2) stringBuilder.Append("0");
-                    stringBuilder.Append(hex);
+                    wr.WriteLine(keys[i] + "=" + vals[i] + " //" + comments[i]);
                 }
             }
 
-            return stringBuilder.ToString();
+            wr.Close();
+
+            Debug.Log(file + ".ini Saved");
         }
 
-        /// <summary>
-        /// Decode a byte array from value
-        /// </summary>
-        /// <param name="value">Value to decode</param>
-        /// <returns>Byte value decoded from string</returns>
-        private static byte[] DecodeByteArray(string value)
+        public void Load(string file)
         {
-            if (value == null) return null;
+            keys = new ArrayList();
+            vals = new ArrayList();
+            comments = new ArrayList();
 
-            int l = value.Length;
-            if (l < 2) return new byte[] { };
+            string line = "";
+            int offset = 0, comment = 0;
 
-            l /= 2;
-            byte[] result = new byte[l];
-            for (int i = 0; i < l; i++) result[i] = Convert.ToByte(value.Substring(i * 2, 2), 16);
-            return result;
-        }
-
-        /// <summary>
-        /// Setter for string type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, string value)
-        {
-            lock (_lock)
-            {
-                _cacheModified = true;
-
-                // Check if the section exists
-                if (!_sections.TryGetValue(sectionName, out var section))
-                {
-                    // If section doesn't exist, add it
-                    section = new Dictionary<string, string>();
-                    _sections.Add(sectionName, section);
-                }
-
-                // Modify the value
-                if (section.ContainsKey(key)) section.Remove(key);
-                section.Add(key, value);
-
-                if (!_modified.TryGetValue(sectionName, out section))
-                {
-                    section = new Dictionary<string, string>();
-                    _modified.Add(sectionName, section);
-                }
-
-                if (section.ContainsKey(key)) section.Remove(key);
-                section.Add(key, value);
-
-                if (_autoFlush)
-                {
-                    FlushData();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Getter for string type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static string GetValue(string sectionName, string key, string defaultValue)
-        {
-            lock (_lock)
-            {
-                // If section doesnt exist, return default value
-                if (!_sections.TryGetValue(sectionName, out var section))
-                {
-                    return defaultValue;
-                }
-
-                // Returns default value or value if key exists
-                return !section.TryGetValue(key, out var value) ? defaultValue : value;
-            }
-        }
-
-        /// <summary>
-        /// Setter for bool type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, bool value)
-        {
-            SetValue(sectionName, key, value ? "1" : "0");
-        }
-
-
-        /// <summary>
-        /// Getter for bool type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static bool GetValue(string sectionName, string key, bool defaultValue)
-        {
-            string stringValue = GetValue(sectionName, key,
-                defaultValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            if (int.TryParse(stringValue, out var value)) return value != 0;
-            return defaultValue;
-        }
-
-        /// <summary>
-        /// Setter for int type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, int value)
-        {
-            SetValue(sectionName, key, value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        /// <summary>
-        /// Getter for int type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static int GetValue(string sectionName, string key, int defaultValue)
-        {
-            string stringValue = GetValue(sectionName, key, defaultValue.ToString(CultureInfo.InvariantCulture));
-            return int.TryParse(stringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var value)
-                ? value
-                : defaultValue;
-        }
-
-        /// <summary>
-        /// Setter for long type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, long value)
-        {
-            SetValue(sectionName, key, value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        /// <summary>
-        /// Getter for long type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static long GetValue(string sectionName, string key, long defaultValue)
-        {
-            string stringValue = GetValue(sectionName, key, defaultValue.ToString(CultureInfo.InvariantCulture));
-            return long.TryParse(stringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var value)
-                ? value
-                : defaultValue;
-        }
-
-        /// <summary>
-        /// Setter for double type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, double value)
-        {
-            SetValue(sectionName, key, value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        /// <summary>
-        /// Getter for double type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static double GetValue(string sectionName, string key, double defaultValue)
-        {
-            string stringValue = GetValue(sectionName, key, defaultValue.ToString(CultureInfo.InvariantCulture));
-            return double.TryParse(stringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var value)
-                ? value
-                : defaultValue;
-        }
-
-        /// <summary>
-        /// Setter for byte type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, byte[] value)
-        {
-            SetValue(sectionName, key, EncodeByteArray(value));
-        }
-
-        /// <summary>
-        /// Getter for byte type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static byte[] GetValue(string sectionName, string key, byte[] defaultValue)
-        {
-            string stringValue = GetValue(sectionName, key, EncodeByteArray(defaultValue));
             try
             {
-                return DecodeByteArray(stringValue);
-            }
-            catch (FormatException)
-            {
-                return defaultValue;
-            }
-        }
-
-        /// <summary>
-        /// Setter for DateTime type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue(string sectionName, string key, DateTime value)
-        {
-            SetValue(sectionName, key, value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        /// <summary>
-        /// Getter for DateTime type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <returns>Returns value</returns>
-        public static DateTime GetValue(string sectionName, string key, DateTime defaultValue)
-        {
-            string stringValue = GetValue(sectionName, key, defaultValue.ToString(CultureInfo.InvariantCulture));
-            return DateTime.TryParse(stringValue, CultureInfo.InvariantCulture,
-                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.NoCurrentDateDefault | DateTimeStyles.AssumeLocal,
-                out var value)
-                ? value
-                : defaultValue;
-        }
-
-        private static string Separator { get; } = ",";
-
-        /// <summary>
-        /// Setter for IEnuberable type
-        /// </summary>
-        /// <param name="sectionName">Section to check</param>
-        /// <param name="key">Key to write too</param>
-        /// <param name="value">Value to write</param>
-        public static void SetValue<T>(string sectionName, string key, IEnumerable<T> value)
-        {
-            string stringValue = "";
-            var enumerable = value.ToList();
-            for (int i = 0; i < enumerable.Count; i++)
-            {
-                if (i == 0)
+                using (StreamReader sr = new StreamReader(file))
                 {
-                    stringValue += enumerable[i].ToString();
-                    continue;
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        offset = line.IndexOf("=");
+                        comment = line.IndexOf("//");
+                        if (offset > 0)
+                        {
+                            if (comment != -1)
+                            {
+                                Set(line.Substring(0, offset), line.Substring(offset + 1, (comment - (offset + 1))), line.Substring(comment + 1));
+                            }
+                            else
+                            {
+                                Set(line.Substring(0, offset), line.Substring(offset + 1));
+                            }
+                        }
+                    }
+                    sr.Close();
+                    Debug.Log(file + " Loaded");
                 }
-
-                stringValue += Separator + enumerable[i].ToString();
             }
-
-            SetValue(sectionName, key, stringValue);
+            catch (IOException e)
+            {
+                Debug.Log("Error opening " + file + ".ini");
+                Debug.LogWarning(e);
+            }
         }
 
-        /// <summary>
-        /// Getter for IEnumerable type
-        /// </summary>
-        /// <param name="sectionName">Section to read from</param>
-        /// <param name="key">Key to read from</param>
-        /// <param name="defaultValue">Default value, if section / key doesn't exist</param>
-        /// <param name="removeWhitespace">Remove whitespace, makes it easier to detect the separators</param>
-        /// <returns>Returns value</returns>
-        public static IEnumerable<string> GetValue<T>(string sectionName, string key, IEnumerable<T> defaultValue,
-            bool removeWhitespace = true)
+        public int Count()
         {
-            string defaultString = "";
-            defaultString =
-                defaultValue.Aggregate(defaultString, (current, index) => current + (Separator + index.ToString()));
-
-            string stringValue = GetValue(sectionName, key, defaultString);
-
-            if (string.IsNullOrEmpty(stringValue))
-            {
-                return defaultString.Split(Separator.ToCharArray());
-            }
-
-            if (removeWhitespace)
-            {
-                Regex.Replace(stringValue, @"\s+", "");
-            }
-
-            return stringValue.Split(Separator.ToCharArray());
+            return keys.Count;
         }
     }
-    public class CubeTextBuilder
-    {
 
-
-    }
     public class Shaders
     {
         private static Shader _heightFog;
@@ -5705,7 +5085,7 @@ where T : IEquatable<T>
 
         //main objects
         PreviewRenderUtility _preview;
-        GameObject _prefab;
+        GameObject _tempObj;
         GameObject _tempPickedObject;
         GameObject _mainTarget;
         public GameObject MainTarget => _mainTarget;
@@ -5994,6 +5374,7 @@ where T : IEquatable<T>
                                     helpEnabled.target = false;
                                 }
                                 EditorGUI.DrawRect(helpRect, Color.black * 0.5f);
+                                EditorGUI.DropShadowLabel(helpRect, GUIContents.help, Styles.centeredMiniLabel);
                             }
                             //EditorGUI.DrawRect(logoRect, Color.red * 0.5f);
                             //EditorGUI.DrawRect(titleRect, Color.green * 0.5f);
@@ -6008,8 +5389,8 @@ where T : IEquatable<T>
         {
             if (!(currentData.modelCreateMode == ModelCreateMode.Preview)) return;
             if (Validate(Selection.activeGameObject) == false) return;
-            _prefab = Selection.activeGameObject;
-            AddModel(_prefab, true);
+            _tempObj = Selection.activeGameObject;
+            AddModel(_tempObj, true);
         }
 
         void OnOpenNewScene(Scene scene, NewSceneSetup setup, NewSceneMode mode)
@@ -6149,9 +5530,11 @@ where T : IEquatable<T>
         public void AddModel(GameObject src, bool isMain = true)
         {
             if (!src) return;
+            // 게임오브젝트가 아니면 패스
             if (src.GetType() != typeof(GameObject)) return;
+            // 이미 서브모델에 포함된 모델이면 패스
             if (_targetDic.ContainsKey(src)) return;
-
+            // 메인모델이면 서브모델들도 청소합니다.
             if (isMain)
             {
                 foreach (var target in _targetDic)
@@ -6160,29 +5543,43 @@ where T : IEquatable<T>
                 }
                 _targetDic.Clear();
             }
-            var instance = PrefabUtility.InstantiatePrefab(src) as GameObject;
-            _targetDic.Add(src, instance);
-            if (isMain) _mainTarget = instance;
+            // 소스를 인스턴스화
+            bool isPrefab = PrefabUtility.IsPartOfAnyPrefab(src);
+            GameObject instance = null;
+            if(isPrefab)
+            {
+                // 소스가 프리팹이면 여기에서 적절하게 처리.
+                instance = PrefabUtility.InstantiatePrefab(src) as GameObject;
+                PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction); 
+            }
+            else
+            {
+                // 아니면 그냥 인스턴티에이트
+                instance = GameObject.Instantiate(src);
+            }
+            // 인스턴스화가 성공적이면 실제로 씬에 투입하기 위한 준비를 해요
             if (instance != null)
             {
-                PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
+                _targetDic.Add(src, instance);                
+                if (isMain)
+                {
+                    // 메인모델인 경우 적절하게 처리
+                    _mainTarget = instance;
+                    if (dataManager.current.reframeToTarget) FitTargetToViewport();
+                }
                 instance.name = src.name;
                 SetFlagsAll(instance, HideFlags.HideAndDontSave);
                 SetLayerAll(instance, _previewLayer);
                 _preview.AddSingleGO(instance);
-                _targetInfo.Init(instance);
-                if (_treeView != null)
-                {
-                    _treeView.Reload();
-                }
-
-                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? src.name : _targetInfo.assetPath, false);
+                _targetInfo.Init(src);
+                _treeView?.Reload();
                 InitAnimation(_mainTarget, true);
                 ApplyModelCommandBuffers();
+                // 마무리
                 Repaint();
+                _recentModel.Add(_targetInfo.assetPath);
+                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? src.name : _targetInfo.assetPath, false);
             }
-            if (isMain && dataManager.current.reframeToTarget) FitTargetToViewport();
-            _recentModel.Add(_targetInfo.assetPath);
         }
 
         public void RemoveModel(GameObject instance)
@@ -6314,8 +5711,8 @@ where T : IEquatable<T>
             _customLoader = new ModelAssembler(this);
             _customLoader.OnEnable();
 
-            _prefab = currentData.lastTarget;
-            AddModel(_prefab, true);
+            _tempObj = currentData.lastTarget;
+            AddModel(_tempObj, true);
             ApplyView(dataManager.current.lastView);
             ApplyBackground();
             ApplyReflectionEnvironment();
@@ -6902,25 +6299,18 @@ where T : IEquatable<T>
 
         public class GUIContents
         {
-            internal static GUIContent title = new GUIContent(Initializer.TITLE_STR, EditorGUIUtility.IconContent("ViewToolOrbit").image, Initializer.TITLE_STR);
-            internal static GUIContent startup = new GUIContent(Initializer.TITLE_STR);
-            internal static GUIContent copyright = new GUIContent(Initializer.DESCRIPTION_STR);
+            internal static GUIContent title = new GUIContent(Config.title, EditorGUIUtility.IconContent("ViewToolOrbit").image, Config.title);
+            internal static GUIContent startup = new GUIContent(Config.title);
+            internal static GUIContent copyright = new GUIContent(Config.description);
+            internal static GUIContent help = new GUIContent(Config.help);
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
             public static GUIContent reframeToTarget = new GUIContent("Reframe Target", "모델을 생성할 때 자동으로 뷰에 꽉 차도록 카메라의 거리를 조절합니다.");
             public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
 
-            public static Texture2D logoTexture
-            {
-                get
-                {
-                    byte[] bytes = System.Convert.FromBase64String(Initializer.LOGO_TEXTURE_STR);
-                    var tex = new Texture2D(1, 1);
-                    tex.LoadImage(bytes);
-                    return tex;
-                }
-            }
+            public static Texture2D logoTexture => Config.logoTexture;
+
 
             public class Tooltip
             {
@@ -8085,7 +7475,7 @@ where T : IEquatable<T>
                 {
                     case ModelCreateMode.Default:
                         EditorGUILayout.HelpBox("Manually select the GameObject you want to create.", MessageType.None);
-                        _prefab = EditorGUILayout.ObjectField(_prefab, typeof(GameObject), false) as GameObject;
+                        _tempObj = EditorGUILayout.ObjectField(_tempObj, typeof(GameObject), false) as GameObject;
                         Tooltip.Generate("생성할 모델을 선택하세요");
                         using (EditorHelper.Horizontal.Do())
                         {
@@ -8113,6 +7503,12 @@ where T : IEquatable<T>
                                         AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
+                                    menu.AddItem(new GUIContent("Cube"), false, () =>
+                                    {
+                                        var primitive = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                                        AddModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    });
                                     menu.AddItem(new GUIContent("Plane"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Plane);
@@ -8133,11 +7529,11 @@ where T : IEquatable<T>
                                 }
                             }
 
-                            if (GUILayout.Button("Create", GUILayout.Height(32)))
+                            if (GUILayout.Button("Create", GUILayout.Height(EditorGUIUtility.singleLineHeight * 2)))
                             {
-                                if (_prefab)
+                                if (_tempObj)
                                 {
-                                    AddModel(_prefab);
+                                    AddModel(_tempObj);
                                 }
                             }
                             Tooltip.Generate("모델을 생성합니다");
@@ -8160,10 +7556,10 @@ where T : IEquatable<T>
                 if (EditorGUIUtility.GetObjectPickerControlID() != 0) //어떤 object picker 가 안 열렸을 때 0
                 {
                     _tempPickedObject = EditorGUIUtility.GetObjectPickerObject() as GameObject;
-                    if (_prefab != _tempPickedObject)
+                    if (_tempObj != _tempPickedObject)
                     {
-                        _prefab = _tempPickedObject;
-                        AddModel(_prefab);
+                        _tempObj = _tempPickedObject;
+                        AddModel(_tempObj);
                         _tempPickedObject = null;
                     }
                 }
@@ -8188,21 +7584,28 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Model", true, () =>
             {
+                GUILayout.Label("MainTarget", EditorStyles.boldLabel);
                 using (new EditorGUI.DisabledGroupScope(true))
                 {
-                    EditorGUILayout.ObjectField("", _prefab, typeof(GameObject), false);
+                    EditorGUILayout.ObjectField("Instance", _mainTarget, typeof(GameObject), false);
                 }
+                GUILayout.Label("Target Dic", EditorStyles.boldLabel);
                 foreach (var target in _targetDic.ToArray())
                 {
-                    if (target.Key)
+                    GameObject source = target.Key;
+                    GameObject instance = target.Value;
+                    if (source!=null)
                     {
-                        using (EditorHelper.Vertical.Do())
+                        using (EditorHelper.Horizontal.Do())
                         {
-                            EditorGUILayout.ObjectField("Source", target.Key, typeof(GameObject), false);
-                            EditorGUILayout.ObjectField("Instance", target.Value, typeof(GameObject), false);
-                            if (GUILayout.Button("Remove", EditorStyles.miniButton, GUILayout.Width(60)))
+                            using (EditorHelper.Vertical.Do())
                             {
-                                RemoveModel(target.Value);
+                                EditorGUILayout.ObjectField("Source", target.Key, typeof(GameObject), false);
+                                EditorGUILayout.ObjectField("Instance", target.Value, typeof(GameObject), false);
+                                if (GUILayout.Button("Remove", EditorStyles.miniButton))
+                                {
+                                    RemoveModel(target.Value);
+                                }
                             }
                         }
                     }
@@ -8215,19 +7618,27 @@ where T : IEquatable<T>
                 {
                     foreach (var renderer in _targetInfo.renderers)
                     {
-                        for (int i = 0; i < renderer.sharedMaterials.Length; i++)
+                        if (renderer)
                         {
-                            Material mat = renderer.sharedMaterials[i];
-                            using(var check = new EditorGUI.ChangeCheckScope())
+                            for (int i = 0; i < renderer.sharedMaterials.Length; i++)
                             {
-                                var material = (Material)EditorGUILayout.ObjectField(renderer.name, mat, typeof(Material), false);
-                                if (check.changed)
+                                Material mat = renderer.sharedMaterials[i];
+                                using (var check = new EditorGUI.ChangeCheckScope())
                                 {
+                                    var material = (Material)EditorGUILayout.ObjectField(renderer.name, mat, typeof(Material), false);
+                                    if (check.changed)
+                                    {
 #if UNITY_2022_2_OR_NEWER
                                     List<Material> newMaterialList = renderer.sharedMaterials.ToList();
                                     newMaterialList[i] = material;
                                     renderer.SetSharedMaterials(newMaterialList);
+#else
+                                        List<Material> cachedMaterialList = new List<Material>();
+                                        renderer.GetSharedMaterials(cachedMaterialList);
+                                        cachedMaterialList[i] = material;
+                                        renderer.sharedMaterials = cachedMaterialList.ToArray();
 #endif
+                                    }
                                 }
                             }
                         }
@@ -9350,7 +8761,7 @@ where T : IEquatable<T>
 
         #endregion
 
-        [MenuItem(itemName: Initializer.MENU_PATH, isValidateFunction: false, priority: 0)]
+        [MenuItem(itemName: Config.MENU_PATH, isValidateFunction: false, priority: 0)]
         private static void Init()
         {
             See1View window = EditorWindow.GetWindow<See1View>(GUIContents.title.text);
