@@ -413,6 +413,124 @@ namespace See1Studios.See1View
         }
     }
 
+    public class RunInEditHelper2
+    {
+        public class RunInEdit
+        {
+            public bool awake = true;
+            public bool onEnable = true;
+            public bool start = true;
+            public bool update = true;
+            public bool lateUpdate = true;
+            public bool onDisable = true;
+            public bool onDestroy = true;
+            public MonoBehaviour behaviour;
+
+            public RunInEdit(MonoBehaviour behaviour)
+            {
+                this.behaviour = behaviour;
+            }
+        }
+
+        public static List<RunInEdit> runInEditList = new List<RunInEdit>();
+        static bool isInitialised;
+        static bool playStateChanged;
+        public static bool isActivated;
+
+        public static void Toggle()
+        {
+            foreach (var rie in runInEditList)
+            {
+                rie.behaviour?.CancelInvoke();
+            }
+            isActivated = !isActivated;
+            playStateChanged = true;
+            Start();
+            Stop();
+        }
+
+        public static void Start()
+        {
+            foreach (var rie in runInEditList)
+            {
+
+                if (isActivated && playStateChanged)
+                {
+                    if (rie.awake) Invoke(rie, "Awake");
+                    if (rie.onEnable) Invoke(rie, "OnEnable");
+                    if (rie.start) Invoke(rie, "Start");
+                    playStateChanged = false;
+                    EditorApplication.update += Update;
+                }
+            }
+        }
+
+        public static void Stop()
+        {
+            foreach (var rie in runInEditList)
+            {
+                if (!isActivated && playStateChanged)
+                {
+                    if (rie.onDisable) Invoke(rie, "OnDisable");
+                    if (rie.onDestroy) Invoke(rie, "OnDestroy");
+                    playStateChanged = false;
+                    EditorApplication.update -= Update;
+                }
+            }
+        }
+
+        public static void Update()
+        {
+            foreach (var rie in runInEditList)
+            {
+                if (rie.behaviour)
+                {
+                    if (isActivated && !playStateChanged)
+                    {
+                        if (rie.update) Invoke(rie, "Update");
+                        if (rie.lateUpdate) Invoke(rie, "LateUpdate");
+                        playStateChanged = false;
+                        EditorUtility.SetDirty(rie.behaviour); // For Scene Update
+                    }
+                }
+            }
+            //if (runInEditList.Count > 0)
+            //{
+            //    SceneView.RepaintAll();
+            //}
+        }
+
+        public static void Add(MonoBehaviour behavior)
+        {
+            if (behavior != null) runInEditList.Add(new RunInEdit(behavior));
+        }
+
+        public static void Remove(MonoBehaviour behavior)
+        {
+            RunInEdit rie = runInEditList.Where(x => x.behaviour == behavior).FirstOrDefault();
+            if (rie != null) runInEditList.Remove(rie);
+        }
+
+        public static void Clean()
+        {
+
+            Stop();
+            runInEditList.Clear();
+        }
+
+        static void Invoke(RunInEdit rie, string eventName, bool cancel = false)
+        {
+            if (cancel) rie.behaviour?.CancelInvoke();
+            MethodInfo methodInfo = rie.behaviour?.GetType().GetMethod(eventName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Instance);
+            if (methodInfo != null)
+            {
+                //methodInfo.Invoke(rie.behaviour, null);
+                rie.behaviour?.Invoke(eventName, 0);
+
+            }
+        }
+    }
+
     //saved parameters from URP GUI
     class SavedParameter<T>
 where T : IEquatable<T>
@@ -1077,6 +1195,7 @@ where T : IEquatable<T>
         public string name;
         public bool reframeToTarget = true;
         public bool recalculateBound = true;
+        public bool forceUpdateComponent = true;
         public int rotSpeed = 3;
         public int zoomSpeed = 3;
         public int panSpeed = 3;
@@ -1217,6 +1336,7 @@ where T : IEquatable<T>
         }
 #if URP || HDRP
         private VolumeProfile _volumeProfile;
+
         public VolumeProfile volumeProfile
         {
             get
@@ -1331,7 +1451,7 @@ where T : IEquatable<T>
             for (int i = size - 1; i > 0; --i)
             {
                 {
-                    if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton, GUILayout.Width(246)))
+                    if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton))
                     {
                         var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
                         if (obj)
@@ -1721,12 +1841,13 @@ where T : IEquatable<T>
         public List<Renderer> renderers = new List<Renderer>();
         public List<Transform> bones = new List<Transform>();
         public List<Material> materials = new List<Material>();
-        public Animator[] animators;
-        public MeshRenderer[] meshRenderers;
-        public SkinnedMeshRenderer[] skinnedMeshRenderers;
-        public ParticleSystem[] particleSystems;
+        public List<Animator> animators = new List<Animator>();
+        public List<MeshRenderer> meshRenderers = new List<MeshRenderer>();
+        public List<SkinnedMeshRenderer> skinnedMeshRenderers = new List<SkinnedMeshRenderer>();
+        public List<ParticleSystem> particleSystems = new List<ParticleSystem>();
+        public List<MonoBehaviour> behaviours = new List<MonoBehaviour>();
 
-        public ParticleSystemRenderer[] particleSystemRenderers;
+        public List<ParticleSystemRenderer> particleSystemRenderers = new List<ParticleSystemRenderer>();
         //public Mesh[] meshes;
 
         void Cleanup()
@@ -1741,21 +1862,23 @@ where T : IEquatable<T>
             skinnedMeshRenderers = null;
             particleSystems = null;
             particleSystemRenderers = null;
+            behaviours = null;
         }
 
-        public void Init(GameObject root)
+        public void Init(GameObject source,GameObject instance)
         {
             Cleanup();
-            var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(root);
-            assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : AssetDatabase.GetAssetPath(root);
-            sb.Append(root.name);
+            var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(source);
+            assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : AssetDatabase.GetAssetPath(source);
+            sb.Append(source.name);
             sb.Append("\n");
-            animators = root.GetComponentsInChildren<Animator>();
-            renderers = root.GetComponentsInChildren<Renderer>().ToList();
-            meshRenderers = root.GetComponentsInChildren<MeshRenderer>();
-            skinnedMeshRenderers = root.GetComponentsInChildren<SkinnedMeshRenderer>();
-            particleSystems = root.GetComponentsInChildren<ParticleSystem>();
-            particleSystemRenderers = root.GetComponentsInChildren<ParticleSystemRenderer>();
+            animators = instance.GetComponentsInChildren<Animator>().ToList();
+            renderers = instance.GetComponentsInChildren<Renderer>().ToList();
+            meshRenderers = instance.GetComponentsInChildren<MeshRenderer>().ToList();
+            skinnedMeshRenderers = instance.GetComponentsInChildren<SkinnedMeshRenderer>().ToList();
+            particleSystems = instance.GetComponentsInChildren<ParticleSystem>().ToList();
+            particleSystemRenderers = instance.GetComponentsInChildren<ParticleSystemRenderer>().ToList();
+            behaviours = instance.GetComponentsInChildren<MonoBehaviour>().ToList();
 
             foreach (var renderer in renderers)
             {
@@ -1765,25 +1888,25 @@ where T : IEquatable<T>
 
             materials = materials.Where(x => x != null).Distinct().ToList();
 
-            if (animators.Length > 0)
+            if (animators.Count > 0)
             {
                 sb.Append(string.Format("Animators : {0}\n", animators.Count().ToString()));
             }
 
-            if (meshRenderers.Length > 0)
+            if (meshRenderers.Count > 0)
             {
-                sb.Append(string.Format("MeshRenderer : {0}\n", meshRenderers.Length.ToString()));
+                sb.Append(string.Format("MeshRenderer : {0}\n", meshRenderers.Count.ToString()));
             }
 
-            if (skinnedMeshRenderers.Length > 0)
+            if (skinnedMeshRenderers.Count > 0)
             {
                 bones.AddRange(skinnedMeshRenderers.SelectMany(x => x.bones).Distinct());
-                sb.Append(string.Format("SkinnedMeshRenderer : {0}\n", skinnedMeshRenderers.Length.ToString()));
+                sb.Append(string.Format("SkinnedMeshRenderer : {0}\n", skinnedMeshRenderers.Count.ToString()));
                 sb.Append(string.Format("Bones : {0}\n",
                     skinnedMeshRenderers.SelectMany(x => x.bones).Distinct().Count().ToString()));
             }
 
-            if (particleSystems.Length > 0)
+            if (particleSystems.Count > 0)
             {
                 foreach (var ps in particleSystems)
                 {
@@ -1794,16 +1917,21 @@ where T : IEquatable<T>
                     ps.Stop();
                 }
 
-                sb.Append(string.Format("ParticleSystem : {0}\n", particleSystems.Length.ToString()));
-                if (particleSystemRenderers.Length > 0)
+                sb.Append(string.Format("ParticleSystem : {0}\n", particleSystems.Count.ToString()));
+                if (particleSystemRenderers.Count > 0)
                 {
                     sb.Append(string.Format("ParticleSystemRenderer : {0}\n",
-                        particleSystemRenderers.Length.ToString()));
+                        particleSystemRenderers.Count.ToString()));
                 }
             }
 
             sb.Append(string.Format("Materials : {0}\n",
                 renderers.SelectMany(x => x.sharedMaterials).Distinct().Count().ToString()));
+
+            if (behaviours.Count > 0)
+            {
+                sb.Append(string.Format("Monobehaviour : {0}\n", behaviours.Count.ToString()));
+            }
         }
 
         public string GetMeshInfo(Mesh target)
@@ -5571,10 +5699,18 @@ where T : IEquatable<T>
                 SetFlagsAll(instance, HideFlags.HideAndDontSave);
                 SetLayerAll(instance, _previewLayer);
                 _preview.AddSingleGO(instance);
-                _targetInfo.Init(src);
+                _targetInfo.Init(src,instance);
                 _treeView?.Reload();
                 InitAnimation(_mainTarget, true);
                 ApplyModelCommandBuffers();
+                if (currentData.forceUpdateComponent)
+                {
+                    foreach (var b in _targetInfo.behaviours)
+                    {
+                        RunInEditHelper2.Add(b);
+                    }
+                    RunInEditHelper2.Start();
+                }
                 // 마무리
                 Repaint();
                 _recentModel.Add(_targetInfo.assetPath);
@@ -5596,7 +5732,7 @@ where T : IEquatable<T>
             {
                 _treeView.Reload();
             }
-
+            RunInEditHelper2.Clean();
             Notice.Log(string.Format("{0} Removed", name), false);
             InitAnimation(_mainTarget, true);
             ApplyModelCommandBuffers();
@@ -6308,6 +6444,7 @@ where T : IEquatable<T>
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
             public static GUIContent reframeToTarget = new GUIContent("Reframe Target", "모델을 생성할 때 자동으로 뷰에 꽉 차도록 카메라의 거리를 조절합니다.");
             public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
+            public static GUIContent forceUpdateComponent = new GUIContent("Force Update Components", "모델에 추가되어 있는 컴포넌트들을 강제로 실행합니다.");
 
             public static Texture2D logoTexture => Config.logoTexture;
 
@@ -7464,6 +7601,10 @@ where T : IEquatable<T>
                     currentData.reframeToTarget = GUILayout.Toggle(currentData.reframeToTarget, GUIContents.reframeToTarget, EditorStyles.miniButtonLeft);
                     currentData.recalculateBound = GUILayout.Toggle(currentData.recalculateBound, GUIContents.recalculateBound, EditorStyles.miniButtonRight);
                 }
+                using (EditorHelper.Horizontal.Do())
+                {
+                    currentData.forceUpdateComponent = GUILayout.Toggle(currentData.forceUpdateComponent, GUIContents.forceUpdateComponent, EditorStyles.miniButton);
+                }
             });
 
             EditorHelper.FoldGroup.Do("Create Mode", true, () =>
@@ -7572,7 +7713,7 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Recent", true, () =>
             {
-                if(_recentModel != null) _recentModel.OnGUI();
+                if (_recentModel != null) _recentModel.OnGUI();
             });
 
             EditorHelper.FoldGroup.Do("Info", true, () =>
@@ -7594,7 +7735,7 @@ where T : IEquatable<T>
                 {
                     GameObject source = target.Key;
                     GameObject instance = target.Value;
-                    if (source!=null)
+                    if (source != null)
                     {
                         using (EditorHelper.Horizontal.Do())
                         {
@@ -7629,9 +7770,9 @@ where T : IEquatable<T>
                                     if (check.changed)
                                     {
 #if UNITY_2022_2_OR_NEWER
-                                    List<Material> newMaterialList = renderer.sharedMaterials.ToList();
-                                    newMaterialList[i] = material;
-                                    renderer.SetSharedMaterials(newMaterialList);
+                                        List<Material> newMaterialList = renderer.sharedMaterials.ToList();
+                                        newMaterialList[i] = material;
+                                        renderer.SetSharedMaterials(newMaterialList);
 #else
                                         List<Material> cachedMaterialList = new List<Material>();
                                         renderer.GetSharedMaterials(cachedMaterialList);
@@ -7639,6 +7780,28 @@ where T : IEquatable<T>
                                         renderer.sharedMaterials = cachedMaterialList.ToArray();
 #endif
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+
+            EditorHelper.FoldGroup.Do("Components", true, () =>
+            {
+                using (EditorHelper.LabelWidth.Do(80))
+                {
+                    foreach (var behaviour in _targetInfo.behaviours)
+                    {
+                        if (behaviour)
+                        {
+                            using (var check = new EditorGUI.ChangeCheckScope())
+                            {
+                                EditorGUILayout.ObjectField(behaviour.name, behaviour, typeof(MonoBehaviour), false);
+                                if (check.changed)
+                                {
+
                                 }
                             }
                         }
@@ -7750,7 +7913,7 @@ where T : IEquatable<T>
         {
             if (!_overlayEnabled) return;
             if (_targetInfo.particleSystems == null) return;
-            if (_targetInfo.particleSystems.Length == 0) return;
+            if (_targetInfo.particleSystems.Count == 0) return;
             Rect area = new RectOffset(4, 4, 4, 4).Remove(r);
             //EditorGUI.DrawRect(psRect, GetInvertedLuminaceGrayscaleColor(_preview.camera.backgroundColor) * 0.5f);
             using (new GUILayout.AreaScope(area))

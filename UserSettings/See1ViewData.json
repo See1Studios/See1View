@@ -4,6 +4,7 @@
             "name": "Default",
             "reframeToTarget": true,
             "recalculateBound": true,
+            "forceUpdateComponent": true,
             "rotSpeed": 3,
             "zoomSpeed": 3,
             "panSpeed": 3,
@@ -45,7 +46,7 @@
             "heightFogHeight": 1.0,
             "enableShadows": true,
             "shadowStrength": 1.0,
-            "shadowBias": 0.009999999776482582,
+            "shadowBias": 1.0,
             "enablePostProcess": true,
             "urpData": {
                 "renderPostProcessing": true,
@@ -58,9 +59,9 @@
                 "antialiasing": 0
             },
             "bgColor": {
-                "r": 0.28301888704299929,
-                "g": 0.28301888704299929,
-                "b": 0.28301888704299929,
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
                 "a": 1.0
             },
             "ambientSkyColor": {
@@ -69,18 +70,18 @@
                 "b": 0.5,
                 "a": 1.0
             },
-            "clearFlag": 1,
+            "clearFlag": 0,
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": 197.59371948242188,
-                    "y": -2.0692477226257326
+                    "x": 180.0,
+                    "y": 0.0
                 },
-                "distance": 8.539994239807129,
+                "distance": 6.049947261810303,
                 "pivot": {
-                    "x": 5.960464477539063e-8,
+                    "x": 0.0,
                     "y": 0.0,
-                    "z": -1.1920928955078126e-7
+                    "z": 0.0
                 },
                 "fieldOfView": 30.0
             },
@@ -232,14 +233,15 @@
             "_lastTarget": {
                 "instanceID": 0
             },
-            "cubemapPath": "",
-            "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
-            "renderPipelinePath": "Assets/See1ViewURP.asset"
+            "cubemapPath": "Assets/Common/CasualDay4K.tga",
+            "profilePath": "Assets/ThirdPerson/Scenes/PlaygroundHQ/Global Environment Profile.asset",
+            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
         },
         {
             "name": "-_-",
             "reframeToTarget": true,
             "recalculateBound": true,
+            "forceUpdateComponent": false,
             "rotSpeed": 3,
             "zoomSpeed": 3,
             "panSpeed": 3,
