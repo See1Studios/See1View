@@ -45,7 +45,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using System.Runtime.InteropServices.ComTypes;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -123,6 +122,7 @@ namespace See1Studios.See1View
             public string logoTexStr;
             public string description;
             public string help;
+            public string customLoader;
         }
 
         public const string MENU_PATH = "Tools/See1Studios/See1View/Open See1View";
@@ -133,8 +133,10 @@ namespace See1Studios.See1View
         public static string description = "Copyright (c) See1Studios.\nsee1studios@gmail.com";
         public static string help = "No Help Document";
         public static Texture2D logoTexture = Texture2D.grayTexture;
+        static string _customLoaderTypeName;
 
-        static Type[] CustomLoaderTypes;
+        static Type[] _customLoaderTypes;
+
         static Initializer()
         {
             CollectCustomLoaders();
@@ -150,8 +152,10 @@ namespace See1Studios.See1View
                 title = data.title;
                 logoTexStr = data.logoTexStr;
                 description = data.description;
+                _customLoaderTypeName = data.customLoader;
                 logoTexture = ConvertBase64ToTexture(data.logoTexStr);
                 help = data.help;
+                Debug.Log(_customLoaderTypeName);
             }
         }
 
@@ -159,8 +163,8 @@ namespace See1Studios.See1View
         {
             Assembly assembly = Assembly.GetExecutingAssembly();
             Type baseClassType = typeof(CustomLoader);
-            CustomLoaderTypes = GetDerivedTypes(assembly, baseClassType);
-            foreach (var customLoader in CustomLoaderTypes)
+            _customLoaderTypes = GetDerivedTypes(assembly, baseClassType);
+            foreach (var customLoader in _customLoaderTypes)
             {
                 Debug.Log(customLoader.Name);
             }
@@ -175,30 +179,30 @@ namespace See1Studios.See1View
 
         public static CustomLoader CreateCustomLoader(See1View see1View)
         {
-            Type type = CustomLoaderTypes[0];
-
-            ConstructorInfo constructor = type.GetConstructors().FirstOrDefault();
-            if (constructor != null)
+            Type type = _customLoaderTypes.Where(x => x.Name == _customLoaderTypeName).FirstOrDefault();
+            if (type == null && _customLoaderTypes.Length > 0) type = _customLoaderTypes[0];
+            if (type != null)
             {
-                ParameterInfo[] parameters = constructor.GetParameters();
-
-                object[] parameterValues = new object[parameters.Length];
-                for (int i = 0; i < parameters.Length; i++)
+                ConstructorInfo constructor = type.GetConstructors().FirstOrDefault();
+                if (constructor != null)
                 {
-                    parameterValues[i] = GetDefaultValue(parameters[i].ParameterType);
-                    if (parameters[i].ParameterType == typeof(See1View))
-                    {
-                        parameterValues[i] = see1View;
-                    }
-                }
+                    ParameterInfo[] parameters = constructor.GetParameters();
 
-                object instance = Activator.CreateInstance(type, parameterValues);
-                return instance as CustomLoader;
+                    object[] parameterValues = new object[parameters.Length];
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        parameterValues[i] = GetDefaultValue(parameters[i].ParameterType);
+                        if (parameters[i].ParameterType == typeof(See1View))
+                        {
+                            parameterValues[i] = see1View;
+                        }
+                    }
+
+                    object instance = Activator.CreateInstance(type, parameterValues);
+                    return instance as CustomLoader;
+                }
             }
-            else
-            {
-                return null;
-            }
+            return null;
         }
 
         private static object GetDefaultValue(Type type)
@@ -5422,7 +5426,7 @@ where T : IEquatable<T>
             dataManager.current.lastLighting = GetCurrentLighting();
             dataManager.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
             DataManager.Save();
-            _customLoader.OnDisable();
+            _customLoader?.OnDisable();
             //기본 해제
             EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
             Shortcuts.Clear();
@@ -5870,7 +5874,7 @@ where T : IEquatable<T>
 
             // Custom Loader
             _customLoader = Initializer.CreateCustomLoader(this);
-            _customLoader.OnEnable();
+            _customLoader?.OnEnable();
 
             _tempObj = currentData.lastTarget;
             AddModel(_tempObj, true);
@@ -7712,7 +7716,14 @@ where T : IEquatable<T>
                         break;
 
                     case ModelCreateMode.Custom:
-                        _customLoader.OnGUI();
+                        if (_customLoader != null)
+                        {
+                            _customLoader.OnGUI();
+                        }
+                        else
+                        {
+                          EditorGUILayout.HelpBox("No custom loader class found", MessageType.None);
+                        }
                         break;
 
                     default:

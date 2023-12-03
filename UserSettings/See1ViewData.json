@@ -74,14 +74,14 @@
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": -183.59735107421876,
-                    "y": 8.297367095947266
+                    "x": -203.4111785888672,
+                    "y": -1.5250024795532227
                 },
-                "distance": 3.254763126373291,
+                "distance": 4.100674629211426,
                 "pivot": {
-                    "x": 8.940696716308594e-8,
-                    "y": 0.6330089569091797,
-                    "z": -0.21189898252487184
+                    "x": 0.0,
+                    "y": 0.8849430084228516,
+                    "z": 0.010344117879867554
                 },
                 "fieldOfView": 30.0
             },
@@ -124,10 +124,10 @@
                             "y": 0.0
                         },
                         "rotation": {
-                            "x": -0.16770602762699128,
-                            "y": -0.9484764933586121,
-                            "z": 0.26514410972595217,
-                            "w": -0.04433690011501312
+                            "x": 0.0,
+                            "y": -1.0,
+                            "z": 0.0,
+                            "w": -4.371138828673793e-8
                         },
                         "lightColor": {
                             "r": 0.7689999938011169,
@@ -143,10 +143,10 @@
                             "y": 0.0
                         },
                         "rotation": {
-                            "x": 0.004708440043032169,
-                            "y": -0.15474799275398255,
-                            "z": 0.9835463762283325,
-                            "w": -0.09309931844472885
+                            "x": 0.3162142038345337,
+                            "y": -0.1725243479013443,
+                            "z": 0.9323148727416992,
+                            "w": 0.032140158116817477
                         },
                         "lightColor": {
                             "r": 0.2800000011920929,
@@ -278,14 +278,14 @@
                 }
             ],
             "steelList": [],
-            "modelCreateMode": 0,
+            "modelCreateMode": 2,
             "lastTargetPath": "",
             "_lastTarget": {
                 "instanceID": 0
             },
             "cubemapPath": "Assets/Common/CasualDay4K.tga",
-            "profilePath": "",
-            "renderPipelinePath": ""
+            "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
+            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
         },
         {
             "name": "-_-",
