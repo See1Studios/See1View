@@ -35,22 +35,22 @@
                 "b": 0.5,
                 "a": 1.0
             },
-            "enablePlaneShadows": true,
+            "enablePlaneShadows": false,
             "heightFogColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 0.5
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
             },
             "enableHeightFog": true,
-            "heightFogHeight": 1.0,
+            "heightFogHeight": 1.2660179138183594,
             "enableShadows": true,
             "shadowStrength": 1.0,
             "shadowBias": 1.0,
             "enablePostProcess": true,
             "urpData": {
                 "renderPostProcessing": true,
-                "dithering": true,
+                "dithering": false,
                 "antialiasing": 1
             },
             "hdrpData": {
@@ -59,9 +59,9 @@
                 "antialiasing": 0
             },
             "bgColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
+                "r": 0.5660377740859985,
+                "g": 0.5660377740859985,
+                "b": 0.5660377740859985,
                 "a": 1.0
             },
             "ambientSkyColor": {
@@ -74,14 +74,14 @@
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": 180.0,
-                    "y": 0.0
+                    "x": -183.59735107421876,
+                    "y": 8.297367095947266
                 },
-                "distance": 6.049947261810303,
+                "distance": 3.254763126373291,
                 "pivot": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0
+                    "x": 8.940696716308594e-8,
+                    "y": 0.6330089569091797,
+                    "z": -0.21189898252487184
                 },
                 "fieldOfView": 30.0
             },
@@ -124,10 +124,10 @@
                             "y": 0.0
                         },
                         "rotation": {
-                            "x": 0.0,
-                            "y": -1.0,
-                            "z": 0.0,
-                            "w": -4.371138828673793e-8
+                            "x": -0.16770602762699128,
+                            "y": -0.9484764933586121,
+                            "z": 0.26514410972595217,
+                            "w": -0.04433690011501312
                         },
                         "lightColor": {
                             "r": 0.7689999938011169,
@@ -143,10 +143,10 @@
                             "y": 0.0
                         },
                         "rotation": {
-                            "x": 0.3162142038345337,
-                            "y": -0.1725243479013443,
-                            "z": 0.9323148727416992,
-                            "w": 0.032140158116817477
+                            "x": 0.004708440043032169,
+                            "y": -0.15474799275398255,
+                            "z": 0.9835463762283325,
+                            "w": -0.09309931844472885
                         },
                         "lightColor": {
                             "r": 0.2800000011920929,
@@ -215,6 +215,56 @@
                         "a": 1.0
                     },
                     "cubemapPath": ""
+                },
+                {
+                    "name": "",
+                    "lightList": [
+                        {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": {
+                                "x": 0.0038054976612329485,
+                                "y": -0.9622244834899902,
+                                "z": -0.025030959397554399,
+                                "w": -0.27107754349708559
+                            },
+                            "lightColor": {
+                                "r": 1.0,
+                                "g": 1.0,
+                                "b": 1.0,
+                                "a": 1.0
+                            },
+                            "intensity": 1.0
+                        },
+                        {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": {
+                                "x": 0.05300047621130943,
+                                "y": -0.19685325026512147,
+                                "z": 0.9786185622215271,
+                                "w": -0.027304373681545259
+                            },
+                            "lightColor": {
+                                "r": 0.0,
+                                "g": 0.0,
+                                "b": 0.0,
+                                "a": 1.0
+                            },
+                            "intensity": 0.0
+                        }
+                    ],
+                    "ambientSkyColor": {
+                        "r": 0.5,
+                        "g": 0.5,
+                        "b": 0.5,
+                        "a": 1.0
+                    },
+                    "cubemapPath": ""
                 }
             ],
             "viewportSizes": [
@@ -234,8 +284,8 @@
                 "instanceID": 0
             },
             "cubemapPath": "Assets/Common/CasualDay4K.tga",
-            "profilePath": "Assets/ThirdPerson/Scenes/PlaygroundHQ/Global Environment Profile.asset",
-            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
+            "profilePath": "",
+            "renderPipelinePath": ""
         },
         {
             "name": "-_-",

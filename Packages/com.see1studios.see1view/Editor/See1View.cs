@@ -114,7 +114,7 @@ namespace See1Studios.See1View
     #region Classes //-----------------------------------------------------------------------------------------------------------------------------------------------
 
     [InitializeOnLoad]
-    public static class Config
+    public static class Initializer
     {
         [System.Serializable]
         class ConfigData
@@ -124,7 +124,9 @@ namespace See1Studios.See1View
             public string description;
             public string help;
         }
+
         public const string MENU_PATH = "Tools/See1Studios/See1View/Open See1View";
+        public const int MENU_PRIORITY = 10000;
 
         public static string title = "See1View";
         public static string logoTexStr = "";
@@ -132,19 +134,80 @@ namespace See1Studios.See1View
         public static string help = "No Help Document";
         public static Texture2D logoTexture = Texture2D.grayTexture;
 
-        static Config()
+        static Type[] CustomLoaderTypes;
+        static Initializer()
+        {
+            CollectCustomLoaders();
+            InitializeConfig();
+        }
+        static void InitializeConfig()
         {
             string cfgPath = PathHelper.ScriptPath.Replace(".cs", ".cfg");
-            if(File.Exists(cfgPath))
+            if (File.Exists(cfgPath))
             {
                 string json = File.ReadAllText(cfgPath);
                 ConfigData data = JsonUtility.FromJson<ConfigData>(json);
-                Config.title = data.title;
-                Config.logoTexStr = data.logoTexStr;
-                Config.description = data.description;
-                Config.logoTexture = ConvertBase64ToTexture(data.logoTexStr);
-                Config.help = data.help;
+                title = data.title;
+                logoTexStr = data.logoTexStr;
+                description = data.description;
+                logoTexture = ConvertBase64ToTexture(data.logoTexStr);
+                help = data.help;
             }
+        }
+
+        public static void CollectCustomLoaders()
+        {
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            Type baseClassType = typeof(CustomLoader);
+            CustomLoaderTypes = GetDerivedTypes(assembly, baseClassType);
+            foreach (var customLoader in CustomLoaderTypes)
+            {
+                Debug.Log(customLoader.Name);
+            }
+        }
+
+        public static Type[] GetDerivedTypes(Assembly assembly, Type baseType)
+        {
+            return assembly.GetTypes()
+                .Where(t => t != baseType && baseType.IsAssignableFrom(t))
+                .ToArray();
+        }
+
+        public static CustomLoader CreateCustomLoader(See1View see1View)
+        {
+            Type type = CustomLoaderTypes[0];
+
+            ConstructorInfo constructor = type.GetConstructors().FirstOrDefault();
+            if (constructor != null)
+            {
+                ParameterInfo[] parameters = constructor.GetParameters();
+
+                object[] parameterValues = new object[parameters.Length];
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    parameterValues[i] = GetDefaultValue(parameters[i].ParameterType);
+                    if (parameters[i].ParameterType == typeof(See1View))
+                    {
+                        parameterValues[i] = see1View;
+                    }
+                }
+
+                object instance = Activator.CreateInstance(type, parameterValues);
+                return instance as CustomLoader;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        private static object GetDefaultValue(Type type)
+        {
+            if (type.IsValueType)
+            {
+                return Activator.CreateInstance(type);
+            }
+            else { return null; }
         }
 
         public static Texture2D ConvertBase64ToTexture(string base64)
@@ -153,42 +216,6 @@ namespace See1Studios.See1View
             var tex = new Texture2D(1, 1);
             tex.LoadImage(bytes);
             return tex;
-        }
-    }
-
-    [InitializeOnLoad]
-    public static class Initializer
-    {
-        static Initializer()
-        {
-            //var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup);
-            //var define = defines.Split(';').ToList();
-            //bool isExtensionExists = File.Exists(PathHelper.ScriptPath.Replace(".cs", "Extension.cs"));
-            //if (isExtensionExists)
-            //{
-            //    // Add Define Symbol
-            //    if (!define.Contains("SEE1VIEWPLUS"))
-            //    {
-            //        defines += ";SEE1VIEWPLUS";
-            //        Debug.Log("Define Added");
-            //    }
-            //    Debug.Log("Extension Initialized");
-            //}
-            //else
-            //{
-            //    //Remove Define Symbol
-            //    if (define.Contains("SEE1VIEWPLUS"))
-            //    {
-            //        //defines.Replace(";SEE1VIEWPLUS", "");
-            //        defines = string.Empty;
-            //        Debug.Log("Define Removed");
-            //    }
-            //    Debug.Log("There is no Extension");
-            //}
-
-            //// Write Define Symbol
-            //PlayerSettings.SetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup, defines);
-            //Debug.Log(defines);
         }
     }
 
@@ -626,7 +653,6 @@ where T : IEquatable<T>
         {
             if (coroutine == null)
             {
-                Debug.LogAssertion("EditorCoroutine handle is null.");
                 return;
             }
 
@@ -5181,7 +5207,7 @@ where T : IEquatable<T>
     // target loader interface
     public abstract class CustomLoader
     {
-        See1View _view;
+        public See1View _view;
 
         public CustomLoader(See1View view)
         {
@@ -5693,7 +5719,6 @@ where T : IEquatable<T>
                 {
                     // 메인모델인 경우 적절하게 처리
                     _mainTarget = instance;
-                    if (dataManager.current.reframeToTarget) FitTargetToViewport();
                 }
                 instance.name = src.name;
                 SetFlagsAll(instance, HideFlags.HideAndDontSave);
@@ -5713,6 +5738,7 @@ where T : IEquatable<T>
                 }
                 // 마무리
                 Repaint();
+                if (dataManager.current.reframeToTarget) FitTargetToViewport();
                 _recentModel.Add(_targetInfo.assetPath);
                 Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? src.name : _targetInfo.assetPath, false);
             }
@@ -5843,8 +5869,7 @@ where T : IEquatable<T>
             DataManager.onDataChanged.AddListener(InitializePostProcess);
 
             // Custom Loader
-            //_modelAssembler.Init(PartChanged, TargetItemHandler, MenuItemHandler);
-            _customLoader = new ModelAssembler(this);
+            _customLoader = Initializer.CreateCustomLoader(this);
             _customLoader.OnEnable();
 
             _tempObj = currentData.lastTarget;
@@ -6435,10 +6460,10 @@ where T : IEquatable<T>
 
         public class GUIContents
         {
-            internal static GUIContent title = new GUIContent(Config.title, EditorGUIUtility.IconContent("ViewToolOrbit").image, Config.title);
-            internal static GUIContent startup = new GUIContent(Config.title);
-            internal static GUIContent copyright = new GUIContent(Config.description);
-            internal static GUIContent help = new GUIContent(Config.help);
+            internal static GUIContent title = new GUIContent(Initializer.title, EditorGUIUtility.IconContent("ViewToolOrbit").image, Initializer.title);
+            internal static GUIContent startup = new GUIContent(Initializer.title);
+            internal static GUIContent copyright = new GUIContent(Initializer.description);
+            internal static GUIContent help = new GUIContent(Initializer.help);
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
             public static GUIContent cameraType = new GUIContent("Camera Type", "\"카메라 타입에 따라 지원되는 기능이 조금씩 다릅니다. 현재 Game 카메라만 포스트 프로세스가 지원되지만 알파 채널 분리가 안됩니다. 다른 카메라들은 포스트 프로세스가 지원되지 않지만 알파채널이 분리됩니다.\"");
@@ -6446,7 +6471,7 @@ where T : IEquatable<T>
             public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
             public static GUIContent forceUpdateComponent = new GUIContent("Force Update Components", "모델에 추가되어 있는 컴포넌트들을 강제로 실행합니다.");
 
-            public static Texture2D logoTexture => Config.logoTexture;
+            public static Texture2D logoTexture => Initializer.logoTexture;
 
 
             public class Tooltip
@@ -7919,55 +7944,58 @@ where T : IEquatable<T>
             using (new GUILayout.AreaScope(area))
             {
                 ParticleSystem particleSystem = _targetInfo.particleSystems[0];
-                GUIStyle style = new GUIStyle();
-                var progressRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, style);
-                //EditorGUI.DrawRect(progressRect, Color.red);
-                //particleSystem.main.time = GUI.HorizontalSlider(progressRect, (float)_player.time, 0, _player.GetCurrentClipLength(), style, style);
-                float length = particleSystem.main.duration;
-                EditorGUI.ProgressBar(progressRect, (float)particleSystem.time / length,
-                    string.Format("{0} : {1}s", particleSystem.name, length.ToString("0.00")));
-
-                using (EditorHelper.Horizontal.Do())
+                if (particleSystem)
                 {
-                    GUILayout.FlexibleSpace();
-                    if (GUILayout.Button("Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30)))
-                    {
-                        Selection.activeGameObject = _mainTarget;
-                        foreach (var ps in _targetInfo.particleSystems)
-                        {
-                            ps.Play();
-                        }
-                    }
+                    GUIStyle style = new GUIStyle();
+                    var progressRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, style);
+                    //EditorGUI.DrawRect(progressRect, Color.red);
+                    //particleSystem.main.time = GUI.HorizontalSlider(progressRect, (float)_player.time, 0, _player.GetCurrentClipLength(), style, style);
+                    float length = particleSystem.main.duration;
+                    EditorGUI.ProgressBar(progressRect, (float)particleSystem.time / length,
+                        string.Format("{0} : {1}s", particleSystem.name, length.ToString("0.00")));
 
-                    if (GUILayout.Button("Restart", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
+                    using (EditorHelper.Horizontal.Do())
                     {
-                        Selection.activeGameObject = _mainTarget;
-                        foreach (var ps in _targetInfo.particleSystems)
+                        GUILayout.FlexibleSpace();
+                        if (GUILayout.Button("Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30)))
                         {
-                            ps.Stop();
-                            ps.Play();
+                            Selection.activeGameObject = _mainTarget;
+                            foreach (var ps in _targetInfo.particleSystems)
+                            {
+                                ps.Play();
+                            }
                         }
-                    }
 
-                    if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
-                    {
-                        Selection.activeGameObject = _mainTarget;
-                        foreach (var ps in _targetInfo.particleSystems)
+                        if (GUILayout.Button("Restart", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
                         {
-                            ps.Clear();
+                            Selection.activeGameObject = _mainTarget;
+                            foreach (var ps in _targetInfo.particleSystems)
+                            {
+                                ps.Stop();
+                                ps.Play();
+                            }
                         }
-                    }
 
-                    if (GUILayout.Button("Pause", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30)))
-                    {
-                        Selection.activeGameObject = _mainTarget;
-                        foreach (var ps in _targetInfo.particleSystems)
+                        if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
                         {
-                            ps.Pause();
+                            Selection.activeGameObject = _mainTarget;
+                            foreach (var ps in _targetInfo.particleSystems)
+                            {
+                                ps.Clear();
+                            }
                         }
-                    }
 
-                    GUILayout.FlexibleSpace();
+                        if (GUILayout.Button("Pause", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30)))
+                        {
+                            Selection.activeGameObject = _mainTarget;
+                            foreach (var ps in _targetInfo.particleSystems)
+                            {
+                                ps.Pause();
+                            }
+                        }
+
+                        GUILayout.FlexibleSpace();
+                    }
                 }
             }
         }
@@ -8924,7 +8952,7 @@ where T : IEquatable<T>
 
         #endregion
 
-        [MenuItem(itemName: Config.MENU_PATH, isValidateFunction: false, priority: 0)]
+        [MenuItem(Initializer.MENU_PATH, false, Initializer.MENU_PRIORITY)]
         private static void Init()
         {
             See1View window = EditorWindow.GetWindow<See1View>(GUIContents.title.text);
