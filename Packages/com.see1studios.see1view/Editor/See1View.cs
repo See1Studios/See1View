@@ -1876,10 +1876,10 @@ where T : IEquatable<T>
 
                 Vector3[] normals = new Vector3[4]
                 {
-                    -Vector3.forward,
-                    -Vector3.forward,
-                    -Vector3.forward,
-                    -Vector3.forward
+                    Vector3.up,
+                    Vector3.up,
+                    Vector3.up,
+                    Vector3.up
                 };
                 mesh.normals = normals;
 
@@ -5319,6 +5319,7 @@ where T : IEquatable<T>
         ReflectionProbe _probe;
 
         Transform _lightPivot;
+        Renderer _floor;
         CustomLoader _customLoader;
 
 
@@ -5525,7 +5526,8 @@ where T : IEquatable<T>
             SetMaterialProperties();
             FPS.Calculate(_deltaTime);
             // Draw Floor
-            DrawMesh(Quad.Get(), _defaultMaterial, Vector3.zero + new Vector3(0,currentData.floorHeight,0), Quaternion.identity, Vector3.one * currentData.floorScale);
+            _floor.transform.position = Vector3.zero + new Vector3(0, currentData.floorHeight, 0);
+            _floor.transform.localScale = Vector3.one * currentData.floorScale;
             Repaint();
         }
 
@@ -5931,6 +5933,15 @@ where T : IEquatable<T>
             _probe.cullingMask = ~_previewLayer;
 
             _preview.AddSingleGO(lightPivotGo);
+
+            var floorGo = EditorUtility.CreateGameObjectWithHideFlags("Floor", HideFlags.HideAndDontSave);
+            var floorFilter = floorGo.AddComponent<MeshFilter>();
+            floorFilter.sharedMesh = Quad.Get();
+            _floor = floorGo.AddComponent<MeshRenderer>();
+            _floor.sharedMaterial = _defaultMaterial;
+            SetLayerAll(floorGo, _previewLayer);
+            _preview.AddSingleGO(floorGo);
+
             InitTreeView();
             ResetLight();
             //Apply Settings From Data
