@@ -1223,48 +1223,58 @@ where T : IEquatable<T>
     internal class See1ViewData : ICloneable
     {
         public string name;
-        public bool reframeToTarget = true;
-        public bool recalculateBound = true;
-        public bool forceUpdateComponent = true;
+        // Control
         public int rotSpeed = 3;
         public int zoomSpeed = 3;
         public int panSpeed = 3;
         public int smoothFactor = 3;
-        //Image Save
+        // Size
+        public List<Vector2> viewportSizes = new List<Vector2>();
+        // Image
         public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
         public bool openSavedImage = true;
         public bool alphaAppliedImage = true;
         public int imageSizeMultiplier = 1;
+        // View
+        public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
+        public List<View> viewList = new List<View>();
+        // Environment
+        public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
+        public Color ambientSkyColor = Color.gray;
+        public ClearFlags clearFlag = ClearFlags.Color;
+        public bool autoFloorHeightEnabled = false;
+        public float floorHeight = 0f;
+        public float floorScale = 10f;
+        // Lighting
+        public Lighting lastLighting = new Lighting();
+        public List<Lighting> lightingList = new List<Lighting>();
+        // Shadows
+        public bool shadowEnabled = true;
+        public float shadowStrength = 1f;
+        public float shadowBias = 0.01f;
         //Render
         public CameraType cameraType = CameraType.Game;
         public float renderScale = 2;
+        // Custom Render Features
         public Color wireLineColor = Color.white;
         public Color wireFillColor = Color.black;
         public float wireThickness = 0.1f;
         public float wireUseDiscard = 1;
+        public bool planeShadowEnabled = true;
         public Color planeShadowColor = Color.gray;
-        public bool enablePlaneShadows = true;
+        public bool heightFogEnabled = true;
         public Color heightFogColor = new Color(0, 0, 0, 0.5f);
-        public bool enableHeightFog = true;
         public float heightFogHeight = 1;
-        public bool enableShadows = true;
-        public float shadowStrength = 1f;
-        public float shadowBias = 0.01f;
-
-        public bool enablePostProcess = true;
+        // Post Process
+        public bool postProcessEnabled = true;
         public URPData urpData = new URPData();
         public HDRPData hdrpData = new HDRPData();
-        //Resources
-        public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
-        public Color ambientSkyColor = Color.gray;
-        public ClearFlags clearFlag = ClearFlags.Color;
-        public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
-        public List<View> viewList = new List<View>();
-        public Lighting lastLighting = new Lighting();
-        public List<Lighting> lightingList = new List<Lighting>();
-        public List<Vector2> viewportSizes = new List<Vector2>();
+        // Animation
         public List<Steel> steelList = new List<Steel>();
-        //Model
+        // Model
+        public bool reframeToTarget = true;
+        public bool recalculateBound = true;
+        public bool forceUpdateComponent = true;
         public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
         public string lastTargetPath = string.Empty;
         public GameObject _lastTarget;
@@ -1834,6 +1844,61 @@ where T : IEquatable<T>
         public Color ambientSkyColor = Color.gray;
         public string cubemapPath = string.Empty;
     }
+
+    internal class Quad
+    {
+        static Mesh mesh;
+
+        static Quad()
+        {
+            if (mesh == null)
+            {
+                mesh = new Mesh();
+                float halfWidth = 1 / 2f;
+                float halfHeight = 1 / 2f;
+                Vector3[] vertices = new Vector3[4]
+                {
+                    new Vector3(-halfWidth, 0, -halfHeight),
+                    new Vector3(halfHeight, 0, -halfHeight),
+                    new Vector3(-halfHeight, 0, halfHeight),
+                    new Vector3(halfWidth, 0, halfHeight)
+                };
+                mesh.vertices = vertices;
+
+                int[] tris = new int[6]
+                {
+                    // lower left triangle
+                    0, 2, 1,
+                    // upper right triangle
+                    2, 3, 1
+                };
+                mesh.triangles = tris;
+
+                Vector3[] normals = new Vector3[4]
+                {
+                    -Vector3.forward,
+                    -Vector3.forward,
+                    -Vector3.forward,
+                    -Vector3.forward
+                };
+                mesh.normals = normals;
+
+                Vector2[] uv = new Vector2[4]
+                {
+                    new Vector2(0, 0),
+                    new Vector2(1, 0),
+                    new Vector2(0, 1),
+                    new Vector2(1, 1)
+                };
+                mesh.uv = uv;
+            }
+        }
+        public static Mesh Get()
+        {
+            return mesh;
+        }
+    }
+
     // model animation frame information
     [Serializable]
     internal class Steel
@@ -1862,6 +1927,7 @@ where T : IEquatable<T>
             this.time = time;
         }
     }
+
     // view target object. model, particle, etc
     class TargetInfo
     {
@@ -5458,6 +5524,8 @@ where T : IEquatable<T>
 
             SetMaterialProperties();
             FPS.Calculate(_deltaTime);
+            // Draw Floor
+            DrawMesh(Quad.Get(), _defaultMaterial, Vector3.zero + new Vector3(0,currentData.floorHeight,0), Quaternion.identity, Vector3.one * currentData.floorScale);
             Repaint();
         }
 
@@ -5619,7 +5687,7 @@ where T : IEquatable<T>
             });
             Shortcuts.Add(KeyCode.F4, new GUIContent("Toggle Shadow"), () =>
             {
-                dataManager.current.enablePlaneShadows = !dataManager.current.enablePlaneShadows;
+                dataManager.current.planeShadowEnabled = !dataManager.current.planeShadowEnabled;
                 ApplyModelCommandBuffers();
             });
             Shortcuts.Add(KeyCode.Escape, new GUIContent("Toggle Gizmo"), () => _gizmoMode = ~_gizmoMode);
@@ -5814,6 +5882,7 @@ where T : IEquatable<T>
             _preview.ambientColor = Color.gray;
             _preview.camera.gameObject.layer = _previewLayer;
 
+            _defaultMaterial = new Material(FindShader(GetDefaultMaterialName(currentData.renderPipelineMode)));
 
             _skyMaterial = new Material(FindShader("Skybox/Cubemap"));
 
@@ -6032,13 +6101,13 @@ where T : IEquatable<T>
                     _wireMaterial.SetFloat("UseDiscard", currentData.wireUseDiscard);
                 }
 
-                if (_shadowMaterial && currentData.enablePlaneShadows)
+                if (_shadowMaterial && currentData.planeShadowEnabled)
                 {
                     _shadowMaterial.SetColor("_ShadowColor", currentData.planeShadowColor);
                     _shadowMaterial.SetFloat("_PlaneHeight", _targetInfo.bounds.min.y);
                 }
 
-                if (_heightFogMaterial && currentData.enableHeightFog)
+                if (_heightFogMaterial && currentData.heightFogEnabled)
                 {
                     _heightFogMaterial.SetColor("_Color", currentData.heightFogColor);
                     _heightFogMaterial.SetFloat("_Ground", _targetInfo.bounds.min.y);
@@ -6221,8 +6290,8 @@ where T : IEquatable<T>
         {
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _colorCommandBuffer, _colorMaterial, _colorEnabled);
             SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _wireCommandBuffer, _wireMaterial, _wireFrameEnabled);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
-            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.heightFogEnabled);
+            SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.planeShadowEnabled);
         }
 
         void ApplyCameraCommandBuffers()
@@ -6280,7 +6349,7 @@ where T : IEquatable<T>
                 postLayer = _preview.camera.gameObject.GetComponent<PostProcessLayer>();
                 postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
 
-                if (currentData.enablePostProcess && currentData.profile)
+                if (currentData.postProcessEnabled && currentData.profile)
                 {
                     if (!postLayer) postLayer = _preview.camera.gameObject.AddComponent<PostProcessLayer>();
                     postLayer.antialiasingMode = true
@@ -6301,14 +6370,14 @@ where T : IEquatable<T>
             else
             {
                 volume = _preview.camera.gameObject.GetComponent<Volume>();
-                if (currentData.enablePostProcess && currentData.volumeProfile)
+                if (currentData.postProcessEnabled && currentData.volumeProfile)
                 {
                     if (!volume) volume = _preview.camera.gameObject.AddComponent<Volume>();
                     volume.isGlobal = true;
                     volume.profile = currentData.volumeProfile;
                 }
 #if URP
-                _urpCamera.renderPostProcessing = currentData.enablePostProcess;
+                _urpCamera.renderPostProcessing = currentData.postProcessEnabled;
 #endif
                 Notice.Log("Volume Initialized");
             }
@@ -7123,7 +7192,7 @@ where T : IEquatable<T>
                 }
 
                 if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") &&
-                    currentData.alphaAppliedImage && currentData.enablePostProcess)
+                    currentData.alphaAppliedImage && currentData.postProcessEnabled)
                 {
                     EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ",
                         MessageType.Warning);
@@ -7250,6 +7319,10 @@ where T : IEquatable<T>
 
                     currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
                     currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
+                    currentData.autoFloorHeightEnabled = GUILayout.Toggle(currentData.autoFloorHeightEnabled, "Auto Floor Height", EditorStyles.miniButton);
+                    currentData.floorHeight = EditorGUILayout.Slider("Floor Height", currentData.floorHeight, -10f, 10f);
+                    currentData.floorScale = EditorGUILayout.Slider("Floor Scale", currentData.floorScale, 0f, 100f);
+
                     if (check.changed)
                     {
                         _preview.camera.backgroundColor = currentData.bgColor;
@@ -7358,7 +7431,7 @@ where T : IEquatable<T>
             {
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
-                    currentData.enableShadows = GUILayout.Toggle(currentData.enableShadows, "Enable Shadow", EditorStyles.miniButton);
+                    currentData.shadowEnabled = GUILayout.Toggle(currentData.shadowEnabled, "Enable Shadow", EditorStyles.miniButton);
                     currentData.shadowStrength = EditorGUILayout.Slider("Stregth", currentData.shadowStrength, 0f, 1f);
                     currentData.shadowBias = EditorGUILayout.Slider("Bias", currentData.shadowBias, 0f, 1f);
                     if (check.changed)
@@ -7366,7 +7439,7 @@ where T : IEquatable<T>
                         for (var i = 0; i < _preview.lights.Length; i++)
                         {
                             var previewLight = _preview.lights[i];
-                            previewLight.shadows = currentData.enableShadows ? LightShadows.Soft : LightShadows.None;
+                            previewLight.shadows = currentData.shadowEnabled ? LightShadows.Soft : LightShadows.None;
                             previewLight.shadowStrength = currentData.shadowStrength;
                             previewLight.shadowBias = currentData.shadowBias;
                         }
@@ -7406,8 +7479,8 @@ where T : IEquatable<T>
                 {
                     bool wireFrameEnabled = _wireFrameEnabled;
                     bool colorEnabled = _colorEnabled;
-                    bool heightFogEnabled = currentData.enableHeightFog;
-                    bool shadowEnabled = currentData.enablePlaneShadows;
+                    bool heightFogEnabled = currentData.heightFogEnabled;
+                    bool shadowEnabled = currentData.planeShadowEnabled;
                     using (EditorHelper.Horizontal.Do())
                     {
                         _colorEnabled = GUILayout.Toggle(_colorEnabled, "Color", EditorStyles.miniButton,
@@ -7426,7 +7499,7 @@ where T : IEquatable<T>
 
                     using (EditorHelper.Horizontal.Do())
                     {
-                        currentData.enablePlaneShadows = GUILayout.Toggle(currentData.enablePlaneShadows, "PlaneShadow",
+                        currentData.planeShadowEnabled = GUILayout.Toggle(currentData.planeShadowEnabled, "PlaneShadow",
                             EditorStyles.miniButton, GUILayout.Width(80));
                         //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _shadowCommandBuffer, _shadowMaterial, currentData.enablePlaneShadows);
                         currentData.planeShadowColor = EditorGUILayout.ColorField(currentData.planeShadowColor);
@@ -7434,7 +7507,7 @@ where T : IEquatable<T>
 
                     using (EditorHelper.Horizontal.Do())
                     {
-                        currentData.enableHeightFog = GUILayout.Toggle(currentData.enableHeightFog, "Height Fog",
+                        currentData.heightFogEnabled = GUILayout.Toggle(currentData.heightFogEnabled, "Height Fog",
                             EditorStyles.miniButton, GUILayout.Width(80));
                         //SetModelRenderBuffer(CameraEvent.AfterForwardOpaque, _heightFogCommandBuffer, _heightFogMaterial, currentData.enableHeightFog);
                         currentData.heightFogHeight = GUILayout.HorizontalSlider(currentData.heightFogHeight,
@@ -7445,8 +7518,8 @@ where T : IEquatable<T>
 
                     if (wireFrameEnabled != _wireFrameEnabled ||
                         colorEnabled != _colorEnabled ||
-                        shadowEnabled != currentData.enablePlaneShadows ||
-                        heightFogEnabled != currentData.enableHeightFog)
+                        shadowEnabled != currentData.planeShadowEnabled ||
+                        heightFogEnabled != currentData.heightFogEnabled)
                     {
                         ApplyModelCommandBuffers();
                     }
@@ -7552,7 +7625,7 @@ where T : IEquatable<T>
 
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
-                    currentData.enablePostProcess = GUILayout.Toggle(currentData.enablePostProcess, "Enable Post Processing", EditorStyles.miniButton);
+                    currentData.postProcessEnabled = GUILayout.Toggle(currentData.postProcessEnabled, "Enable Post Processing", EditorStyles.miniButton);
                     if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
                     {
 #if UNITY_POST_PROCESSING_STACK_V2
@@ -8551,7 +8624,7 @@ where T : IEquatable<T>
                 lightTr.Rotate(angle);
 
                 _preview.lights[i].shadows =
-                    currentData.enableShadows && i == 0 ? LightShadows.Soft : LightShadows.None;
+                    currentData.shadowEnabled && i == 0 ? LightShadows.Soft : LightShadows.None;
                 _preview.lights[i].shadowResolution = LightShadowResolution.VeryHigh;
                 _preview.lights[i].shadowBias = 0.01f;
             }
@@ -8630,6 +8703,11 @@ where T : IEquatable<T>
                 _preview.camera.backgroundColor = currentData.bgColor;
                 _preview.camera.clearFlags = CameraClearFlags.SolidColor;
             }
+        }
+
+        private void ApplyEnvironment()
+        {
+            
         }
 
         void ApplyLighting(Lighting lighting, string message = "")
@@ -8895,15 +8973,15 @@ where T : IEquatable<T>
             }
         }
 
-        private void DrawMesh(Mesh mesh, Material material)
+        private void DrawMesh(Mesh mesh, Material material, Vector3 position, Quaternion rotation, Vector3 scale)
         {
-            if (material == null || mesh == null) return;
-            Graphics.SetRenderTarget(_preview.camera.targetTexture);
-            material.SetPass(0);
-            Graphics.DrawMeshNow(mesh, Vector3.zero, Quaternion.identity, 0);
+            //if (material == null || mesh == null) return;
+            //Graphics.SetRenderTarget(_preview.camera.targetTexture);
+            //material.SetPass(0);
+            Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, rotation, scale),material, _previewLayer, _preview.camera, 0, null, false, true ); 
         }
 
-        private string GetDefaultMaterialName(RenderPipelineMode mode)
+        private static string GetDefaultMaterialName(RenderPipelineMode mode)
         {
             switch (mode)
             {
