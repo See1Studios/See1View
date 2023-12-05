@@ -1534,6 +1534,7 @@ where T : IEquatable<T>
             get { return dataList[dataIndex]; }
         }
 
+
         private int _dataIndex;
 
         public int dataIndex
@@ -1899,6 +1900,34 @@ where T : IEquatable<T>
         }
     }
 
+    internal class DefaultMaterial
+    {
+        static Material _builtIn;
+        static Material _universal;
+        static Material _highDefinition;
+
+        internal static Material Get(RenderPipelineMode renderPipelineMode)
+        {
+            switch (renderPipelineMode)
+            {
+                case RenderPipelineMode.BuiltIn:
+                    if (_builtIn == null)
+                        _builtIn = new Material(Shader.Find("Standard"));
+                    return _builtIn;
+                case RenderPipelineMode.Universal:
+                    if (_universal == null)
+                        _universal = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                    return _universal;
+                case RenderPipelineMode.HighDefinition:
+                    if (_highDefinition == null)
+                        _highDefinition = new Material(Shader.Find("HDRP/Lit"));
+                    return _highDefinition;
+                default: 
+                    return _builtIn;
+            }
+        }
+    }
+
     // model animation frame information
     [Serializable]
     internal class Steel
@@ -2245,46 +2274,57 @@ where T : IEquatable<T>
         }
     }
     // show hide object in scope
-    struct ShowObjectScope : IDisposable
+    struct ShowHideObjectScope : IDisposable
     {
-        private Renderer[] _renderers;
+        private Dictionary<Renderer, bool> rendererStateDic;
 
-        public ShowObjectScope(GameObject root)
+        public ShowHideObjectScope(GameObject root, bool enabled)
         {
+            rendererStateDic = new Dictionary<Renderer, bool>();
             if (root)
             {
-                _renderers = root.GetComponentsInChildren<Renderer>(true);
-                if (_renderers != null)
+                var renderers = root.GetComponentsInChildren<Renderer>(true);
+                if (renderers != null)
                 {
-                    if (_renderers.Length > 0)
+                    if (renderers.Length > 0)
                     {
-                        for (int i = 0; i < _renderers.Length; i++)
+                        for (int i = 0; i < renderers.Length; i++)
                         {
-                            _renderers[i].enabled = true;
+                            rendererStateDic.Add(renderers[i], renderers[i].enabled);
+                            renderers[i].enabled = enabled;
                         }
                     }
                 }
-            }
-            else
-            {
-                _renderers = null;
             }
         }
 
         public void Dispose()
         {
-            if (_renderers != null)
+            foreach (var pair in rendererStateDic)
             {
-                if (_renderers.Length > 0)
-                {
-                    for (int i = 0; i < _renderers.Length; i++)
-                    {
-                        _renderers[i].enabled = false;
-                    }
-                }
+                pair.Key.enabled = pair.Value;
             }
         }
     }
+
+    struct ShowHideRendererScope : IDisposable
+    {
+        Renderer renderer;
+        bool enabled;
+
+        public ShowHideRendererScope(Renderer renderer,bool enabled)
+        {
+            this.renderer = renderer;
+            this.enabled = renderer.enabled;
+            renderer.enabled = enabled;
+        }
+
+        public void Dispose()
+        {
+            renderer.enabled = enabled;
+        }
+    }
+
     // simple command buffer manager
     class CommandBufferManager
     {
@@ -3385,9 +3425,95 @@ where T : IEquatable<T>
             return sb.ToString();
         }
     }
-    // manage and play animations.
+
+    public class TransformModifier
+    {
+        public Transform target;
+
+        private Vector3 orgPosition;
+        private Quaternion orgRotation;
+        private Vector3 orgScale;
+
+        private Vector3 positionOffset = Vector3.zero;
+        private Quaternion rotation = Quaternion.identity;
+        private Vector3 scale = Vector3.one;
+
+        public TransformModifier(Transform root, string boneName)
+        {
+
+            target = FindTransformRecursive(root, boneName);
+            if (target)
+            {
+                orgPosition = root.localPosition;
+                orgRotation = root.localRotation;
+                orgScale = root.localScale;
+            }
+        }
+
+        public void SetModification(Vector3 positionOffset, Quaternion rotation, Vector3 scale)
+        {
+            this.positionOffset = positionOffset;
+            this.rotation = rotation;
+            this.scale = scale;
+        }
+
+        public void Apply()
+        {
+            if (target)
+            {
+                target.localPosition = orgPosition + positionOffset;
+                target.localRotation = orgRotation * rotation;
+                target.localScale = Vector3.Scale(orgScale, scale);
+            }
+        }
+
+        public void Reset()
+        {
+            if (target)
+            {
+                target.localPosition = orgPosition;
+                target.localRotation = orgRotation;
+                target.localScale = orgScale;
+            }
+        }
+
+        // Recursive function to find a Transform by name in the hierarchy
+        Transform FindTransformRecursive(Transform parent, string name)
+        {
+            Transform result = null;
+
+            // Check if the current Transform has the desired name
+            if (parent.name == name)
+            {
+                result = parent;
+            }
+            else
+            {
+                // Iterate through child Transforms and recursively search
+                for (int i = 0; i < parent.childCount; i++)
+                {
+                    Transform child = parent.GetChild(i);
+                    Transform foundInChildren = FindTransformRecursive(child, name);
+
+                    // If found in children, return the result
+                    if (foundInChildren != null)
+                    {
+                        result = foundInChildren;
+                        break;
+                    }
+                }
+            }
+
+            return result;
+        }
+    }
+
+    // apply animationclip to multiple actor
     public class AnimationPlayer
     {
+
+        List<TransformModifier> modifierList = new List<TransformModifier>();
+
         public class Actor
         {
             public bool enabled;
@@ -3910,6 +4036,9 @@ where T : IEquatable<T>
             RefreshPlayList();
         }
 
+        public void AddModifier(string name, Vector3 positionOF)
+        {
+        }
         void ToggleAnimationMode()
         {
             if (AnimationMode.InAnimationMode())
@@ -3937,6 +4066,10 @@ where T : IEquatable<T>
                         if (animated.enabled)
                         {
                             AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
+                            foreach (var modifier in modifierList)
+                            {
+                                modifier.Apply();
+                            }
                         }
                     }
                     AnimationMode.EndSampling();
@@ -5361,7 +5494,6 @@ where T : IEquatable<T>
         Transform _camPivot;
         Vector3 _targetOffset;
         Material _skyMaterial;
-        Material _defaultMaterial;
 
         Material _colorMaterial;
         CommandBuffer _colorCommandBuffer;
@@ -5800,7 +5932,7 @@ where T : IEquatable<T>
                 _preview.AddSingleGO(instance);
                 _targetInfo.Init(src,instance);
                 _treeView?.Reload();
-                InitAnimation(_mainTarget, true);
+                InitAnimationPlayer(_mainTarget, true);
                 ApplyModelCommandBuffers();
                 if (currentData.forceUpdateComponent)
                 {
@@ -5834,7 +5966,7 @@ where T : IEquatable<T>
             }
             RunInEditHelper2.Clean();
             Notice.Log(string.Format("{0} Removed", name), false);
-            InitAnimation(_mainTarget, true);
+            ResetAnimationPlayer();
             ApplyModelCommandBuffers();
             Repaint();
         }
@@ -5884,8 +6016,7 @@ where T : IEquatable<T>
             _preview.ambientColor = Color.gray;
             _preview.camera.gameObject.layer = _previewLayer;
 
-            _defaultMaterial = new Material(FindShader(GetDefaultMaterialName(currentData.renderPipelineMode)));
-
+            //_defaultMaterial = DefaultMaterial.Get(currentData.renderPipelineMode);
             _skyMaterial = new Material(FindShader("Skybox/Cubemap"));
 
             _colorCommandBuffer = new CommandBuffer();
@@ -5938,7 +6069,7 @@ where T : IEquatable<T>
             var floorFilter = floorGo.AddComponent<MeshFilter>();
             floorFilter.sharedMesh = Quad.Get();
             _floor = floorGo.AddComponent<MeshRenderer>();
-            _floor.sharedMaterial = _defaultMaterial;
+            _floor.sharedMaterial = DefaultMaterial.Get(currentData.renderPipelineMode);
             SetLayerAll(floorGo, _previewLayer);
             _preview.AddSingleGO(floorGo);
 
@@ -6011,6 +6142,7 @@ where T : IEquatable<T>
         {
             if (_camPivot) DestroyImmediate(_camPivot.gameObject);
             if (_lightPivot) DestroyImmediate(_lightPivot.gameObject);
+            if (_floor) DestroyImmediate(_floor.gameObject);
 
             if (_skyMaterial) DestroyImmediate(_skyMaterial);
             if (_preview != null)
@@ -6405,27 +6537,27 @@ where T : IEquatable<T>
             {
                 using (new QualitySettingsOverrider())
                 {
-                    //using (new ShowObjectScope(_shadowGo))
-                    //{
-                    using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
+                    using (new ShowHideRendererScope(_floor,!currentData.alphaAppliedImage))
                     {
-                        if (alpha)
+                        using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
                         {
-                            CameraClearFlags clearFlags = _preview.camera.clearFlags;
-                            Color backgroundColor = _preview.camera.backgroundColor;
-                            _preview.camera.clearFlags = CameraClearFlags.Color;
-                            _preview.camera.backgroundColor = Color.clear;
-                            _preview.Render(enableSRP, _updateFOV);
-                            _preview.camera.clearFlags = clearFlags;
-                            _preview.camera.backgroundColor = backgroundColor;
-                        }
-                        else
-                        {
-                            _preview.Render(enableSRP, _updateFOV);
+                            if (alpha)
+                            {
+                                CameraClearFlags clearFlags = _preview.camera.clearFlags;
+                                Color backgroundColor = _preview.camera.backgroundColor;
+                                _preview.camera.clearFlags = CameraClearFlags.Color;
+                                _preview.camera.backgroundColor = Color.clear;
+                                _preview.Render(enableSRP, _updateFOV);
+                                _preview.camera.clearFlags = clearFlags;
+                                _preview.camera.backgroundColor = backgroundColor;
+                            }
+                            else
+                            {
+                                _preview.Render(enableSRP, _updateFOV);
+                            }
                         }
                     }
                 }
-                //}
             }
 
             Texture tex = _preview.EndPreview();
@@ -6489,7 +6621,7 @@ where T : IEquatable<T>
 
         #region Animation
 
-        public void InitAnimation(GameObject root, bool reset)
+        public void InitAnimationPlayer(GameObject root, bool reset)
         {
             if (!root)
             {
@@ -6536,6 +6668,11 @@ where T : IEquatable<T>
                     _playerList.Add(player);
                 }
             }
+        }
+
+        public void ResetAnimationPlayer()
+        {
+            _playerList.Clear();
         }
 
         #endregion
@@ -7741,7 +7878,7 @@ where T : IEquatable<T>
                                     menu.AddItem(new GUIContent("Sphere"), false, () =>
                                     {
                                         var primitive = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                                        primitive.GetComponent<Renderer>().material = new Material(FindShader(GetDefaultMaterialName(currentData.renderPipelineMode)));
+                                        primitive.GetComponent<Renderer>().material = DefaultMaterial.Get(currentData.renderPipelineMode);
                                         AddModel(primitive);
                                         DestroyImmediate(primitive);
                                     });
@@ -7971,6 +8108,18 @@ where T : IEquatable<T>
                         break;
                 }
             }
+
+            EditorHelper.FoldGroup.Do("Transform Modifier", true, () =>
+            {
+                if (GUILayout.Button("Add Transfrom Modifier"))
+                {
+                    if (_playerList.Count > 0)
+                    {
+                        var player = _playerList[0];
+                        
+                    }
+                }
+            });
             EditorHelper.FoldGroup.Do("Recent", true, () =>
             {
                 _recentAnimation.OnGUI();
@@ -8992,20 +9141,6 @@ where T : IEquatable<T>
             Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, rotation, scale),material, _previewLayer, _preview.camera, 0, null, false, true ); 
         }
 
-        private static string GetDefaultMaterialName(RenderPipelineMode mode)
-        {
-            switch (mode)
-            {
-                case RenderPipelineMode.BuiltIn:
-                    return "Standard";
-                case RenderPipelineMode.Universal:
-                    return "Universal Render Pipeline/Lit";
-                case RenderPipelineMode.HighDefinition:
-                    return "HDRP/Lit";
-                default:
-                    return string.Empty;
-            }
-        }
 
         #endregion
 
