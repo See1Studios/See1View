@@ -3428,53 +3428,155 @@ where T : IEquatable<T>
 
     public class TransformModifier
     {
-        public Transform target;
+        public string name = string.Empty;
+        public Transform transform;
+        public Transform transformPair;
+        // 1차 자식
+        public List<Transform> children;
+        private bool isDontAppectChildren;
+        public bool isSymmetrical;
 
-        private Vector3 orgPosition;
-        private Quaternion orgRotation;
-        private Vector3 orgScale;
+        private Vector3 orgPosition = Vector3.zero;
+        private Quaternion orgRotation = Quaternion.identity;
+        private Vector3 orgScale = Vector3.one;
 
-        private Vector3 positionOffset = Vector3.zero;
+        private Vector3 offset = Vector3.zero;
         private Quaternion rotation = Quaternion.identity;
         private Vector3 scale = Vector3.one;
+        internal object m_TargetPath;
 
-        public TransformModifier(Transform root, string boneName)
+        public TransformModifier(Transform root, string boneName, bool isPath, bool isSymmetrical = false, bool isDontAppectChildren = false)
         {
-
-            target = FindTransformRecursive(root, boneName);
-            if (target)
+            this.isSymmetrical = isSymmetrical;
+            this.isDontAppectChildren = isDontAppectChildren;
+            if (isPath)
             {
-                orgPosition = root.localPosition;
-                orgRotation = root.localRotation;
-                orgScale = root.localScale;
+                transform = GetHierachyTarget(root, boneName);
             }
+            else
+            {
+                transform = FindTransformRecursive(root, boneName);
+            }
+            this.name = Path.GetFileName(boneName);
+
+            if (transform)
+            {
+                orgPosition = transform.localPosition;
+                orgRotation = transform.localRotation;
+                orgScale = transform.localScale;
+            }
+            if (isSymmetrical)
+            {
+                string leftIdentifier = " L ";
+                string RightIdentifier = " R ";
+                bool isLeft = boneName.Contains(leftIdentifier);
+                name = name.Replace(isLeft ? leftIdentifier : RightIdentifier, "");
+                transformPair = FindTransformRecursive(root, boneName.Replace(isLeft ? leftIdentifier : RightIdentifier, isLeft ? RightIdentifier : leftIdentifier));
+            }
+        }
+
+        private Transform GetHierachyTarget(Transform root, string relativePath)
+        {
+            //루트 트랜스폼 오브젝트 상태 저장 및 강제 활성화
+            var rootActive = root.gameObject.activeInHierarchy;
+            root.gameObject.SetActive(true);
+            string path = relativePath.Replace(root.name + "/","");
+
+            Debug.Log(path);
+            Transform objToFind = root.Find(path); // GameObject.Find 는 비활성화된 오브젝트에 적용불가
+            //GameObject go = GameObject.Find(path);
+            if (objToFind)
+            {
+                root.gameObject.SetActive(rootActive);
+                return objToFind.transform;
+            }
+            else return root.transform;
         }
 
         public void SetModification(Vector3 positionOffset, Quaternion rotation, Vector3 scale)
         {
-            this.positionOffset = positionOffset;
+            this.offset = positionOffset;
             this.rotation = rotation;
             this.scale = scale;
         }
 
+        public void OnGUI(bool pos, bool rot, bool scale)
+        {
+            GUILayout.Label(name, EditorStyles.boldLabel);
+            if (pos)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("Offset", EditorStyles.boldLabel);
+                    if (GUILayout.Button("Reset")) this.offset = Vector3.zero;
+                }
+                float x = offset.x;
+                float y = offset.y;
+                float z = offset.z;
+                x = EditorGUILayout.Slider("X", x, -1f, 1f);
+                y = EditorGUILayout.Slider("Y", y, -1f, 1f);
+                z = EditorGUILayout.Slider("Z", z, -1f, 1f);
+                this.offset = new Vector3(x, y, z);
+            }
+            if (rot)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("Rotation", EditorStyles.boldLabel);
+                    if (GUILayout.Button("Reset")) this.rotation = Quaternion.identity;
+                }
+                float x = rotation.eulerAngles.x;
+                float y = rotation.eulerAngles.y;
+                float z = rotation.eulerAngles.z;
+                x = EditorGUILayout.Slider("X", x, -180f, 180f);
+                y = EditorGUILayout.Slider("Y", y, -180f, 180f);
+                z = EditorGUILayout.Slider("Z", z, -180f, 180f);
+                this.rotation = Quaternion.Euler(x, y, z);
+            }
+            if (scale)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("Scale", EditorStyles.boldLabel);
+                    if (GUILayout.Button("Reset")) this.scale = Vector3.one;
+                }
+                float x = this.scale.x;
+                float y = this.scale.y;
+                float z = this.scale.z;
+                x = EditorGUILayout.Slider("X", x, 0f, 2f);
+                y = EditorGUILayout.Slider("Y", y, 0f, 2f);
+                z = EditorGUILayout.Slider("Z", z, 0f, 2f);
+                this.scale = new Vector3(x, y, z);
+            }
+            Apply();
+        }
+
         public void Apply()
         {
-            if (target)
+            if (transform)
             {
-                target.localPosition = orgPosition + positionOffset;
-                target.localRotation = orgRotation * rotation;
-                target.localScale = Vector3.Scale(orgScale, scale);
+                transform.localPosition = orgPosition + offset;
+                transform.localRotation = orgRotation * rotation;
+                transform.localScale = Vector3.Scale(orgScale, scale);
+            }
+            if (isSymmetrical)
+            {
+                transformPair.localPosition = orgPosition + offset;
+                transformPair.localRotation = orgRotation * rotation;
+                transformPair.localScale = Vector3.Scale(orgScale, scale);
+            }
+            if (isDontAppectChildren)
+            {
+
             }
         }
 
         public void Reset()
         {
-            if (target)
-            {
-                target.localPosition = orgPosition;
-                target.localRotation = orgRotation;
-                target.localScale = orgScale;
-            }
+            offset = Vector3.zero;
+            rotation = Quaternion.identity;
+            scale = Vector3.one;
+            Apply();
         }
 
         // Recursive function to find a Transform by name in the hierarchy
@@ -3512,7 +3614,8 @@ where T : IEquatable<T>
     public class AnimationPlayer
     {
 
-        List<TransformModifier> modifierList = new List<TransformModifier>();
+        public  string[] _modelRootHierachy;
+        public List<TransformModifier> modifierList = new List<TransformModifier>();
 
         public class Actor
         {
@@ -3559,6 +3662,7 @@ where T : IEquatable<T>
                     bounds.Encapsulate(renderer.bounds);
                 }
             }
+
         }
 
         public class ClipInfo
@@ -3619,6 +3723,8 @@ where T : IEquatable<T>
         private int _actorDistance = 1;
         internal AnimationClip _currentClip { get { return playList[0]; } }
         internal UnityEvent onStopPlaying = new UnityEvent();
+        internal string modifierTargetPath = string.Empty;
+
         internal ClipInfo currentClipInfo
         {
             get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
@@ -3629,6 +3735,27 @@ where T : IEquatable<T>
         {
             InitActorList();
             InitClipList();
+        }
+
+        private static string[] BuildHierachialPath(Transform root)
+        {
+            Transform[] all = root.GetComponentsInChildren<Transform>();
+            List<string> list = new List<string>();
+            foreach (var tr in all)
+            {
+                list.Add(GetTransformPath(tr));
+            }
+            return list.ToArray();
+        }
+        private static string GetTransformPath(Transform tr)
+        {
+            Transform root = tr;
+            while (root.parent != null)
+            {
+                root = root.parent;
+            }
+            root = root.parent;
+            return AnimationUtility.CalculateTransformPath(tr, root); //지정한 루트로부터의 path를 생성해줌
         }
 
         public void Dispose()
@@ -4001,6 +4128,7 @@ where T : IEquatable<T>
             {
                 InitAnimatorAndClips(actor.animator);
             }
+            _modelRootHierachy = BuildHierachialPath(actorList[0].instance.transform);
         }
 
         public void RemoveActor(Actor actor)
@@ -4036,8 +4164,28 @@ where T : IEquatable<T>
             RefreshPlayList();
         }
 
-        public void AddModifier(string name, Vector3 positionOF)
+        public void AddModifier(string name)
         {
+            modifierList.Add(new TransformModifier(actorList[0].instance.transform, name, true));
+        }
+        private static void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
+        {
+            // create the menu and add items to it
+            GenericMenu menu = new GenericMenu();
+            for (int i = 0; i < itemNames.Length; i++)
+            {
+                menu.AddItem(new GUIContent(itemNames[i]), selected.Equals(items[i]), OnSelected, items[i]);
+            }
+            menu.ShowAsContext();
+        }
+        public void AddModifierHandler()
+        {
+            var path = string.Empty;
+            ShowMenu(path, _modelRootHierachy, _modelRootHierachy, (x) =>
+            {
+                path = (string)x;
+                AddModifier(path);
+            });
         }
         void ToggleAnimationMode()
         {
@@ -8116,8 +8264,23 @@ where T : IEquatable<T>
                     if (_playerList.Count > 0)
                     {
                         var player = _playerList[0];
-                        
+                        player.AddModifierHandler();
                     }
+                }
+                if (_playerList.Count > 0)
+                {
+                    var player = _playerList[0];
+                    for (int i = 0; i < player.modifierList.Count; i++)
+                    {
+                        TransformModifier modifier = player.modifierList[i];
+                        if (GUILayout.Button("Remove"))
+                        {
+                            modifier.Reset();
+                            player.modifierList.Remove(modifier);
+                        }
+                        modifier.OnGUI(true, true, true);
+                    }
+
                 }
             });
             EditorHelper.FoldGroup.Do("Recent", true, () =>
@@ -9141,6 +9304,47 @@ where T : IEquatable<T>
             Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, rotation, scale),material, _previewLayer, _preview.camera, 0, null, false, true ); 
         }
 
+
+        private static void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
+        {
+            // create the menu and add items to it
+            GenericMenu menu = new GenericMenu();
+            for (int i = 0; i < itemNames.Length; i++)
+            {
+                menu.AddItem(new GUIContent(itemNames[i]), selected.Equals(items[i]), OnSelected, items[i]);
+            }
+            menu.ShowAsContext();
+        }
+        
+        //모든 트랜스폼의 path를 생성해서 리스트로 뽑음
+        private static string[] BuildHierachialPath(Transform root)
+        {
+            Transform[] all = root.GetComponentsInChildren<Transform>();
+            List<string> list = new List<string>();
+            foreach (var tr in all)
+            {
+                list.Add(GetTransformPath(tr));
+            }
+            return list.ToArray();
+        }
+
+        private static string GetTransformPath(GameObject go)
+        {
+            string path = string.Join("/", go.GetComponentsInParent<Transform>().Select(t => t.name).Reverse().ToArray());
+            //AS_Debug.Log(path);
+            return path;
+        }
+
+        private static string GetTransformPath(Transform tr)
+        {
+            Transform root = tr;
+            while (root.parent != null)
+            {
+                root = root.parent;
+            }
+            root = root.parent;
+            return AnimationUtility.CalculateTransformPath(tr, root); //지정한 루트로부터의 path를 생성해줌
+        }
 
         #endregion
 

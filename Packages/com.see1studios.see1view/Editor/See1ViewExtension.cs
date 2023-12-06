@@ -47,6 +47,7 @@ using System.Security.Policy;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
+using static UnityEngine.GraphicsBuffer;
 #endif
 #if HDRP
 using UnityEngine.Rendering.HighDefinition;
@@ -824,10 +825,49 @@ namespace See1Studios.See1View
             }
         }
 
-        private void targetItemHandler(ModelPart pData)
+        //private void targetItemHandler(ModelPart pData)
+        //{
+        //    PartData pData = target as PartData;
+        //    ShowMenu(pData.m_TargetPath, _modelRootHierachy, _modelRootHierachy, (x) =>
+        //    {
+        //        pData.m_TargetPath = (string)x;
+        //        SetModel(false);
+        //        EditorUtility.SetDirty(settings.currentData);
+        //    });
+        //}
+
+        //private Transform GetHierachyTarget(string relativePath)
+        //{
+        //    //루트 트랜스폼 오브젝트 상태 저장 및 강제 활성화
+        //    var rootActive = _modelRoot.gameObject.activeInHierarchy;
+        //    _modelRoot.gameObject.SetActive(true);
+        //    string path = "/" + relativePath;
+        //    Transform objToFind = _modelRoot.Find(path); // GameObject.Find 는 비활성화된 오브젝트에 적용불가
+        //    //GameObject go = GameObject.Find(path);
+        //    if (objToFind)
+        //    {
+        //        _modelRoot.gameObject.SetActive(rootActive);
+        //        return objToFind.transform;
+        //    }
+        //    else return _modelRoot.transform;
+        //}
+
+        private void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
         {
+            // create the menu and add items to it
+            GenericMenu menu = new GenericMenu();
+            for (int i = 0; i < itemNames.Length; i++)
+            {
+                menu.AddItem(new GUIContent(itemNames[i]), selected.Equals(items[i]), OnSelected, items[i]);
+            }
+            menu.ShowAsContext();
         }
 
+
+        private void targetItemHandler(object target)
+        {
+
+        }
         private void dataChangeHandler()
         {
         }
