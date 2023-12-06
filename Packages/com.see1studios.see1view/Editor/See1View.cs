@@ -3444,6 +3444,9 @@ where T : IEquatable<T>
         private Quaternion rotation = Quaternion.identity;
         private Vector3 scale = Vector3.one;
         internal object m_TargetPath;
+        public bool useOffset = true;
+        public bool useRotation = false;
+        public bool useScale = true;
 
         public TransformModifier(Transform root, string boneName, bool isPath, bool isSymmetrical = false, bool isDontAppectChildren = false)
         {
@@ -3500,10 +3503,10 @@ where T : IEquatable<T>
             this.scale = scale;
         }
 
-        public void OnGUI(bool pos, bool rot, bool scale)
+        public void OnGUI()
         {
             GUILayout.Label(name, EditorStyles.boldLabel);
-            if (pos)
+            if (useOffset)
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -3518,7 +3521,7 @@ where T : IEquatable<T>
                 z = EditorGUILayout.Slider("Z", z, -1f, 1f);
                 this.offset = new Vector3(x, y, z);
             }
-            if (rot)
+            if (useRotation)
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -3533,7 +3536,7 @@ where T : IEquatable<T>
                 z = EditorGUILayout.Slider("Z", z, -180f, 180f);
                 this.rotation = Quaternion.Euler(x, y, z);
             }
-            if (scale)
+            if (useScale)
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -3564,6 +3567,25 @@ where T : IEquatable<T>
                 transformPair.localPosition = orgPosition + offset;
                 transformPair.localRotation = orgRotation * rotation;
                 transformPair.localScale = Vector3.Scale(orgScale, scale);
+            }
+            if (isDontAppectChildren)
+            {
+
+            }
+        }
+        public void ApplyToCurrent()
+        {
+            if (transform)
+            {
+                transform.localPosition += offset;
+                transform.localRotation *= rotation;
+                Vector3.Scale(transform.localScale, scale);
+            }
+            if (isSymmetrical)
+            {
+                transformPair.localPosition += offset;
+                transformPair.localRotation *= rotation;
+                Vector3.Scale(transformPair.localScale, scale);
             }
             if (isDontAppectChildren)
             {
@@ -4222,7 +4244,7 @@ where T : IEquatable<T>
                             AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
                             foreach (var modifier in modifierList)
                             {
-                                modifier.Apply();
+                                modifier.ApplyToCurrent();
                             }
                         }
                     }
@@ -8289,7 +8311,7 @@ where T : IEquatable<T>
                             modifier.Reset();
                             player.modifierList.Remove(modifier);
                         }
-                        modifier.OnGUI(true, true, true);
+                        modifier.OnGUI();
                     }
 
                 }
