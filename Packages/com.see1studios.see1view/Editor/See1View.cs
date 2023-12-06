@@ -4168,6 +4168,12 @@ where T : IEquatable<T>
         {
             modifierList.Add(new TransformModifier(actorList[0].instance.transform, name, true));
         }
+
+        public void AddModifier(TransformModifier modifier)
+        {
+            modifierList.Add(modifier);
+        }
+
         private static void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
         {
             // create the menu and add items to it
@@ -6821,6 +6827,11 @@ where T : IEquatable<T>
         public void ResetAnimationPlayer()
         {
             _playerList.Clear();
+        }
+
+        public void AddModifier(TransformModifier modifier)
+        {
+            _playerList[0].AddModifier(modifier);
         }
 
         #endregion
