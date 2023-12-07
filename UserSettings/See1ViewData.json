@@ -2,82 +2,31 @@
     "dataList": [
         {
             "name": "Default",
-            "reframeToTarget": true,
-            "recalculateBound": true,
-            "forceUpdateComponent": true,
             "rotSpeed": 3,
             "zoomSpeed": 3,
             "panSpeed": 3,
             "smoothFactor": 3,
+            "viewportSizes": [
+                {
+                    "x": 1024.0,
+                    "y": 1024.0
+                },
+                {
+                    "x": 2560.0,
+                    "y": 1440.0
+                }
+            ],
             "imageSaveMode": 0,
             "openSavedImage": true,
             "alphaAppliedImage": true,
             "imageSizeMultiplier": 1,
-            "cameraType": 1,
-            "renderScale": 2.0,
-            "wireLineColor": {
-                "r": 1.0,
-                "g": 1.0,
-                "b": 1.0,
-                "a": 1.0
-            },
-            "wireFillColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 1.0
-            },
-            "wireThickness": 0.10000000149011612,
-            "wireUseDiscard": 1.0,
-            "planeShadowColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "enablePlaneShadows": false,
-            "heightFogColor": {
-                "r": 1.0,
-                "g": 1.0,
-                "b": 1.0,
-                "a": 1.0
-            },
-            "enableHeightFog": true,
-            "heightFogHeight": 1.2660179138183594,
-            "enableShadows": true,
-            "shadowStrength": 1.0,
-            "shadowBias": 1.0,
-            "enablePostProcess": true,
-            "urpData": {
-                "renderPostProcessing": true,
-                "dithering": false,
-                "antialiasing": 1
-            },
-            "hdrpData": {
-                "renderPostProcessing": true,
-                "dithering": true,
-                "antialiasing": 0
-            },
-            "bgColor": {
-                "r": 0.5660377740859985,
-                "g": 0.5660377740859985,
-                "b": 0.5660377740859985,
-                "a": 1.0
-            },
-            "ambientSkyColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "clearFlag": 0,
             "lastView": {
                 "name": "",
                 "rotation": {
-                    "x": -203.4111785888672,
-                    "y": -1.5250024795532227
+                    "x": 157.8766632080078,
+                    "y": 6.573812961578369
                 },
-                "distance": 4.100674629211426,
+                "distance": 7.134172439575195,
                 "pivot": {
                     "x": 0.0,
                     "y": 0.8849430084228516,
@@ -115,6 +64,22 @@
                     "fieldOfView": 30.0
                 }
             ],
+            "bgColor": {
+                "r": 0.5660377740859985,
+                "g": 0.5660377740859985,
+                "b": 0.5660377740859985,
+                "a": 1.0
+            },
+            "ambientSkyColor": {
+                "r": 0.5,
+                "g": 0.5,
+                "b": 0.5,
+                "a": 1.0
+            },
+            "clearFlag": 0,
+            "autoFloorHeightEnabled": false,
+            "floorHeight": 0.0,
+            "floorScale": 100.0,
             "lastLighting": {
                 "name": "",
                 "lightList": [
@@ -124,10 +89,10 @@
                             "y": 0.0
                         },
                         "rotation": {
-                            "x": 0.0,
-                            "y": -1.0,
-                            "z": 0.0,
-                            "w": -4.371138828673793e-8
+                            "x": 0.00940699502825737,
+                            "y": -0.8931365609169006,
+                            "z": 0.4465740919113159,
+                            "w": -0.052822213619947436
                         },
                         "lightColor": {
                             "r": 0.7689999938011169,
@@ -267,41 +232,11 @@
                     "cubemapPath": ""
                 }
             ],
-            "viewportSizes": [
-                {
-                    "x": 1024.0,
-                    "y": 1024.0
-                },
-                {
-                    "x": 2560.0,
-                    "y": 1440.0
-                }
-            ],
-            "steelList": [],
-            "modelCreateMode": 2,
-            "lastTargetPath": "",
-            "_lastTarget": {
-                "instanceID": 0
-            },
-            "cubemapPath": "Assets/Common/CasualDay4K.tga",
-            "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
-            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
-        },
-        {
-            "name": "-_-",
-            "reframeToTarget": true,
-            "recalculateBound": true,
-            "forceUpdateComponent": false,
-            "rotSpeed": 3,
-            "zoomSpeed": 3,
-            "panSpeed": 3,
-            "smoothFactor": 3,
-            "imageSaveMode": 0,
-            "openSavedImage": true,
-            "alphaAppliedImage": true,
-            "imageSizeMultiplier": 1,
+            "shadowEnabled": true,
+            "shadowStrength": 1.0,
+            "shadowBias": 1.0,
             "cameraType": 1,
-            "renderScale": 0.0,
+            "renderScale": 2.0,
             "wireLineColor": {
                 "r": 1.0,
                 "g": 1.0,
@@ -316,48 +251,56 @@
             },
             "wireThickness": 0.10000000149011612,
             "wireUseDiscard": 1.0,
+            "planeShadowEnabled": false,
             "planeShadowColor": {
                 "r": 0.5,
                 "g": 0.5,
                 "b": 0.5,
                 "a": 1.0
             },
-            "enablePlaneShadows": true,
+            "heightFogEnabled": false,
             "heightFogColor": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
-                "a": 0.5
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
             },
-            "enableHeightFog": true,
-            "heightFogHeight": 1.0,
-            "enableShadows": true,
-            "shadowStrength": 0.0,
-            "shadowBias": 0.009999999776482582,
-            "enablePostProcess": true,
+            "heightFogHeight": 1.2660179138183594,
+            "postProcessEnabled": false,
             "urpData": {
                 "renderPostProcessing": true,
-                "dithering": true,
-                "antialiasing": 0
+                "dithering": false,
+                "antialiasing": 1
             },
             "hdrpData": {
                 "renderPostProcessing": true,
                 "dithering": true,
                 "antialiasing": 0
             },
-            "bgColor": {
-                "r": 0.3215686082839966,
-                "g": 0.3215686082839966,
-                "b": 0.3215686082839966,
-                "a": 1.0
+            "steelList": [],
+            "reframeToTarget": true,
+            "recalculateBound": true,
+            "forceUpdateComponent": true,
+            "modelCreateMode": 0,
+            "lastTargetPath": "",
+            "_lastTarget": {
+                "instanceID": 0
             },
-            "ambientSkyColor": {
-                "r": 0.5,
-                "g": 0.5,
-                "b": 0.5,
-                "a": 1.0
-            },
-            "clearFlag": 0,
+            "cubemapPath": "Assets/Common/CasualDay4K.tga",
+            "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
+            "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
+        },
+        {
+            "name": "-_-",
+            "rotSpeed": 3,
+            "zoomSpeed": 3,
+            "panSpeed": 3,
+            "smoothFactor": 3,
+            "viewportSizes": [],
+            "imageSaveMode": 0,
+            "openSavedImage": true,
+            "alphaAppliedImage": true,
+            "imageSizeMultiplier": 1,
             "lastView": {
                 "name": "",
                 "rotation": {
@@ -373,6 +316,22 @@
                 "fieldOfView": 1.0
             },
             "viewList": [],
+            "bgColor": {
+                "r": 0.3215686082839966,
+                "g": 0.3215686082839966,
+                "b": 0.3215686082839966,
+                "a": 1.0
+            },
+            "ambientSkyColor": {
+                "r": 0.5,
+                "g": 0.5,
+                "b": 0.5,
+                "a": 1.0
+            },
+            "clearFlag": 0,
+            "autoFloorHeightEnabled": false,
+            "floorHeight": 0.0,
+            "floorScale": 0.0,
             "lastLighting": {
                 "name": "",
                 "lightList": [
@@ -424,8 +383,55 @@
                 "cubemapPath": ""
             },
             "lightingList": [],
-            "viewportSizes": [],
+            "shadowEnabled": false,
+            "shadowStrength": 0.0,
+            "shadowBias": 0.009999999776482582,
+            "cameraType": 1,
+            "renderScale": 0.0,
+            "wireLineColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+            },
+            "wireFillColor": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+            },
+            "wireThickness": 0.10000000149011612,
+            "wireUseDiscard": 1.0,
+            "planeShadowEnabled": false,
+            "planeShadowColor": {
+                "r": 0.5,
+                "g": 0.5,
+                "b": 0.5,
+                "a": 1.0
+            },
+            "heightFogEnabled": false,
+            "heightFogColor": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 0.5
+            },
+            "heightFogHeight": 1.0,
+            "postProcessEnabled": false,
+            "urpData": {
+                "renderPostProcessing": true,
+                "dithering": true,
+                "antialiasing": 0
+            },
+            "hdrpData": {
+                "renderPostProcessing": true,
+                "dithering": true,
+                "antialiasing": 0
+            },
             "steelList": [],
+            "reframeToTarget": true,
+            "recalculateBound": true,
+            "forceUpdateComponent": false,
             "modelCreateMode": 0,
             "lastTargetPath": "",
             "_lastTarget": {

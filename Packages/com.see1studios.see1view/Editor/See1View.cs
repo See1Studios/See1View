@@ -45,6 +45,7 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
+using System.Security.Cryptography;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -3428,6 +3429,7 @@ where T : IEquatable<T>
 
     public class TransformModifier
     {
+        public string id = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
         public string name = string.Empty;
         public Transform transform;
         public Transform transformPair;
@@ -3443,14 +3445,15 @@ where T : IEquatable<T>
         private Vector3 offset = Vector3.zero;
         private Quaternion rotation = Quaternion.identity;
         private Vector3 scale = Vector3.one;
-        internal object m_TargetPath;
         public bool useOffset = true;
         public bool useRotation = false;
         public bool useScale = true;
+        public bool useUniformScale = true;
+        internal bool enabled;
 
-        public TransformModifier(Transform root, string boneName, bool isPath, bool isSymmetrical = false, bool isDontAppectChildren = false)
+        public TransformModifier(Transform root, string boneName, bool isPath, bool isDontAppectChildren = false)
         {
-            this.isSymmetrical = isSymmetrical;
+            this.id = boneName;
             this.isDontAppectChildren = isDontAppectChildren;
             if (isPath)
             {
@@ -3468,14 +3471,13 @@ where T : IEquatable<T>
                 orgRotation = transform.localRotation;
                 orgScale = transform.localScale;
             }
-            if (isSymmetrical)
-            {
-                string leftIdentifier = " L ";
-                string RightIdentifier = " R ";
-                bool isLeft = boneName.Contains(leftIdentifier);
-                name = name.Replace(isLeft ? leftIdentifier : RightIdentifier, "");
-                transformPair = FindTransformRecursive(root, boneName.Replace(isLeft ? leftIdentifier : RightIdentifier, isLeft ? RightIdentifier : leftIdentifier));
-            }
+            // 대칭본은 일단 기본적으로 찾아봐서 들고 있도록 하자.
+            string leftIdentifier = " L ";
+            string RightIdentifier = " R ";
+            bool isLeft = boneName.Contains(leftIdentifier);
+            //name = name.Replace(isLeft ? leftIdentifier : RightIdentifier, "");
+            transformPair = FindTransformRecursive(root, boneName.Replace(isLeft ? leftIdentifier : RightIdentifier, isLeft ? RightIdentifier : leftIdentifier));
+
         }
 
         private Transform GetHierachyTarget(Transform root, string relativePath)
@@ -3484,8 +3486,7 @@ where T : IEquatable<T>
             var rootActive = root.gameObject.activeInHierarchy;
             root.gameObject.SetActive(true);
             string path = relativePath.Replace(root.name + "/","");
-
-            Debug.Log(path);
+            //Debug.Log(path);
             Transform objToFind = root.Find(path); // GameObject.Find 는 비활성화된 오브젝트에 적용불가
             //GameObject go = GameObject.Find(path);
             if (objToFind)
@@ -3505,53 +3506,66 @@ where T : IEquatable<T>
 
         public void OnGUI()
         {
-            GUILayout.Label(name, EditorStyles.boldLabel);
-            if (useOffset)
+            using (var check = new EditorGUI.ChangeCheckScope())
             {
-                using (new EditorGUILayout.HorizontalScope())
+                using (new EditorGUILayout.VerticalScope(GUI.skin.box))
                 {
-                    GUILayout.Label("Offset", EditorStyles.boldLabel);
-                    if (GUILayout.Button("Reset")) this.offset = Vector3.zero;
+                    if (useOffset)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            GUILayout.Label("Offset", EditorStyles.boldLabel);
+                            if (GUILayout.Button("Reset", GUILayout.Width(50))) this.offset = Vector3.zero;
+                        }
+                        float x = offset.x;
+                        float y = offset.y;
+                        float z = offset.z;
+                        x = EditorGUILayout.Slider("X", x, -1f, 1f);
+                        y = EditorGUILayout.Slider("Y", y, -1f, 1f);
+                        z = EditorGUILayout.Slider("Z", z, -1f, 1f);
+                        this.offset = new Vector3(x, y, z);
+                    }
+                    if (useRotation)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            GUILayout.Label("Rotation", EditorStyles.boldLabel);
+                            if (GUILayout.Button("Reset", GUILayout.Width(50))) this.rotation = Quaternion.identity;
+                        }
+                        float x = rotation.eulerAngles.x;
+                        float y = rotation.eulerAngles.y;
+                        float z = rotation.eulerAngles.z;
+                        x = EditorGUILayout.Slider("X", x, -180f, 180f);
+                        y = EditorGUILayout.Slider("Y", y, -180f, 180f);
+                        z = EditorGUILayout.Slider("Z", z, -180f, 180f);
+                        this.rotation = Quaternion.Euler(x, y, z);
+                    }
+                    if (useScale)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            GUILayout.Label("Scale", EditorStyles.boldLabel);
+                            useUniformScale = GUILayout.Toggle(useUniformScale, "Uniform", EditorStyles.miniButton, GUILayout.Width(60));
+                            if (GUILayout.Button("Reset", GUILayout.Width(50))) this.scale = Vector3.one;
+                        }
+                        float x = this.scale.x;
+                        float y = this.scale.y;
+                        float z = this.scale.z;
+                        if (!useUniformScale)
+                        {
+                            x = EditorGUILayout.Slider("X", x, 0f, 2f);
+                            y = EditorGUILayout.Slider("Y", y, 0f, 2f);
+                            z = EditorGUILayout.Slider("Z", z, 0f, 2f);
+                        }
+                        else
+                        {
+                            x = y = z = EditorGUILayout.Slider("XYZ", x, 0f, 2f);
+                        }
+                        this.scale = new Vector3(x, y, z);
+                    }
                 }
-                float x = offset.x;
-                float y = offset.y;
-                float z = offset.z;
-                x = EditorGUILayout.Slider("X", x, -1f, 1f);
-                y = EditorGUILayout.Slider("Y", y, -1f, 1f);
-                z = EditorGUILayout.Slider("Z", z, -1f, 1f);
-                this.offset = new Vector3(x, y, z);
+                if (check.changed) Apply();
             }
-            if (useRotation)
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Label("Rotation", EditorStyles.boldLabel);
-                    if (GUILayout.Button("Reset")) this.rotation = Quaternion.identity;
-                }
-                float x = rotation.eulerAngles.x;
-                float y = rotation.eulerAngles.y;
-                float z = rotation.eulerAngles.z;
-                x = EditorGUILayout.Slider("X", x, -180f, 180f);
-                y = EditorGUILayout.Slider("Y", y, -180f, 180f);
-                z = EditorGUILayout.Slider("Z", z, -180f, 180f);
-                this.rotation = Quaternion.Euler(x, y, z);
-            }
-            if (useScale)
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Label("Scale", EditorStyles.boldLabel);
-                    if (GUILayout.Button("Reset")) this.scale = Vector3.one;
-                }
-                float x = this.scale.x;
-                float y = this.scale.y;
-                float z = this.scale.z;
-                x = EditorGUILayout.Slider("X", x, 0f, 2f);
-                y = EditorGUILayout.Slider("Y", y, 0f, 2f);
-                z = EditorGUILayout.Slider("Z", z, 0f, 2f);
-                this.scale = new Vector3(x, y, z);
-            }
-            Apply();
         }
 
         public void Apply()
@@ -3562,7 +3576,7 @@ where T : IEquatable<T>
                 transform.localRotation = orgRotation * rotation;
                 transform.localScale = Vector3.Scale(orgScale, scale);
             }
-            if (isSymmetrical)
+            if (isSymmetrical && transformPair)
             {
                 transformPair.localPosition = orgPosition + offset;
                 transformPair.localRotation = orgRotation * rotation;
@@ -3579,13 +3593,13 @@ where T : IEquatable<T>
             {
                 transform.localPosition += offset;
                 transform.localRotation *= rotation;
-                Vector3.Scale(transform.localScale, scale);
+                transform.localScale =  scale;
             }
-            if (isSymmetrical)
+            if (isSymmetrical && transformPair)
             {
                 transformPair.localPosition += offset;
                 transformPair.localRotation *= rotation;
-                Vector3.Scale(transformPair.localScale, scale);
+                transform.localScale = scale;
             }
             if (isDontAppectChildren)
             {
@@ -3635,10 +3649,6 @@ where T : IEquatable<T>
     // apply animationclip to multiple actor
     public class AnimationPlayer
     {
-
-        public  string[] _modelRootHierachy;
-        public List<TransformModifier> modifierList = new List<TransformModifier>();
-
         public class Actor
         {
             public bool enabled;
@@ -3730,9 +3740,12 @@ where T : IEquatable<T>
 
         internal UnityEditorInternal.ReorderableList reorderableActorList;
         internal UnityEditorInternal.ReorderableList reorderableClipList;
+        internal UnityEditorInternal.ReorderableList reorderableModifierList;
         internal List<Actor> actorList = new List<Actor>();
         internal List<AnimationClip> playList = new List<AnimationClip>();
         internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
+        internal List<TransformModifier> modifierList = new List<TransformModifier>();
+        public string[] _modelRootHierachy;
         private int current;
         internal double time = 0.0f;
         internal float timeSpeed = 1.0f;
@@ -3757,6 +3770,7 @@ where T : IEquatable<T>
         {
             InitActorList();
             InitClipList();
+            InitModifierList();
         }
 
         private static string[] BuildHierachialPath(Transform root)
@@ -4093,7 +4107,115 @@ where T : IEquatable<T>
             };
             reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
         }
+        private void InitModifierList()
+        {
+            modifierList = new List<TransformModifier>();
+            reorderableModifierList = new UnityEditorInternal.ReorderableList(modifierList, typeof(TransformModifier), true, true, false, false);
+            //fields
+            reorderableModifierList.showDefaultBackground = false;
+            reorderableModifierList.headerHeight = 20;
+            reorderableModifierList.elementHeight = 18;
+            reorderableModifierList.footerHeight = 20;
+            //draw callback
+            reorderableModifierList.drawHeaderCallback = (position) =>
+            {
+                Event evt = Event.current;
+                var btn30 = position.width * 0.3333f;
+                position.width = btn30;
+                if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
+                {
+                    reorderableModifierList.onAddDropdownCallback.Invoke(position, reorderableModifierList);
+                }
 
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(reorderableModifierList.index < 0))
+                {
+                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
+                    {
+                        reorderableModifierList.onRemoveCallback(reorderableModifierList);
+                    }
+                }
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
+                {
+                    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                    {
+                        modifierList.Clear();
+                    }
+                }
+            };
+            reorderableModifierList.drawElementCallback = (position, index, isActive, isFocused) =>
+            {
+                float rectWidth = position.width;
+                float rectHeight = position.height;
+                float tglWidth = 15;
+                float btnWidth = 55;
+                position.width = tglWidth;
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    modifierList[index].enabled = EditorGUI.Toggle(position, modifierList[index].enabled);
+                    if (check.changed)
+                    {
+                    }
+                }
+                position.x += position.width;
+                position.width = rectWidth - btnWidth - tglWidth;
+                var style0 = new GUIStyle(EditorStyles.miniLabel);
+                EditorGUI.LabelField(position, string.Format("{0}", modifierList[index].name), style0);
+                var style1 = new GUIStyle(EditorStyles.miniLabel);
+                style1.alignment = TextAnchor.MiddleRight;
+                style1.normal.textColor = Color.gray;
+                position.x += position.width;
+                position.width = btnWidth;
+                position.height = 16;
+            };
+            reorderableModifierList.drawFooterCallback = position =>
+            {
+                //var btn20 = position.width * 0.2f;
+                //var btn25 = position.width * 0.25f;
+                //var btn30 = position.width * 0.3f;
+                var btn50 = position.width * 0.5f;
+                position.width = btn50;
+                if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
+                {
+                    foreach (var modifier in modifierList)
+                    {
+                        modifier.enabled = true;
+                    }
+                }
+
+                position.x += position.width;
+                position.width = btn50;
+                if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
+                {
+                    foreach (var modifier in modifierList)
+                    {
+                        modifier.enabled = false;
+                    }
+                }
+
+                position.x += position.width;
+            };
+            //btn callback
+            reorderableModifierList.onAddDropdownCallback = (buttonRect, list) =>
+            {
+                AddModifierHandler();
+
+            };
+            reorderableModifierList.onRemoveCallback = (list) =>
+            {
+                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
+                if (modifierList.Count > 0)
+                {
+                    modifierList.RemoveAt(reorderableModifierList.index);
+                }
+                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
+            };
+            reorderableModifierList.onChangedCallback = list => { };
+            reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight *3;
+        }
         public void PlayInstant(int index)
         {
             foreach (var info in clipInfoList)
@@ -4188,7 +4310,8 @@ where T : IEquatable<T>
 
         public void AddModifier(string name)
         {
-            modifierList.Add(new TransformModifier(actorList[0].instance.transform, name, true));
+            bool isContains = modifierList.Any(x => x.id == name);
+            if (!isContains) modifierList.Add(new TransformModifier(actorList[0].instance.transform, name, true));
         }
 
         public void AddModifier(TransformModifier modifier)
@@ -4244,6 +4367,18 @@ where T : IEquatable<T>
                             AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
                             foreach (var modifier in modifierList)
                             {
+                                var clip = new AnimationClip();
+                                Keyframe[] keys;
+                                keys = new Keyframe[3];
+                                keys[0] = new Keyframe(0.0f, 0.0f);
+                                keys[1] = new Keyframe(1.0f, 1.5f);
+                                keys[2] = new Keyframe(2.0f, 0.0f);
+                                var curve = new AnimationCurve(keys);
+                                clip.SetCurve("", typeof(Transform), "localPosition.x", curve);
+                                // update the clip to a change the red color
+                                curve = AnimationCurve.Linear(0.0f, 1.0f, 2.0f, 0.0f);
+                                clip.SetCurve("", typeof(Material), "_Color.r", curve);
+                                AnimationUtility.SetAdditiveReferencePose(_currentClip, clip, (float)time);
                                 modifier.ApplyToCurrent();
                             }
                         }
@@ -8292,12 +8427,20 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Transform Modifier", true, () =>
             {
-                if (GUILayout.Button("Add Transfrom Modifier"))
+                //for (int a = 0; a < _playerList.Count; a++)
+                //{
+                //    var player = _playerList[a];
+                //    player.reorderableModifierList.DoLayoutList();
+                //}
+                using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (_playerList.Count > 0)
+                    if (GUILayout.Button("Add"))
                     {
-                        var player = _playerList[0];
-                        player.AddModifierHandler();
+                        if (_playerList.Count > 0)
+                        {
+                            var player = _playerList[0];
+                            player.AddModifierHandler();
+                        }
                     }
                 }
                 if (_playerList.Count > 0)
@@ -8306,14 +8449,21 @@ where T : IEquatable<T>
                     for (int i = 0; i < player.modifierList.Count; i++)
                     {
                         TransformModifier modifier = player.modifierList[i];
-                        if (GUILayout.Button("Remove"))
+                        using (new EditorGUILayout.HorizontalScope())
                         {
-                            modifier.Reset();
-                            player.modifierList.Remove(modifier);
+                            GUILayout.Label(modifier.name, EditorStyles.boldLabel);
+                            //modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym",EditorStyles.miniButton, GUILayout.Width(40));
+                            using (EditorHelper.Colorize.Do(Color.white, Color.red))
+                            {
+                                if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                                {
+                                    modifier.Reset();
+                                    player.modifierList.Remove(modifier);
+                                }
+                            }
                         }
                         modifier.OnGUI();
                     }
-
                 }
             });
             EditorHelper.FoldGroup.Do("Recent", true, () =>
