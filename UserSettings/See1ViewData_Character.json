@@ -1,0 +1,151 @@
+{
+    "name": "Character",
+    "rotSpeed": 3,
+    "zoomSpeed": 3,
+    "panSpeed": 3,
+    "smoothFactor": 3,
+    "viewportSizes": [],
+    "imageSaveMode": 0,
+    "openSavedImage": true,
+    "alphaAppliedImage": true,
+    "imageSizeMultiplier": 1,
+    "lastView": {
+        "name": "",
+        "rotation": {
+            "x": 187.27401733398438,
+            "y": -11.293232917785645
+        },
+        "distance": 1.0,
+        "pivot": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+        },
+        "fieldOfView": 30.0
+    },
+    "viewList": [],
+    "bgColor": {
+        "r": 0.3215686082839966,
+        "g": 0.3215686082839966,
+        "b": 0.3215686082839966,
+        "a": 1.0
+    },
+    "ambientSkyColor": {
+        "r": 0.5,
+        "g": 0.5,
+        "b": 0.5,
+        "a": 1.0
+    },
+    "clearFlag": 0,
+    "autoFloorHeightEnabled": false,
+    "floorHeight": 0.0,
+    "floorScale": 10.0,
+    "lastLighting": {
+        "name": "",
+        "lightList": [
+            {
+                "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "rotation": {
+                    "x": 0.0,
+                    "y": -1.0,
+                    "z": 0.0,
+                    "w": -4.371138828673793e-8
+                },
+                "lightColor": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                },
+                "intensity": 1.0
+            },
+            {
+                "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "rotation": {
+                    "x": 0.3162142038345337,
+                    "y": -0.1725243479013443,
+                    "z": 0.9323148727416992,
+                    "w": 0.032140158116817477
+                },
+                "lightColor": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                },
+                "intensity": 1.0
+            }
+        ],
+        "ambientSkyColor": {
+            "r": 0.5,
+            "g": 0.5,
+            "b": 0.5,
+            "a": 1.0
+        },
+        "cubemapPath": ""
+    },
+    "lightingList": [],
+    "shadowEnabled": true,
+    "shadowStrength": 1.0,
+    "shadowBias": 0.009999999776482582,
+    "cameraType": 1,
+    "renderScale": 2.0,
+    "wireLineColor": {
+        "r": 1.0,
+        "g": 1.0,
+        "b": 1.0,
+        "a": 1.0
+    },
+    "wireFillColor": {
+        "r": 0.0,
+        "g": 0.0,
+        "b": 0.0,
+        "a": 1.0
+    },
+    "wireThickness": 0.10000000149011612,
+    "wireUseDiscard": 1.0,
+    "planeShadowEnabled": true,
+    "planeShadowColor": {
+        "r": 0.5,
+        "g": 0.5,
+        "b": 0.5,
+        "a": 1.0
+    },
+    "heightFogEnabled": true,
+    "heightFogColor": {
+        "r": 0.0,
+        "g": 0.0,
+        "b": 0.0,
+        "a": 0.5
+    },
+    "heightFogHeight": 1.0,
+    "postProcessEnabled": true,
+    "urpData": {
+        "renderPostProcessing": true,
+        "dithering": true,
+        "antialiasing": 0
+    },
+    "hdrpData": {
+        "renderPostProcessing": true,
+        "dithering": true,
+        "antialiasing": 0
+    },
+    "steelList": [],
+    "reframeToTarget": true,
+    "recalculateBound": true,
+    "forceUpdateComponent": true,
+    "modelCreateMode": 0,
+    "lastTargetPath": "",
+    "_lastTarget": {
+        "instanceID": 0
+    },
+    "cubemapPath": "",
+    "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
+    "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
+}

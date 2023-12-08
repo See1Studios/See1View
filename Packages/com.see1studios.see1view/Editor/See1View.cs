@@ -1,4 +1,4 @@
-//
+// 
 // See1View - Unity asset viewer for look dev and additional asset creation
 //
 // Copyright (C) 2020 See1 Studios - Jongwoo Park
@@ -21,16 +21,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
-
+//#define URP
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.AnimatedValues;
 using UnityEditor.IMGUI.Controls;
@@ -45,7 +43,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using System.Security.Cryptography;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -116,27 +113,28 @@ namespace See1Studios.See1View
     [InitializeOnLoad]
     public static class Initializer
     {
-        [System.Serializable]
-        class ConfigData
+        [System.Serializable] // JsonUtility serialize only public
+        public class ConfigData
         {
-            public string title;
-            public string logoTexStr;
-            public string description;
-            public string help;
-            public string customLoader;
+            public string title = string.Empty;
+            public string logoTexStr = string.Empty;
+            public string description = string.Empty;
+            public string help = string.Empty;
+            public string customLoader = string.Empty;
+            public See1ViewData defaultData = new See1ViewData("Default");
         }
 
         public const string MENU_PATH = "Tools/See1Studios/See1View/Open See1View";
         public const int MENU_PRIORITY = 10000;
 
-        public static string title = "See1View";
-        public static string logoTexStr = "";
-        public static string description = "Copyright (c) See1Studios.\nsee1studios@gmail.com";
-        public static string help = "No Help Document";
-        public static Texture2D logoTexture = Texture2D.grayTexture;
+        internal static string title = "See1View";
+        internal static string version => GetVersion();
+        internal static string description = "Copyright (c) See1Studios.\nsee1studios@gmail.com";
+        internal static string help = "No Help Document";
+        internal static Texture2D logoTexture = Textures.transparentTexture;
         static string _customLoaderTypeName;
-
         static Type[] _customLoaderTypes;
+        internal static See1ViewData defaultData = new See1ViewData("Default");
 
         static Initializer()
         {
@@ -145,19 +143,31 @@ namespace See1Studios.See1View
         }
         static void InitializeConfig()
         {
-            string cfgPath = PathHelper.ScriptPath.Replace(".cs", ".cfg");
+            string cfgPath = PathHelper.ScriptPath.Replace(".cs", ".json");
             if (File.Exists(cfgPath))
             {
                 string json = File.ReadAllText(cfgPath);
                 ConfigData data = JsonUtility.FromJson<ConfigData>(json);
-                title = data.title;
-                logoTexStr = data.logoTexStr;
-                description = data.description;
-                _customLoaderTypeName = data.customLoader;
-                logoTexture = ConvertBase64ToTexture(data.logoTexStr);
-                help = data.help;
-                Debug.Log(_customLoaderTypeName);
+                if (!string.IsNullOrEmpty(data.title)) title = data.title;
+                if (!string.IsNullOrEmpty(data.description)) description = data.description;
+                if (!string.IsNullOrEmpty(data.customLoader)) _customLoaderTypeName = data.customLoader;
+                if (!string.IsNullOrEmpty(data.logoTexStr)) logoTexture = ConvertBase64ToTexture(data.logoTexStr);
+                if (!string.IsNullOrEmpty(data.help)) help = data.help;
+                if(data.defaultData != null) defaultData = data.defaultData;
+                Debug.Log("Data Found");
             }
+        }
+
+        static string GetVersion()
+        {
+            FileInfo fileInfo = new FileInfo(PathHelper.ScriptPath);
+            string result = string.Empty;
+            if (fileInfo.Exists)
+            {
+                DateTime dt = fileInfo.LastWriteTime;
+                result = $"{dt.Year}.{dt.Month}.{dt.Day}";
+            }
+            return result;
         }
 
         public static void CollectCustomLoaders()
@@ -167,7 +177,7 @@ namespace See1Studios.See1View
             _customLoaderTypes = GetDerivedTypes(assembly, baseClassType);
             foreach (var customLoader in _customLoaderTypes)
             {
-                Debug.Log(customLoader.Name);
+                Debug.Log($"See1View : Custom Loader Initialized : {customLoader.Name}");
             }
         }
 
@@ -232,6 +242,7 @@ namespace See1Studios.See1View
             {
                 var g = AssetDatabase.FindAssets($"t:Script {nameof(See1View)}");
                 string absolute = Path.GetFullPath(AssetDatabase.GUIDToAssetPath(g[0]));
+                Debug.Log($"ScriptPath : {absolute}");
                 return absolute;
             }
         }
@@ -709,173 +720,6 @@ where T : IEquatable<T>
         }
     }
 
-
-
-    // .Ini file Parser Author: Tristan 'Kennyist' Cunningham - www.tristanjc.com License: Creative commons ShareAlike 3.0 - https://creativecommons.org/licenses/by-sa/3.0/
-    public class INIParser
-    {
-
-        private ArrayList keys = new ArrayList();
-        private ArrayList vals = new ArrayList();
-        private ArrayList comments = new ArrayList();
-
-        public INIParser() { }
-
-        public INIParser(string file)
-        {
-            Load(file);
-        }
-
-        public bool DoesExist(string file)
-        {
-            return File.Exists(Application.dataPath + "/" + file + ".ini") ? true : false;
-        }
-
-        public void Set(string key, string val)
-        {
-            for (int i = 0; i < keys.Count; i++)
-            {
-                if (keys[i] == key)
-                {
-                    vals[i] = val;
-                    return;
-                }
-            }
-
-            keys.Add(key);
-            vals.Add(val);
-            comments.Add("");
-        }
-
-        public void Set(string key, string val, string comment)
-        {
-            for (int i = 0; i < keys.Count; i++)
-            {
-                if (keys[i] == key)
-                {
-                    vals[i] = val;
-                    comments[i] = comment;
-                    return;
-                }
-            }
-
-            keys.Add(key);
-            vals.Add(val);
-            comments.Add(comment);
-        }
-
-        public string Get(string key)
-        {
-            for (int i = 0; i < keys.Count; i++)
-            {
-                if (keys[i].Equals(key))
-                {
-                    return vals[i].ToString();
-                }
-            }
-            return "";
-        }
-
-        public string[] GetLine(string key)
-        {
-            string[] list = new string[2];
-
-            for (int i = 0; i < keys.Count; i++)
-            {
-                if (keys[i].Equals(key))
-                {
-                    list[0] = keys[i].ToString();
-                    list[1] = vals[i].ToString();
-                    list[2] = comments[i].ToString();
-                    return list;
-                }
-            }
-
-            return list;
-        }
-
-        public void Remove(string key)
-        {
-            for (int i = 0; i < keys.Count; i++)
-            {
-                if (keys[i] == key)
-                {
-                    keys.RemoveAt(i);
-                    vals.RemoveAt(i);
-                    comments.RemoveAt(i);
-                    return;
-                }
-            }
-            Debug.LogWarning("Key not found");
-        }
-
-        public void Save(string file)
-        {
-            StreamWriter wr = new StreamWriter(Application.dataPath + "/" + file + ".ini");
-
-            for (int i = 0; i < keys.Count; i++)
-            {
-                if (comments[i].Equals(""))
-                {
-                    wr.WriteLine(keys[i] + "=" + vals[i]);
-                }
-                else
-                {
-                    wr.WriteLine(keys[i] + "=" + vals[i] + " //" + comments[i]);
-                }
-            }
-
-            wr.Close();
-
-            Debug.Log(file + ".ini Saved");
-        }
-
-        public void Load(string file)
-        {
-            keys = new ArrayList();
-            vals = new ArrayList();
-            comments = new ArrayList();
-
-            string line = "";
-            int offset = 0, comment = 0;
-
-            try
-            {
-                using (StreamReader sr = new StreamReader(file))
-                {
-                    while ((line = sr.ReadLine()) != null)
-                    {
-                        offset = line.IndexOf("=");
-                        comment = line.IndexOf("//");
-                        if (offset > 0)
-                        {
-                            if (comment != -1)
-                            {
-                                Set(line.Substring(0, offset), line.Substring(offset + 1, (comment - (offset + 1))), line.Substring(comment + 1));
-                            }
-                            else
-                            {
-                                Set(line.Substring(0, offset), line.Substring(offset + 1));
-                            }
-                        }
-                    }
-                    sr.Close();
-                    Debug.Log(file + " Loaded");
-                }
-            }
-            catch (IOException e)
-            {
-                Debug.Log("Error opening " + file + ".ini");
-                Debug.LogWarning(e);
-            }
-        }
-
-        public int Count()
-        {
-            return keys.Count;
-        }
-    }
-
     public class Shaders
     {
         private static Shader _heightFog;
@@ -1195,7 +1039,7 @@ where T : IEquatable<T>
 
     // unique data for URP
     [Serializable]
-    internal class URPData : ICloneable
+    public class URPData : ICloneable
     {
         public bool renderPostProcessing = true;
         public bool dithering = true;
@@ -1208,7 +1052,7 @@ where T : IEquatable<T>
     }
     // unique data for HDRP
     [Serializable]
-    internal class HDRPData : ICloneable
+    public class HDRPData : ICloneable
     {
         public bool renderPostProcessing = true;
         public bool dithering = true;
@@ -1221,7 +1065,7 @@ where T : IEquatable<T>
     }
     // Container for all data worth saving
     [Serializable]
-    internal class See1ViewData : ICloneable
+    public class See1ViewData : ICloneable
     {
         public string name;
         // Control
@@ -1416,7 +1260,7 @@ where T : IEquatable<T>
         public Recent(int maxSize)
         {
             this._maxSize = maxSize;
-            this.key += typeof(T).ToString().ToLower();
+            this.key += nameof(T).ToLower();
             Load();
         }
 
@@ -1550,11 +1394,13 @@ where T : IEquatable<T>
         }
 
         public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view", GetProjectName().ToLower());
+        public static readonly string filePrefix = "See1ViewData_";
         public static UnityEvent onDataChanged = new UnityEvent();
         static bool isAddName;
         static bool isEditName;
         private static string inputStr;
         public static bool _isDirty;
+
 
         public static string GetPath()
         {
@@ -1562,23 +1408,29 @@ where T : IEquatable<T>
             switch (saveType)
             {
                 case SaveType.Project:
-                    targetPath = "Assets/Editor/See1ViewData.json";
+                    targetPath = $"Assets/Editor/";
                     break;
                 case SaveType.UserSetting:
-                    targetPath = "UserSettings/See1ViewData.json";
+                    targetPath = $"UserSettings/";
                     break;
                 case SaveType.EditorPreferences:
-                    targetPath = "Assets/Editor/See1ViewData.json";
+                    targetPath = $"Assets/Editor/";
                     break;
                 case SaveType.Registry:
-                    targetPath = "Assets/Editor/See1ViewData.json";
+                    targetPath = $"Assets/Editor/";
                     break;
             }
+            return targetPath;
+        }
+
+        public static string BuildSavePath(string dataName)
+        {
+            string savePath = GetPath() + $"{filePrefix}{dataName}.json";
             //UnityEditorInternal.InternalEditorUtility.SaveToSerializedFileAndForget();
             string systemProjectPath = Application.dataPath.Replace("Assets", "");
-            DirectoryInfo di = new DirectoryInfo(systemProjectPath + Path.GetDirectoryName(targetPath));
+            DirectoryInfo di = new DirectoryInfo(systemProjectPath + Path.GetDirectoryName(savePath));
             if (!di.Exists) di.Create();
-            return targetPath;
+            return savePath;
         }
 
         public bool Add(string name)
@@ -1590,9 +1442,12 @@ where T : IEquatable<T>
                 canAdd = CheckName(name);
             }
 
-            See1ViewData data = new See1ViewData(name);
+            See1ViewData data = Initializer.defaultData;
+            if (data == null) data = new See1ViewData("Default"); // 방어
+            data.name =name;
             dataList.Add(data);
             dataIndex = dataList.Count - 1;
+            Save();
             return canAdd;
         }
 
@@ -1600,6 +1455,7 @@ where T : IEquatable<T>
         {
             dataList.Remove(dataList[dataIndex]);
             dataIndex -= 1;
+            Save();
             return true;
         }
 
@@ -1607,6 +1463,7 @@ where T : IEquatable<T>
         {
             dataList.Remove(dataList.FirstOrDefault(x => x.name == name));
             dataIndex -= 1;
+            Save();
             return true;
         }
 
@@ -1618,33 +1475,56 @@ where T : IEquatable<T>
                 Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
                 return true;
             }
-
+            Save();
             return false;
+        }
+
+        private static string[] GetSavedDataFiles()
+        {
+            return Directory.GetFiles(GetPath(), $"{filePrefix}*.json");
         }
 
         private static DataManager Load()
         {
             _instance = new DataManager();
-            string data = string.Empty;
-            if (File.Exists(GetPath()))
+            string[] matchingFiles = GetSavedDataFiles();
+            if (matchingFiles.Length > 0)
             {
-                data = File.ReadAllText(GetPath());
-                JsonUtility.FromJsonOverwrite(data, _instance);
-                _isDirty = false;
+                foreach (var file in matchingFiles)
+                {
+                    
+                    string json = File.ReadAllText(file);
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        string name = Path.GetFileName(file).Replace(filePrefix, "");
+                        See1ViewData data = new See1ViewData(name);
+                        JsonUtility.FromJsonOverwrite(json, data);
+                        instance.dataList.Add(data);
+                        _isDirty = false;
+                    }
+                }
             }
             else
             {
                 _instance.Add("Default");
                 SetDirty();
             }
-
             return _instance;
         }
 
         public static void Save()
         {
-            var json = JsonUtility.ToJson(instance, true);
-            File.WriteAllText(GetPath(), json);
+            // 다시 저장할거니까 일단 모든 세이브파일을 지움.
+            string[] matchingFiles = GetSavedDataFiles();
+            foreach (var file in matchingFiles)
+            {
+                File.Delete(file);
+            }
+            foreach (var data in _instance.dataList )
+            {
+                var json = JsonUtility.ToJson(data, true);
+                File.WriteAllText(BuildSavePath(data.name), json);
+            }
         }
 
         public static void DeleteAll()
@@ -1801,7 +1681,7 @@ where T : IEquatable<T>
     }
     // camera information
     [Serializable]
-    internal class View
+    public class View
     {
         public string name;
         public Vector2 rotation;
@@ -1830,7 +1710,7 @@ where T : IEquatable<T>
     }
     // scene lighting infomation
     [Serializable]
-    internal class Lighting
+    public class Lighting
     {
         [Serializable]
         public class LightInfo
@@ -1931,7 +1811,7 @@ where T : IEquatable<T>
 
     // model animation frame information
     [Serializable]
-    internal class Steel
+    public class Steel
     {
         public string clipPath;
         public double time;
@@ -2179,7 +2059,11 @@ where T : IEquatable<T>
                 RenderSettings.ambientIntensity = ambientIntensity;
                 RenderSettings.ambientLight = ambientLight;
                 RenderSettings.ambientMode = ambientMode;
+#if UNITY_2020_OR_NEWER
+                RenderSettings.customReflectionTexture = customReflection;
+#else
                 RenderSettings.customReflection = customReflection;
+#endif
                 RenderSettings.fogMode = fogMode;
                 RenderSettings.haloStrength = haloStrength;
                 RenderSettings.reflectionBounces = reflectionBounces;
@@ -2205,7 +2089,11 @@ where T : IEquatable<T>
                 ambientIntensity = RenderSettings.ambientIntensity;
                 ambientLight = RenderSettings.ambientLight;
                 ambientMode = RenderSettings.ambientMode;
-                customReflection = (Cubemap)RenderSettings.customReflection;
+#if UNITY_2020_OR_NEWER
+                customReflection = (Cubemap)RenderSettings.customReflectionTexture;
+#else
+                RenderSettings.customReflection = customReflection;
+#endif
                 fogMode = RenderSettings.fogMode;
                 haloStrength = RenderSettings.haloStrength;
                 reflectionBounces = RenderSettings.reflectionBounces;
@@ -2777,18 +2665,18 @@ where T : IEquatable<T>
             r.width = args.rowRect.width;
             EditorGUI.DropShadowLabel(r, args.item.displayName, EditorStyles.whiteMiniLabel);
             r.x += r.width - 60;
-            r.width = 16;
-            r.height = 16;
+            r.width = 18;
+            r.height = EditorGUIUtility.singleLineHeight;
 
             //Delete root gameObject only
-            if (gameObject.transform.parent == null)
-            {
+            //if (gameObject.transform.parent == null)
+            //{
 
-                if (GUI.Button(r, "x", EditorStyles.miniButton))
-                {
+            //    if (GUI.Button(r, "x", EditorStyles.miniButton))
+            //    {
 
-                }
-            }
+            //    }
+            //}
 
             //base.RowGUI(args);
         }
@@ -4736,8 +4624,11 @@ where T : IEquatable<T>
                 {
                     yield return null;
                 }
-
+#if UNITY_2020_OR_NEWER
+                if (request.result == UnityWebRequest.Result.ConnectionError)
+#else
                 if (!request.isNetworkError)
+#endif
                 {
                     actionWithText(request.downloadHandler.text);
                 }
@@ -6009,10 +5900,10 @@ where T : IEquatable<T>
 
                     using (EditorHelper.Colorize.Do(Color.white * splashEnabled.faded, Color.white * splashEnabled.faded))
                     {
-                        var logo = GUIContents.logoTexture;
                         Rect logoRect = new Rect(_viewPortRect.position + new Vector2(_viewPortRect.size.x * 0.5f, _viewPortRect.size.y * 0.5f) - new Vector2(80f, 64f), new Vector2(160f, 128f));
                         Rect titleRect = new Rect(logoRect.position + new Vector2(0, logoRect.size.y), GUILayoutUtility.GetRect(GUIContents.title, Styles.centeredBigLabel, GUILayout.Width(160)).size);
-                        Rect copyrightRect = new Rect(titleRect.position + new Vector2(0, titleRect.size.y), GUILayoutUtility.GetRect(GUIContents.copyright, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
+                        Rect versionRect = new Rect(titleRect.position + new Vector2(0, titleRect.size.y), GUILayoutUtility.GetRect(GUIContents.version, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
+                        Rect copyrightRect = new Rect(versionRect.position + new Vector2(0, versionRect.size.y), GUILayoutUtility.GetRect(GUIContents.copyright, Styles.centeredMiniLabel, GUILayout.Width(160)).size);
                         Rect btnRect = new Rect(copyrightRect.position + new Vector2(55f, copyrightRect.size.y + 10f), new Vector2(50f, 20f));
                         var logoFaded = (1 - helpEnabled.faded) * splashEnabled.faded;
 
@@ -6021,8 +5912,9 @@ where T : IEquatable<T>
                             using (new EditorGUI.DisabledScope(helpEnabled.target))
                             {
                                 //var logo = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
-                                GUI.DrawTexture(logoRect, logo, ScaleMode.ScaleToFit, true, 1, new Color(0.85f, 0.85f, 0.85f) * logoFaded, 0, 0);
+                                GUI.DrawTexture(logoRect, GUIContents.logoTexture, ScaleMode.ScaleToFit, true, 1, new Color(0.85f, 0.85f, 0.85f) * logoFaded, 0, 0);
                                 EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
+                                EditorGUI.DropShadowLabel(versionRect, GUIContents.version, Styles.centeredMiniLabel);
                                 EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
                                 if (GUI.Button(btnRect, "Help", EditorStyles.miniButton))
                                 {
@@ -6995,10 +6887,11 @@ where T : IEquatable<T>
 
         #region GUIContents
 
-        public class GUIContents
+        public static class GUIContents
         {
             internal static GUIContent title = new GUIContent(Initializer.title, EditorGUIUtility.IconContent("ViewToolOrbit").image, Initializer.title);
             internal static GUIContent startup = new GUIContent(Initializer.title);
+            internal static GUIContent version = new GUIContent(Initializer.version);
             internal static GUIContent copyright = new GUIContent(Initializer.description);
             internal static GUIContent help = new GUIContent(Initializer.help);
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
@@ -7784,7 +7677,10 @@ where T : IEquatable<T>
                     currentData.cubeMap = (Cubemap)EditorGUILayout.ObjectField("Environment", currentData.cubeMap, typeof(Cubemap), false);
                     currentData.CubeMapMipMapBias = EditorGUILayout.IntSlider("Bias", (int)currentData.CubeMapMipMapBias, 0, 10);
                     currentData.autoFloorHeightEnabled = GUILayout.Toggle(currentData.autoFloorHeightEnabled, "Auto Floor Height", EditorStyles.miniButton);
-                    currentData.floorHeight = EditorGUILayout.Slider("Floor Height", currentData.floorHeight, -10f, 10f);
+                    using (new EditorGUI.DisabledScope(currentData.autoFloorHeightEnabled))
+                    {
+                        currentData.floorHeight = EditorGUILayout.Slider("Floor Height", currentData.floorHeight, -10f, 10f);
+                    }
                     currentData.floorScale = EditorGUILayout.Slider("Floor Scale", currentData.floorScale, 0f, 100f);
 
                     if (check.changed)
@@ -8082,7 +7978,7 @@ where T : IEquatable<T>
                     _hdrpCamera.dithering = currentData.hdrpData.dithering = GUILayout.Toggle(currentData.hdrpData.dithering, "Enable Dithering", EditorStyles.miniButton);
                 });
             }
-#endif          
+#endif
 
             EditorHelper.FoldGroup.Do("Post Process", true, () =>
             {
@@ -8452,7 +8348,7 @@ where T : IEquatable<T>
                         using (new EditorGUILayout.HorizontalScope())
                         {
                             GUILayout.Label(modifier.name, EditorStyles.boldLabel);
-                            //modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym",EditorStyles.miniButton, GUILayout.Width(40));
+                            modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym",EditorStyles.miniButton, GUILayout.Width(40));
                             using (EditorHelper.Colorize.Do(Color.white, Color.red))
                             {
                                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
@@ -8700,10 +8596,8 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Shortcuts", true,
                 () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.None); });
-
-            EditorGUILayout.LabelField("Copyright (c) 2020, See1Studios.", EditorStyles.centeredGreyMiniLabel);
-            EditorGUILayout.LabelField("see1studios@gmail.com", EditorStyles.centeredGreyMiniLabel);
-            EditorGUILayout.LabelField("Jongwoo Park", EditorStyles.centeredGreyMiniLabel);
+            GUILayout.Space(10);
+            EditorGUILayout.LabelField(GUIContents.copyright, EditorStyles.centeredGreyMiniLabel);
         }
 
         void OnGUI_Info(Rect r)
@@ -8768,10 +8662,9 @@ where T : IEquatable<T>
             {
                 if (Event.current.type == EventType.Repaint)
                 {
-                    Rect gizmoRect = new RectOffset((int)(r.x / currentData.renderScale), 0, 0, 0).Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
-
+                    //Rect gizmoRect = new RectOffset((int)(r.x / currentData.renderScale), 0, 0, 0).Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
+                    Rect gizmoRect = new Rect(r.position ,r.size);
                     //Rect gizmoRect = (settings.viewportMultiplier > 1) ? r : _rs.center;
-                    //EditorGUI.DrawRect(gizmoRect, Color.red * 0.5f);
                     //Store FOV
                     float fieldOfView = _preview.camera.fieldOfView;
                     var rt = _preview.camera.targetTexture;
@@ -8782,36 +8675,39 @@ where T : IEquatable<T>
                     //            Mathf.Tan((float)((double)_preview.camera.fieldOfView * 0.5 *
                     //                               (Math.PI / 180.0)))) * 57.2957801818848 * 2.0);
                     //Set Camera
-                    Handles.SetCamera(gizmoRect, _preview.camera);
-                    DrawWorldAxis();
+                    Rect handleCameraRect =  new Rect(gizmoRect.position + new Vector2(_rs.leftWidth,0), gizmoRect.size);
+                    //EditorGUI.DrawRect(handleCameraRect, Color.red * 0.5f);
+                    Handles.SetCamera(handleCameraRect, _preview.camera);
                     var scale = _targetInfo.bounds.size.magnitude;
 
-                    DrawBasis(_mainTarget.transform, scale * 0.1f, true);
-
-                    DrawBasis(_camPivot.transform, scale * 0.1f, true);
-                    Handles.Label(_camPivot.transform.position,
-                        string.Format("Pivot: Position {0} Rotation {1}\nCam: Postion {2} Rotation {3}",
-                            _camPivot.transform.position, _camPivot.transform.rotation.eulerAngles, _camTr.position,
-                            _camTr.rotation.eulerAngles), EditorStyles.miniLabel);
-
-                    var length = 0.05f; // _maxDistance;
-                    Handles.color = Color.magenta * 1f;
-                    Vector3 rotateCenter = _camPivot.position - _targetOffset;
-                    Handles.DrawLine(rotateCenter, rotateCenter + Vector3.right * length);
-                    Handles.DrawLine(rotateCenter, rotateCenter - Vector3.right * length);
-                    Handles.DrawLine(rotateCenter, rotateCenter + Vector3.up * length);
-                    Handles.DrawLine(rotateCenter, rotateCenter - Vector3.up * length);
-                    Handles.DrawLine(rotateCenter, rotateCenter + Vector3.forward * length);
-                    Handles.DrawLine(rotateCenter, rotateCenter - Vector3.forward * length);
-                    Handles.Label(rotateCenter + new Vector3(0, 0.1f, 0),
-                        string.Format("View Pivot : {0}\nCam Pivot: {1}\nOffset : {2}", rotateCenter,
-                            _camPivot.transform.position, _targetOffset), EditorStyles.miniLabel);
-
-                    //DrawGrid();
-
-                    DrawBasis(_mainTarget.transform, scale * 0.1f, true);
                     if ((_gizmoMode & GizmoMode.Info) == GizmoMode.Info)
                     {
+                        DrawWorldAxis();
+
+                        DrawBasis(_mainTarget.transform, scale * 0.1f, true);
+
+                        DrawBasis(_camPivot.transform, scale * 0.1f, true);
+                        Handles.Label(_camPivot.transform.position,
+                            string.Format("Pivot: Position {0} Rotation {1}\nCam: Postion {2} Rotation {3}",
+                                _camPivot.transform.position, _camPivot.transform.rotation.eulerAngles, _camTr.position,
+                                _camTr.rotation.eulerAngles), EditorStyles.miniLabel);
+
+                        //DrawGrid();
+
+                        DrawBasis(_mainTarget.transform, scale * 0.1f, true);
+                        var length = 0.05f; // _maxDistance;
+                        Handles.color = Color.magenta * 1f;
+                        Vector3 rotateCenter = _camPivot.position - _targetOffset;
+                        Handles.DrawLine(rotateCenter, rotateCenter + Vector3.right * length);
+                        Handles.DrawLine(rotateCenter, rotateCenter - Vector3.right * length);
+                        Handles.DrawLine(rotateCenter, rotateCenter + Vector3.up * length);
+                        Handles.DrawLine(rotateCenter, rotateCenter - Vector3.up * length);
+                        Handles.DrawLine(rotateCenter, rotateCenter + Vector3.forward * length);
+                        Handles.DrawLine(rotateCenter, rotateCenter - Vector3.forward * length);
+                        Handles.Label(rotateCenter + new Vector3(0, 0.1f, 0),
+                            string.Format("View Pivot : {0}\nCam Pivot: {1}\nOffset : {2}", rotateCenter,
+                                _camPivot.transform.position, _targetOffset), EditorStyles.miniLabel);
+
                         Handles.color = Color.white;
                         DrawBasis(_mainTarget.transform, scale * 0.1f, true);
                         Handles.Label(_mainTarget.transform.position, _targetInfo.Print(), EditorStyles.miniLabel);
