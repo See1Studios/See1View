@@ -43,6 +43,7 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
+using UnityEngine.EventSystems;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -138,9 +139,15 @@ namespace See1Studios.See1View
 
         static Initializer()
         {
+            Init();
+        }
+
+        public static void Init()
+        {
             CollectCustomLoaders();
             InitializeConfig();
         }
+
         static void InitializeConfig()
         {
             string cfgPath = PathHelper.ScriptPath.Replace(".cs", ".json");
@@ -154,7 +161,7 @@ namespace See1Studios.See1View
                 if (!string.IsNullOrEmpty(data.logoTexStr)) logoTexture = ConvertBase64ToTexture(data.logoTexStr);
                 if (!string.IsNullOrEmpty(data.help)) help = data.help;
                 if(data.defaultData != null) defaultData = data.defaultData;
-                Debug.Log("Data Found");
+                //Debug.Log("Data Found");
             }
         }
 
@@ -230,6 +237,7 @@ namespace See1Studios.See1View
             byte[] bytes = System.Convert.FromBase64String(base64);
             var tex = new Texture2D(1, 1);
             tex.LoadImage(bytes);
+            if (tex == null) tex = Textures.transparentTexture;
             return tex;
         }
     }
@@ -240,9 +248,24 @@ namespace See1Studios.See1View
         {
             get
             {
-                var g = AssetDatabase.FindAssets($"t:Script {nameof(See1View)}");
-                string absolute = Path.GetFullPath(AssetDatabase.GUIDToAssetPath(g[0]));
-                Debug.Log($"ScriptPath : {absolute}");
+                string path = string.Empty;
+                var guids = AssetDatabase.FindAssets($"t:Script {nameof(See1View)}");
+                foreach(var guid in guids)
+                {
+                    string p = Path.GetFileName(AssetDatabase.GUIDToAssetPath(guid));
+                    if (p == "See1View.cs")
+                    {
+                        path = p;
+                        continue;
+                    }
+                }
+                See1View see1View = ScriptableObject.CreateInstance<See1View>(); // Awake 나 OnEnable 등 초기화 함수가 실행되서 곤란해
+                MonoScript ms = MonoScript.FromScriptableObject(see1View);
+                string scriptPath = AssetDatabase.GetAssetPath(ms);
+                //Debug.Log($"Script Path Mono: {scriptPath}");
+                Object.DestroyImmediate(see1View);
+                string absolute = Path.GetFullPath(scriptPath);
+                //Debug.Log($"ScriptPath : {absolute}");
                 return absolute;
             }
         }
@@ -2059,7 +2082,7 @@ where T : IEquatable<T>
                 RenderSettings.ambientIntensity = ambientIntensity;
                 RenderSettings.ambientLight = ambientLight;
                 RenderSettings.ambientMode = ambientMode;
-#if UNITY_2020_OR_NEWER
+#if UNITY_2022_3_OR_NEWER
                 RenderSettings.customReflectionTexture = customReflection;
 #else
                 RenderSettings.customReflection = customReflection;
@@ -2089,7 +2112,7 @@ where T : IEquatable<T>
                 ambientIntensity = RenderSettings.ambientIntensity;
                 ambientLight = RenderSettings.ambientLight;
                 ambientMode = RenderSettings.ambientMode;
-#if UNITY_2020_OR_NEWER
+#if UNITY_2022_3_OR_NEWER
                 customReflection = (Cubemap)RenderSettings.customReflectionTexture;
 #else
                 RenderSettings.customReflection = customReflection;
@@ -3317,10 +3340,13 @@ where T : IEquatable<T>
 
     public class TransformModifier
     {
-        public string id = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
+        static Vector3 centerOffset; // 다리 본의 길이를 조정했을 때 pelvis 높이를 재조정하는 용도?
+
+        public string targetName = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
         public string name = string.Empty;
+        public Transform root;
         public Transform transform;
-        public Transform transformPair;
+        public TransformModifier transformPair;
         // 1차 자식
         public List<Transform> children;
         private bool isDontAppectChildren;
@@ -3337,21 +3363,26 @@ where T : IEquatable<T>
         public bool useRotation = false;
         public bool useScale = true;
         public bool useUniformScale = true;
+        public bool isLocked; // 붙은 본임을 나타냄. 붙은 본의 길이를 조절하면 부모의 길이가 조절?. 맥스의 본 에디트 모드 같은 것일까.
+        public bool isPath; // 경로 기반 탐색할지 이름 기반 탐색할지
         internal bool enabled;
 
-        public TransformModifier(Transform root, string boneName, bool isPath, bool isDontAppectChildren = false)
+        // 생성할 때 BindPose 가 아니면 문제가 생기게 될 것이다...
+        public TransformModifier(Transform root, string targetName, bool isPath, bool isDontAppectChildren = false)
         {
-            this.id = boneName;
+            this.targetName = targetName;
+            this.root = root;
+            this.isPath = isPath;
             this.isDontAppectChildren = isDontAppectChildren;
             if (isPath)
             {
-                transform = GetHierachyTarget(root, boneName);
+                transform = GetHierachyTarget(root, targetName);
             }
             else
             {
-                transform = FindTransformRecursive(root, boneName);
+                transform = FindTransformRecursive(root, targetName);
             }
-            this.name = Path.GetFileName(boneName);
+            this.name = Path.GetFileName(targetName);
 
             if (transform)
             {
@@ -3359,13 +3390,25 @@ where T : IEquatable<T>
                 orgRotation = transform.localRotation;
                 orgScale = transform.localScale;
             }
-            // 대칭본은 일단 기본적으로 찾아봐서 들고 있도록 하자.
-            string leftIdentifier = " L ";
-            string RightIdentifier = " R ";
-            bool isLeft = boneName.Contains(leftIdentifier);
-            //name = name.Replace(isLeft ? leftIdentifier : RightIdentifier, "");
-            transformPair = FindTransformRecursive(root, boneName.Replace(isLeft ? leftIdentifier : RightIdentifier, isLeft ? RightIdentifier : leftIdentifier));
-
+        }
+        private void FindSymmetricalBone()
+        {
+            string[] L_IDs = { " L", "_L", "_Left" };
+            string[] R_IDs = { " R", "_R", "_Right" };
+            if (L_IDs.Length == R_IDs.Length)
+            {
+                for (int i = 0; i < L_IDs.Length; i++)
+                {
+                    if (targetName.Contains(L_IDs[i]))
+                    {
+                        transformPair = new TransformModifier(root, targetName.Replace(L_IDs[i], R_IDs[i]), isPath);
+                    }
+                    else if (targetName.Contains(R_IDs[i]))
+                    {
+                        transformPair = new TransformModifier(root, targetName.Replace(R_IDs[i], L_IDs[i]), isPath);
+                    }
+                }
+            }
         }
 
         private Transform GetHierachyTarget(Transform root, string relativePath)
@@ -3373,7 +3416,7 @@ where T : IEquatable<T>
             //루트 트랜스폼 오브젝트 상태 저장 및 강제 활성화
             var rootActive = root.gameObject.activeInHierarchy;
             root.gameObject.SetActive(true);
-            string path = relativePath.Replace(root.name + "/","");
+            string path = relativePath.Replace(root.name + "/", "");
             //Debug.Log(path);
             Transform objToFind = root.Find(path); // GameObject.Find 는 비활성화된 오브젝트에 적용불가
             //GameObject go = GameObject.Find(path);
@@ -3394,6 +3437,7 @@ where T : IEquatable<T>
 
         public void OnGUI()
         {
+            //transformPair.transform = (Transform)EditorGUILayout.ObjectField(transformPair.transform, typeof(Transform), false);
             using (var check = new EditorGUI.ChangeCheckScope())
             {
                 using (new EditorGUILayout.VerticalScope(GUI.skin.box))
@@ -3464,35 +3508,26 @@ where T : IEquatable<T>
                 transform.localRotation = orgRotation * rotation;
                 transform.localScale = Vector3.Scale(orgScale, scale);
             }
-            if (isSymmetrical && transformPair)
-            {
-                transformPair.localPosition = orgPosition + offset;
-                transformPair.localRotation = orgRotation * rotation;
-                transformPair.localScale = Vector3.Scale(orgScale, scale);
-            }
-            if (isDontAppectChildren)
-            {
-
-            }
+            ApplySymmetry();
+            ApplyCenterOffset();
         }
+
+        private void ApplyCenterOffset()
+        {
+            //다리 길이를 조절한 결과에 따른 높이 값
+            float offsetLength = 0;
+            centerOffset = new Vector3(0, offsetLength, 0);
+        }
+
         public void ApplyToCurrent()
         {
             if (transform)
             {
                 transform.localPosition += offset;
                 transform.localRotation *= rotation;
-                transform.localScale =  scale;
-            }
-            if (isSymmetrical && transformPair)
-            {
-                transformPair.localPosition += offset;
-                transformPair.localRotation *= rotation;
                 transform.localScale = scale;
             }
-            if (isDontAppectChildren)
-            {
-
-            }
+            ApplySymmetryCurrent();
         }
 
         public void Reset()
@@ -3503,25 +3538,16 @@ where T : IEquatable<T>
             Apply();
         }
 
-        // Recursive function to find a Transform by name in the hierarchy
         Transform FindTransformRecursive(Transform parent, string name)
         {
             Transform result = null;
-
-            // Check if the current Transform has the desired name
-            if (parent.name == name)
-            {
-                result = parent;
-            }
+            if (parent.name == name) result = parent;
             else
             {
-                // Iterate through child Transforms and recursively search
                 for (int i = 0; i < parent.childCount; i++)
                 {
                     Transform child = parent.GetChild(i);
                     Transform foundInChildren = FindTransformRecursive(child, name);
-
-                    // If found in children, return the result
                     if (foundInChildren != null)
                     {
                         result = foundInChildren;
@@ -3529,8 +3555,48 @@ where T : IEquatable<T>
                     }
                 }
             }
-
             return result;
+        }
+
+        internal void ApplySymmetry()
+        {
+            if (isSymmetrical)
+            {
+                //없으면 한 번 더 찾아봄
+                if (transformPair== null) FindSymmetricalBone();
+                if (transformPair!=null)
+                {
+                    transformPair.SetModification(Vector3.Scale(offset, -Vector3.right) , Quaternion.identity, scale);
+                    transformPair.Apply();
+                }
+            }
+            else
+            {
+                //원상복구시킴
+                if (transformPair!=null)
+                {
+                    transformPair.Reset();
+                }
+            }
+        }
+        internal void ApplySymmetryCurrent()
+        {
+            if (isSymmetrical)
+            {
+                if (transformPair != null)
+                {
+                    transformPair.SetModification(Vector3.Scale(offset, -Vector3.right), Quaternion.identity, scale);
+                    transformPair.ApplyToCurrent();
+                }
+            }
+            else
+            {
+                //원상복구시킴
+                if (transformPair != null)
+                {
+                    transformPair.Reset();
+                }
+            }
         }
     }
 
@@ -4102,7 +4168,7 @@ where T : IEquatable<T>
                 reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
             };
             reorderableModifierList.onChangedCallback = list => { };
-            reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight *3;
+            reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight * 3;
         }
         public void PlayInstant(int index)
         {
@@ -4198,7 +4264,7 @@ where T : IEquatable<T>
 
         public void AddModifier(string name)
         {
-            bool isContains = modifierList.Any(x => x.id == name);
+            bool isContains = modifierList.Any(x => x.targetName == name);
             if (!isContains) modifierList.Add(new TransformModifier(actorList[0].instance.transform, name, true));
         }
 
@@ -4217,14 +4283,34 @@ where T : IEquatable<T>
             }
             menu.ShowAsContext();
         }
-        public void AddModifierHandler()
+        public void AddModifierHandler(string filter = "")
         {
             var path = string.Empty;
-            ShowMenu(path, _modelRootHierachy, _modelRootHierachy, (x) =>
+            if (string.IsNullOrEmpty(filter))
             {
-                path = (string)x;
-                AddModifier(path);
-            });
+                ShowMenu(path, _modelRootHierachy, _modelRootHierachy, (x) =>
+                {
+                    path = (string)x;
+                    AddModifier(path);
+                });
+            }
+            else
+            {
+                var filteredList = _modelRootHierachy.Where(x =>Path.GetFileName(x).ToLower().Contains(filter.ToLower())).ToArray();
+                var filteredNames = filteredList.Select(x => Path.GetFileName(x)).ToArray();
+                var tempDic = new Dictionary<string, string>();
+                for (int i = 0; i < filteredList.Length; i++)
+                {
+                    string f = filteredList[i];
+                    tempDic.Add(filteredNames[i], filteredList[i]);
+                }
+                ShowMenu(path, filteredNames, filteredNames, (x) =>
+                {
+                    string key = (string)x;
+                    path = tempDic[key];
+                    AddModifier(path);
+                });
+            }
         }
         void ToggleAnimationMode()
         {
@@ -4624,7 +4710,7 @@ where T : IEquatable<T>
                 {
                     yield return null;
                 }
-#if UNITY_2020_OR_NEWER
+#if UNITY_2022_3_OR_NEWER
                 if (request.result == UnityWebRequest.Result.ConnectionError)
 #else
                 if (!request.isNetworkError)
@@ -5661,6 +5747,7 @@ where T : IEquatable<T>
         //Animation
         List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
         public UnityEvent onStopPlaying = new UnityEvent();
+        string _modifierFilter;
 
         public bool isPlaying
         {
@@ -5782,7 +5869,6 @@ where T : IEquatable<T>
 
         void Awake()
         {
-            InitPreviewLayerID();
         }
 
     void OnFocus()
@@ -5814,6 +5900,7 @@ where T : IEquatable<T>
         void OnEnable()
         {
             //기본 초기화
+            InitPreviewLayerID();
             Create();
             RegisterShortcut();
             EditorSceneManager.newSceneCreated += this.OnOpenNewScene;
@@ -6195,7 +6282,7 @@ where T : IEquatable<T>
             _rs = new RectSlicer(this);
             _rs.topTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
             _rs.bottomTargetHeight = _toolbarHeight; //Styles.GetToolbarHeight();
-            _rs.leftTargetWidth = 200;
+            _rs.leftTargetWidth = 250;
             _rs.rightTargetWidth = 250;
             _rs.openTop.target = true;
             _rs.openBottom.target = false;
@@ -7541,7 +7628,7 @@ where T : IEquatable<T>
 
                     using (EditorHelper.Colorize.Do(Color.white, Color.cyan))
                     {
-                        if (GUILayout.Button("Render", GUILayout.Width(60), GUILayout.Height(48)))
+                        if (GUILayout.Button("Render", GUILayout.Width(60), GUILayout.Height(58)))
                         {
                             RenderAndSaveFile();
                         }
@@ -8330,12 +8417,13 @@ where T : IEquatable<T>
                 //}
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Add"))
+                    _modifierFilter = EditorHelper.SearchField(_modifierFilter);
+                    if (GUILayout.Button(string.IsNullOrEmpty(_modifierFilter) ? "Add" : "Find"))
                     {
                         if (_playerList.Count > 0)
                         {
                             var player = _playerList[0];
-                            player.AddModifierHandler();
+                            player.AddModifierHandler(_modifierFilter);
                         }
                     }
                 }
@@ -8348,7 +8436,14 @@ where T : IEquatable<T>
                         using (new EditorGUILayout.HorizontalScope())
                         {
                             GUILayout.Label(modifier.name, EditorStyles.boldLabel);
-                            modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym",EditorStyles.miniButton, GUILayout.Width(40));
+                            using (var check = new EditorGUI.ChangeCheckScope())
+                            {
+                                modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym", EditorStyles.miniButton, GUILayout.Width(40));
+                                if(check.changed)
+                                {
+                                    modifier.ApplySymmetry();
+                                }
+                            }
                             using (EditorHelper.Colorize.Do(Color.white, Color.red))
                             {
                                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
@@ -9448,7 +9543,7 @@ where T : IEquatable<T>
             var flags = BindingFlags.Static | BindingFlags.NonPublic;
             var propInfo = typeof(Camera).GetProperty("PreviewCullingLayer", flags);
             _previewLayer = (int)propInfo.GetValue(null, new object[0]);
-            Notice.Log(string.Format("{0} : PreviewLayerID is {1}", this.GetType().Name, _previewLayer.ToString()));
+            //Debug.Log(string.Format("{0} : PreviewLayerID is {1}", this.GetType().Name, _previewLayer.ToString()));
         }
 
         bool IsDocked()
