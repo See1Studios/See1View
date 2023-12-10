@@ -21,14 +21,14 @@
     "lastView": {
         "name": "",
         "rotation": {
-            "x": 183.0313720703125,
-            "y": -7.05059289932251
+            "x": 140.92266845703126,
+            "y": 9.42059326171875
         },
-        "distance": 1.0,
+        "distance": 4.5062360763549809,
         "pivot": {
             "x": 0.0,
-            "y": 0.0,
-            "z": 0.0
+            "y": 0.8849430084228516,
+            "z": 0.010344117879867554
         },
         "fieldOfView": 30.0
     },
@@ -77,7 +77,7 @@
     "clearFlag": 1,
     "autoFloorHeightEnabled": false,
     "floorHeight": 0.0,
-    "floorScale": 10.0,
+    "floorScale": 24.0,
     "lastLighting": {
         "name": "",
         "lightList": [
@@ -87,15 +87,15 @@
                     "y": 0.0
                 },
                 "rotation": {
-                    "x": 0.0,
-                    "y": -1.0,
-                    "z": 0.0,
-                    "w": -4.371138828673793e-8
+                    "x": -0.14107732474803925,
+                    "y": -0.8894098401069641,
+                    "z": 0.42450419068336489,
+                    "w": -0.09404025226831436
                 },
                 "lightColor": {
-                    "r": 1.0,
-                    "g": 1.0,
-                    "b": 1.0,
+                    "r": 0.7689999938011169,
+                    "g": 0.7689999938011169,
+                    "b": 0.7689999938011169,
                     "a": 1.0
                 },
                 "intensity": 1.0
@@ -112,9 +112,9 @@
                     "w": 0.032140158116817477
                 },
                 "lightColor": {
-                    "r": 1.0,
-                    "g": 1.0,
-                    "b": 1.0,
+                    "r": 0.2800000011920929,
+                    "g": 0.2800000011920929,
+                    "b": 0.3149999976158142,
                     "a": 1.0
                 },
                 "intensity": 1.0
@@ -185,5 +185,5 @@
     },
     "cubemapPath": "",
     "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
-    "renderPipelinePath": "Packages/com.see1studios.see1view/Runtime/See1ViewURP.asset"
+    "renderPipelinePath": "Assets/See1ViewURP.asset"
 }

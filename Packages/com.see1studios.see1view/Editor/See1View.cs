@@ -22,6 +22,9 @@
 // THE SOFTWARE.
 //
 //#define URP
+#if URP || HDRP 
+#define VOLUME
+#endif
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -44,6 +47,7 @@ using Object = UnityEngine.Object;
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.EventSystems;
+using static See1Studios.See1View.See1View;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -128,20 +132,23 @@ namespace See1Studios.See1View
         public const string MENU_PATH = "Tools/See1Studios/See1View/Open See1View";
         public const int MENU_PRIORITY = 10000;
 
-        internal static string title = "See1View";
-        internal static string version => GetVersion();
-        internal static string description = "Copyright (c) See1Studios.\nsee1studios@gmail.com";
-        internal static string help = "No Help Document";
-        internal static Texture2D logoTexture = Textures.transparentTexture;
+        public static string title = "See1View";
+        public static string version => GetVersion();
+        public static string copyright = "Copyright (c) See1Studios.";
+        public static string contact = "see1studios@gmail.com";
+        public static string help = "No Help Document";
+        static Texture2D _logoTexture;
+        public static Texture2D logoTexture => _logoTexture ? _logoTexture : ConvertBase64ToTexture(configData.logoTexStr);
         static string _customLoaderTypeName;
         static Type[] _customLoaderTypes;
-        internal static See1ViewData defaultData = new See1ViewData("Default");
+        static ConfigData configData;
+        public static See1ViewData defaultData = new See1ViewData("Default");
 
         static Initializer()
         {
             Init();
         }
-
+        [InitializeOnLoadMethod]
         public static void Init()
         {
             CollectCustomLoaders();
@@ -154,13 +161,13 @@ namespace See1Studios.See1View
             if (File.Exists(cfgPath))
             {
                 string json = File.ReadAllText(cfgPath);
-                ConfigData data = JsonUtility.FromJson<ConfigData>(json);
-                if (!string.IsNullOrEmpty(data.title)) title = data.title;
-                if (!string.IsNullOrEmpty(data.description)) description = data.description;
-                if (!string.IsNullOrEmpty(data.customLoader)) _customLoaderTypeName = data.customLoader;
-                if (!string.IsNullOrEmpty(data.logoTexStr)) logoTexture = ConvertBase64ToTexture(data.logoTexStr);
-                if (!string.IsNullOrEmpty(data.help)) help = data.help;
-                if(data.defaultData != null) defaultData = data.defaultData;
+                configData = JsonUtility.FromJson<ConfigData>(json);
+                if (!string.IsNullOrEmpty(configData.title)) title = configData.title;
+                if (!string.IsNullOrEmpty(configData.description)) contact = configData.description;
+                if (!string.IsNullOrEmpty(configData.customLoader)) _customLoaderTypeName = configData.customLoader;
+                if (!string.IsNullOrEmpty(configData.logoTexStr)) _logoTexture = ConvertBase64ToTexture(configData.logoTexStr);
+                if (!string.IsNullOrEmpty(configData.help)) help = configData.help;
+                if (configData.defaultData != null) defaultData = configData.defaultData;
                 //Debug.Log("Data Found");
             }
         }
@@ -182,10 +189,10 @@ namespace See1Studios.See1View
             Assembly assembly = Assembly.GetExecutingAssembly();
             Type baseClassType = typeof(CustomLoader);
             _customLoaderTypes = GetDerivedTypes(assembly, baseClassType);
-            foreach (var customLoader in _customLoaderTypes)
-            {
-                Debug.Log($"See1View : Custom Loader Initialized : {customLoader.Name}");
-            }
+            //foreach (var customLoader in _customLoaderTypes)
+            //{
+            //    Debug.Log($"See1View : Custom Loader Initialized : {customLoader.Name}");
+            //}
         }
 
         public static Type[] GetDerivedTypes(Assembly assembly, Type baseType)
@@ -261,10 +268,10 @@ namespace See1Studios.See1View
                 }
                 See1View see1View = ScriptableObject.CreateInstance<See1View>(); // Awake 나 OnEnable 등 초기화 함수가 실행되서 곤란해
                 MonoScript ms = MonoScript.FromScriptableObject(see1View);
-                string scriptPath = AssetDatabase.GetAssetPath(ms);
+                path = AssetDatabase.GetAssetPath(ms);
                 //Debug.Log($"Script Path Mono: {scriptPath}");
                 Object.DestroyImmediate(see1View);
-                string absolute = Path.GetFullPath(scriptPath);
+                string absolute = Path.GetFullPath(path);
                 //Debug.Log($"ScriptPath : {absolute}");
                 return absolute;
             }
@@ -1277,13 +1284,13 @@ where T : IEquatable<T>
         private int _maxSize = 10;
         private List<string> _list = new List<string>();
         public int size { get { return _list.Count; } }
-        private string key = "see1view.recent.";
+        private string keyPrefix = "see1view.recent.";
+        private string key => keyPrefix + typeof(T).Name.ToLower();
         public Action<T> onClickEvent;
 
         public Recent(int maxSize)
         {
             this._maxSize = maxSize;
-            this.key += nameof(T).ToLower();
             Load();
         }
 
@@ -1356,21 +1363,28 @@ where T : IEquatable<T>
                     Clear();
                 }
             }
+
             for (int i = size - 1; i > 0; --i)
             {
                 {
-                    if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButton))
+                    using (EditorHelper.Horizontal.Do())
                     {
-                        var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
-                        if (obj)
+                        if (GUILayout.Button(GUIContents.searchIcon, EditorStyles.miniButtonLeft,GUILayout.Width(25)))
                         {
-                            onClickEvent?.Invoke(obj);
+                            Selection.activeObject = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
+                        }
+                        if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButtonRight))
+                        {
+                            var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
+                            if (obj)
+                            {
+                                onClickEvent?.Invoke(obj);
+                            }
                         }
                     }
                 }
             }
         }
-
     }
     // all configuration and settings
     [Serializable]
@@ -1664,7 +1678,7 @@ where T : IEquatable<T>
                     instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
                 }
 
-                if (GUILayout.Button("+", EditorStyles.toolbarButton))
+                if (GUILayout.Button(GUIContents.plusIcon, EditorStyles.toolbarButton))
                 {
                     isAddName = true;
                     inputStr = "New";
@@ -1674,7 +1688,7 @@ where T : IEquatable<T>
 
                 using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
                 {
-                    if (GUILayout.Button("-", EditorStyles.toolbarButton))
+                    if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.toolbarButton))
                     {
                         if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
                         {
@@ -1683,7 +1697,7 @@ where T : IEquatable<T>
                     }
                 }
 
-                if (GUILayout.Button("=", EditorStyles.toolbarButton))
+                if (GUILayout.Button(GUIContents.contextIcon, EditorStyles.toolbarButton))
                 {
                     isEditName = true;
                     inputStr = instance.current.name;
@@ -1756,6 +1770,11 @@ where T : IEquatable<T>
 
         static Quad()
         {
+            Create();
+        }
+
+        private static void Create()
+        {
             if (mesh == null)
             {
                 mesh = new Mesh();
@@ -1798,8 +1817,10 @@ where T : IEquatable<T>
                 mesh.uv = uv;
             }
         }
+
         public static Mesh Get()
         {
+            if (!mesh) Create();
             return mesh;
         }
     }
@@ -1817,14 +1838,17 @@ where T : IEquatable<T>
                 case RenderPipelineMode.BuiltIn:
                     if (_builtIn == null)
                         _builtIn = new Material(Shader.Find("Standard"));
+                    _builtIn.SetColor("_Color", Color.gray);
                     return _builtIn;
                 case RenderPipelineMode.Universal:
                     if (_universal == null)
                         _universal = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                    _universal.color = Color.gray;
                     return _universal;
                 case RenderPipelineMode.HighDefinition:
                     if (_highDefinition == null)
                         _highDefinition = new Material(Shader.Find("HDRP/Lit"));
+                    _highDefinition.SetColor("_BaseColor", Color.gray);
                     return _highDefinition;
                 default: 
                     return _builtIn;
@@ -3015,6 +3039,7 @@ where T : IEquatable<T>
             }
         }
     }
+
     // popup window context for size input.
     public class SizePopup : PopupWindowContent
     {    //Search results can be filtered by specifying a series of properties that sounds should match. 
@@ -3393,8 +3418,8 @@ where T : IEquatable<T>
         }
         private void FindSymmetricalBone()
         {
-            string[] L_IDs = { " L", "_L", "_Left" };
-            string[] R_IDs = { " R", "_R", "_Right" };
+            string[] L_IDs = { " L", "_L", "_Left", "Left_" };
+            string[] R_IDs = { " R", "_R", "_Right", "Right_" };
             if (L_IDs.Length == R_IDs.Length)
             {
                 for (int i = 0; i < L_IDs.Length; i++)
@@ -3566,7 +3591,8 @@ where T : IEquatable<T>
                 if (transformPair== null) FindSymmetricalBone();
                 if (transformPair!=null)
                 {
-                    transformPair.SetModification(Vector3.Scale(offset, -Vector3.right) , Quaternion.identity, scale);
+                    //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
+                    transformPair.SetModification(Vector3.Scale(offset, new Vector3(-1,1,1)) , Quaternion.identity, scale);
                     transformPair.Apply();
                 }
             }
@@ -3585,7 +3611,7 @@ where T : IEquatable<T>
             {
                 if (transformPair != null)
                 {
-                    transformPair.SetModification(Vector3.Scale(offset, -Vector3.right), Quaternion.identity, scale);
+                    transformPair.SetModification(Vector3.Scale(offset, new Vector3(-1, 1, 1)), Quaternion.identity, scale);
                     transformPair.ApplyToCurrent();
                 }
             }
@@ -3692,6 +3718,7 @@ where T : IEquatable<T>
             }
         }
 
+        public string name = string.Empty;
         internal UnityEditorInternal.ReorderableList reorderableActorList;
         internal UnityEditorInternal.ReorderableList reorderableClipList;
         internal UnityEditorInternal.ReorderableList reorderableModifierList;
@@ -3706,7 +3733,7 @@ where T : IEquatable<T>
         private bool _isOptimized { get; set; }
         internal bool isPlayable { get { return actorList.Count > 0 && clipInfoList.Count > 0 && playList.Count > 0; } }
         internal bool isPlaying { get; set; }
-        internal bool isLooping { get; set; }
+        internal bool isLooping = true;
         private bool _showEvent { get; set; }
         private int _actorRow = 4;
         private int _actorDistance = 1;
@@ -3984,7 +4011,7 @@ where T : IEquatable<T>
                 float rectWidth = position.width;
                 float rectHeight = position.height;
                 float tglWidth = 15;
-                float btnWidth = 55;
+                float btnWidth = 25;
                 position.width = tglWidth;
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
@@ -4006,8 +4033,8 @@ where T : IEquatable<T>
                 EditorGUI.LabelField(position, clipInfoList[index].clip.humanMotion ? "HumanMotion" : "Generic", style1);
                 position.x += position.width;
                 position.width = btnWidth;
-                position.height = 16;
-                if (GUI.Button(position, "Select", EditorStyles.miniButton))
+                //position.height = 18;
+                if (GUI.Button(position,GUIContents.searchIcon, EditorStyles.miniButtonRight))
                 {
                     Selection.activeObject = clipInfoList[index].clip;
                 }
@@ -4061,6 +4088,7 @@ where T : IEquatable<T>
             };
             reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
         }
+
         private void InitModifierList()
         {
             modifierList = new List<TransformModifier>();
@@ -4170,6 +4198,7 @@ where T : IEquatable<T>
             reorderableModifierList.onChangedCallback = list => { };
             reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight * 3;
         }
+
         public void PlayInstant(int index)
         {
             foreach (var info in clipInfoList)
@@ -4398,11 +4427,9 @@ where T : IEquatable<T>
                 //        "LODSliderTextSelected");
                 //}
                 GUILayout.Space(20);
-                var progressRect =
-                    EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
+                var progressRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
                 progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
-                time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none,
-                    GUIStyle.none);
+                time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none, GUIStyle.none);
                 float length = GetCurrentClipLength();
                 float progress = (float)time / length;
                 EditorGUI.ProgressBar(progressRect, progress,
@@ -4442,13 +4469,6 @@ where T : IEquatable<T>
                     EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
                     GUILayout.FlexibleSpace();
 
-                    //if (GUILayout.Button(isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50),
-                    //    GUILayout.Height(30)))
-                    //{
-                    //    if (isPlaying) Pause();
-                    //    else Play();
-                    //}
-
                     using (var check = new EditorGUI.ChangeCheckScope())
                     {
                         if (AnimationMode.InAnimationMode()) GUI.backgroundColor = Color.red;
@@ -4467,7 +4487,7 @@ where T : IEquatable<T>
 
                     isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
 
-                    if (GUILayout.Button("-", "ButtonLeft", GUILayout.Height(30)))
+                    if (GUILayout.Button(GUIContents.minusIcon, "ButtonLeft", GUILayout.Height(30)))
                     {
                         timeSpeed = Mathf.Max(0, (timeSpeed * 10 - 1f) * 0.1f);
 
@@ -4497,7 +4517,7 @@ where T : IEquatable<T>
                     }
                     GUI.backgroundColor = Color.white;
 
-                    if (GUILayout.Button("+", "ButtonRight", GUILayout.Height(30)))
+                    if (GUILayout.Button(GUIContents.plusIcon, "ButtonRight", GUILayout.Height(30)))
                     {
                         timeSpeed = Mathf.Min(2, (timeSpeed * 10 + 1f) * 0.1f);
 
@@ -5856,7 +5876,7 @@ where T : IEquatable<T>
 #if UNITY_POST_PROCESSING_STACK_V2
         Recent<PostProcessProfile> _recentPostProcessProfile;
 #endif
-#if URP || HDRP
+#if VOLUME
         Recent<VolumeProfile> _recentVolumeProfile;
 #endif
         //Info
@@ -5999,7 +6019,7 @@ where T : IEquatable<T>
                             using (new EditorGUI.DisabledScope(helpEnabled.target))
                             {
                                 //var logo = EditorGUIUtility.IconContent("d_SceneAsset Icon").image;
-                                GUI.DrawTexture(logoRect, GUIContents.logoTexture, ScaleMode.ScaleToFit, true, 1, new Color(0.85f, 0.85f, 0.85f) * logoFaded, 0, 0);
+                                GUI.DrawTexture(logoRect, Initializer.logoTexture, ScaleMode.ScaleToFit, true, 1, new Color(0.85f, 0.85f, 0.85f) * logoFaded, 0, 0);
                                 EditorGUI.DropShadowLabel(titleRect, GUIContents.startup, Styles.centeredBigLabel);
                                 EditorGUI.DropShadowLabel(versionRect, GUIContents.version, Styles.centeredMiniLabel);
                                 EditorGUI.DropShadowLabel(copyrightRect, GUIContents.copyright, Styles.centeredMiniLabel);
@@ -6124,7 +6144,7 @@ where T : IEquatable<T>
                 }
             });
             Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"),
-                () => _playerList.FirstOrDefault().TogglePlay());
+                () => _playerList.FirstOrDefault()?.TogglePlay());
             Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"),
                 () => _overlayEnabled = !_overlayEnabled);
         }
@@ -6263,8 +6283,7 @@ where T : IEquatable<T>
         //Shortcut for add animation quickly
         private void AddAnimationAndPlay(AnimationClip clip)
         {
-
-            AddAnimation(clip, true);
+            if (clip is AnimationClip) AddAnimation(clip, true);
         }
         private void AddAnimation(AnimationClip clip, bool instantPlay = false)
         {
@@ -6365,13 +6384,19 @@ where T : IEquatable<T>
 
             InitTreeView();
             ResetLight();
+
             //Apply Settings From Data
             InitializePipeline();
             InitializePostProcess();
+            RefreshDefaultMaterials();
+
             onChangeRenderPipeline.AddListener(InitializePipeline);
             onChangeRenderPipeline.AddListener(InitializePostProcess);
+            onChangeRenderPipeline.AddListener(RefreshDefaultMaterials);
+
             DataManager.onDataChanged.AddListener(InitializePipeline);
             DataManager.onDataChanged.AddListener(InitializePostProcess);
+            DataManager.onDataChanged.AddListener(RefreshDefaultMaterials);
 
             // Custom Loader
             _customLoader = Initializer.CreateCustomLoader(this);
@@ -6395,6 +6420,11 @@ where T : IEquatable<T>
             _recentVolumeProfile = new Recent<VolumeProfile>(10);
             _recentVolumeProfile.onClickEvent += SetVolumeProfile;
 #endif
+        }
+
+        private void RefreshDefaultMaterials()
+        {
+            _floor.sharedMaterial = DefaultMaterial.Get(currentData.renderPipelineMode);
         }
 
         private void InitializePipeline()
@@ -6425,6 +6455,7 @@ where T : IEquatable<T>
                 _preview.camera.cameraType = currentData.cameraType;
             }
 #endif
+            
             Notice.Log(string.Format("{0} Render Pipeline Initialized", currentData.renderPipelineMode.ToString()));
         }
 
@@ -6754,7 +6785,7 @@ where T : IEquatable<T>
             _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(profile));
         }
 #endif
-#if URP || HDRP
+#if VOLUME
         void SetVolumeProfile(VolumeProfile profile)
         {
             currentData.volumeProfile = profile;
@@ -6771,7 +6802,7 @@ where T : IEquatable<T>
             var postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
             if (postVolume) DestroyImmediate(postVolume);
 #endif
-#if URP || HDRP
+#if VOLUME
             var volume = _preview.camera.gameObject.GetComponent<Volume>();
             if (volume) DestroyImmediate(volume);
 #endif
@@ -6799,7 +6830,7 @@ where T : IEquatable<T>
                 Notice.Log("Post Process Initialized");
 #endif
             }
-#if URP || HDRP
+#if VOLUME
             else
             {
                 volume = _preview.camera.gameObject.GetComponent<Volume>();
@@ -6979,7 +7010,7 @@ where T : IEquatable<T>
             internal static GUIContent title = new GUIContent(Initializer.title, EditorGUIUtility.IconContent("ViewToolOrbit").image, Initializer.title);
             internal static GUIContent startup = new GUIContent(Initializer.title);
             internal static GUIContent version = new GUIContent(Initializer.version);
-            internal static GUIContent copyright = new GUIContent(Initializer.description);
+            internal static GUIContent copyright = new GUIContent(Initializer.contact);
             internal static GUIContent help = new GUIContent(Initializer.help);
             public static GUIContent enableSRP = new GUIContent("Enable SRP", "스크립터블 렌더 파이프라인을 활성화합니다.");
             public static GUIContent currentPipeline = new GUIContent("Pipeline Asset", "사용할 렌더 파이프라인 애셋을 선택합니다.\n비워놓으면 Builtin 파이프라인이 사용됩니다.");
@@ -6987,6 +7018,19 @@ where T : IEquatable<T>
             public static GUIContent reframeToTarget = new GUIContent("Reframe Target", "모델을 생성할 때 자동으로 뷰에 꽉 차도록 카메라의 거리를 조절합니다.");
             public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
             public static GUIContent forceUpdateComponent = new GUIContent("Force Update Components", "모델에 추가되어 있는 컴포넌트들을 강제로 실행합니다.");
+
+            public static GUIContent searchIcon = EditorGUIUtility.IconContent("d_Search Icon");
+            public static GUIContent plusIcon = EditorGUIUtility.IconContent("d_Toolbar Plus");
+            public static GUIContent minusIcon = EditorGUIUtility.IconContent("d_Toolbar Minus");
+            public static GUIContent clearIcon = EditorGUIUtility.IconContent("d_clear");
+            //public static GUIContent menuIcon = EditorGUIUtility.IconContent("d_Menu");
+            //public static GUIContent helpIcon = EditorGUIUtility.IconContent("d_Help");
+            //public static GUIContent popupIcon = EditorGUIUtility.IconContent("d_Popup");
+            public static GUIContent toolIcon = EditorGUIUtility.IconContent("d_CustomTool");
+            public static GUIContent favoriteIcon = EditorGUIUtility.IconContent("d_Favorite");
+            public static GUIContent favoriteColorIcon = EditorGUIUtility.IconContent("d_Favorite Icon");
+            //public static GUIContent renderDocIcon = EditorGUIUtility.IconContent("d_renderdoc");
+            public static GUIContent contextIcon = EditorGUIUtility.IconContent("d_Preset.Context");
 
             public static Texture2D logoTexture => Initializer.logoTexture;
 
@@ -7169,7 +7213,7 @@ where T : IEquatable<T>
                                 }
                                 else
                                 {
-#if URP || HDRP
+#if VOLUME
                                     EditorGUIUtility.ShowObjectPicker<VolumeProfile>(null, false, string.Empty, currentPickerWindow);
 #endif
                                 }
@@ -7192,7 +7236,7 @@ where T : IEquatable<T>
                         }
                         else
                         {
-#if URP || HDRP
+#if VOLUME
                             for (var i = 0; i < _recentVolumeProfile.size; i++)
                             {
                                 var recent = _recentVolumeProfile.Get(i);
@@ -7207,14 +7251,19 @@ where T : IEquatable<T>
                         menu.AddSeparator("");
                         menu.AddItem(new GUIContent("Clear"), false, () =>
                         {
-
+                            if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+                            {
 #if UNITY_POST_PROCESSING_STACK_V2
-                            dataManager.current.profile = null;
+                                dataManager.current.profile = null;
 #endif
-#if URP || HDRP
-                            dataManager.current.volumeProfile = null;
+                            }
+                            else
+                            {
+#if VOLUME
+                                dataManager.current.volumeProfile = null;
 #endif
-                            InitializePostProcess();
+                                InitializePostProcess();
+                            }
                         });
                         menu.ShowAsContext();
                     }
@@ -7242,7 +7291,7 @@ where T : IEquatable<T>
                                     x =>
                                     {
                                         dataManager.current.renderPipelineAsset = ((RenderPipelineAsset)x);
-                                        InitializePipeline();
+                                        onChangeRenderPipeline?.Invoke();
                                     }, pipeline);
                             }
                         }
@@ -7251,7 +7300,7 @@ where T : IEquatable<T>
                         menu.AddItem(new GUIContent("Builtin"), false, () =>
                         {
                             dataManager.current.renderPipelineAsset = null;
-                            InitializePipeline();
+                            onChangeRenderPipeline?.Invoke();
                         });
                         menu.ShowAsContext();
                     }
@@ -7273,22 +7322,30 @@ where T : IEquatable<T>
                             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
                         }
+                        if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
+                        {
 #if UNITY_POST_PROCESSING_STACK_V2
-                        var postProfile = EditorGUIUtility.GetObjectPickerObject() as PostProcessProfile;
-                        if (postProfile)
-                        {
-                            SetPostProcessProfile(postProfile);
-                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                            var postProfile = EditorGUIUtility.GetObjectPickerObject() as PostProcessProfile;
+                            if (postProfile)
+                            {
+                                SetPostProcessProfile(postProfile);
+                                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
-                        }
+                            }
 #endif
-#if URP || HDRP
-                        var volumeProfile = EditorGUIUtility.GetObjectPickerObject() as VolumeProfile;
-                        if (volumeProfile)
-                        {
-                            SetVolumeProfile(volumeProfile);
-                            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
                         }
+                        else
+                        {
+#if VOLUME
+                            var volumeProfile = EditorGUIUtility.GetObjectPickerObject() as VolumeProfile;
+                            if (volumeProfile)
+                            {
+                                SetVolumeProfile(volumeProfile);
+                                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                            }
+#endif
+                        }
+#if URP || HDRP
                         var pipeline = EditorGUIUtility.GetObjectPickerObject() as RenderPipelineAsset;
                         if (pipeline)
                         {
@@ -7585,7 +7642,7 @@ where T : IEquatable<T>
                         ResizeWindow(size);
                     }
 
-                    if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(30)))
+                    if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(30)))
                     {
                         currentData.viewportSizes.Remove(size);
                     }
@@ -7686,7 +7743,7 @@ where T : IEquatable<T>
                     {
                         _destFOV = EditorGUILayout.IntSlider("Field Of View", (int)_destFOV, 1, 179);
                         _preview.camera.orthographic = GUILayout.Toggle(_preview.camera.orthographic,
-                            _preview.camera.orthographic ? "O" : "P", EditorStyles.miniButton, GUILayout.Width(20));
+                            _preview.camera.orthographic ? "O" : "P", EditorStyles.miniButton, GUILayout.Width(24));
                     }
                 }
 
@@ -7723,7 +7780,7 @@ where T : IEquatable<T>
                 {
                     if (i < 0 || i > currentData.viewList.Count - 1) return;
                     var view = currentData.viewList[i];
-                    if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
+                    if (GUILayout.Button(GUIContents.plusIcon, EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                     {
                         view.rotation = _destRot;
                         view.distance = _destDistance;
@@ -7738,7 +7795,7 @@ where T : IEquatable<T>
                         ApplyView(i);
                     }
 
-                    if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
+                    if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(20)))
                     {
                         currentData.viewList.Remove(view);
                         Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
@@ -7843,7 +7900,7 @@ where T : IEquatable<T>
                     {
                         if (i < 0 || i > currentData.lightingList.Count - 1) return;
                         var lighting = currentData.lightingList[i];
-                        if (GUILayout.Button("+", EditorStyles.miniButtonLeft, GUILayout.Width(20)))
+                        if (GUILayout.Button(GUIContents.plusIcon, EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                         {
                             lighting.ambientSkyColor = dataManager.current.ambientSkyColor;
                             lighting.lightList.Clear();
@@ -7866,7 +7923,7 @@ where T : IEquatable<T>
                             ApplyLighting(lighting);
                         }
 
-                        if (GUILayout.Button("-", EditorStyles.miniButtonRight, GUILayout.Width(20)))
+                        if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(20)))
                         {
                             currentData.lightingList.Remove(lighting);
                             Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
@@ -8083,7 +8140,7 @@ where T : IEquatable<T>
                     }
                     else
                     {
-#if URP || HDRP
+#if VOLUME
                         currentData.volumeProfile = (VolumeProfile)EditorGUILayout.ObjectField("", currentData.volumeProfile, typeof(VolumeProfile), false);
 #endif
                     }
@@ -8091,10 +8148,10 @@ where T : IEquatable<T>
                     if (check.changed)
                     {
                         InitializePostProcess();
-#if UNITY_POST_PROCESSING_STACK_V2
+#if UNITY_POST_PROCESSING_STACK_V2 && !VOLUME
                         _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(currentData.profile));
 #endif
-#if URP || HDRP
+#if VOLUME
                         _recentVolumeProfile.Add(AssetDatabase.GetAssetPath(currentData.volumeProfile));
 #endif
                     }
@@ -8284,9 +8341,9 @@ where T : IEquatable<T>
                 GUILayout.Label("MainTarget", EditorStyles.boldLabel);
                 using (new EditorGUI.DisabledGroupScope(true))
                 {
-                    EditorGUILayout.ObjectField("Instance", _mainTarget, typeof(GameObject), false);
+                    EditorGUILayout.ObjectField("", _mainTarget, typeof(GameObject), false);
                 }
-                GUILayout.Label("Target Dic", EditorStyles.boldLabel);
+                GUILayout.Label("Targets", EditorStyles.boldLabel);
                 foreach (var target in _targetDic.ToArray())
                 {
                     GameObject source = target.Key;
@@ -8295,14 +8352,11 @@ where T : IEquatable<T>
                     {
                         using (EditorHelper.Horizontal.Do())
                         {
-                            using (EditorHelper.Vertical.Do())
+                            EditorGUILayout.ObjectField("", target.Key, typeof(GameObject), false, GUILayout.Width(100));
+                            EditorGUILayout.ObjectField("", target.Value, typeof(GameObject), false, GUILayout.Width(100));
+                            if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButton))
                             {
-                                EditorGUILayout.ObjectField("Source", target.Key, typeof(GameObject), false);
-                                EditorGUILayout.ObjectField("Instance", target.Value, typeof(GameObject), false);
-                                if (GUILayout.Button("Remove", EditorStyles.miniButton))
-                                {
-                                    RemoveModel(target.Value);
-                                }
+                                RemoveModel(target.Value);
                             }
                         }
                     }
@@ -8372,7 +8426,7 @@ where T : IEquatable<T>
             for (int a = 0; a < _playerList.Count; a++)
             {
                 var player = _playerList[a];
-                EditorHelper.FoldGroup.Do(string.Format("{0} - {1}", "Player", a.ToString()), true, () =>
+                EditorHelper.FoldGroup.Do(string.Format($"Animator{a}:{player.name}"), true, () =>
                 {
                     for (int b = 0; b < player.actorList.Count; b++)
                     {
@@ -8418,7 +8472,7 @@ where T : IEquatable<T>
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     _modifierFilter = EditorHelper.SearchField(_modifierFilter);
-                    if (GUILayout.Button(string.IsNullOrEmpty(_modifierFilter) ? "Add" : "Find"))
+                    if (GUILayout.Button(string.IsNullOrEmpty(_modifierFilter) ? "Root" : "Find"))
                     {
                         if (_playerList.Count > 0)
                         {
@@ -8689,8 +8743,7 @@ where T : IEquatable<T>
                 }
             });
 
-            EditorHelper.FoldGroup.Do("Shortcuts", true,
-                () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.None); });
+            EditorHelper.FoldGroup.Do("Shortcuts", true, () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.None); });
             GUILayout.Space(10);
             EditorGUILayout.LabelField(GUIContents.copyright, EditorStyles.centeredGreyMiniLabel);
         }
@@ -8700,7 +8753,7 @@ where T : IEquatable<T>
             if (!_overlayEnabled) return;
             Rect area = new RectOffset(4, 4, 4, 4).Remove(r);
             var style = new GUIStyle(EditorStyles.miniLabel);
-            style.alignment = TextAnchor.LowerLeft;
+            style.alignment = TextAnchor.UpperRight;
             style.normal.textColor = Color.white;
 
             _sb0.Append(string.Format("{0} : {1}({2})", "RenderPipeline", currentData.renderPipelineAsset ? currentData.renderPipelineAsset.name : string.Empty, currentData.renderPipelineMode.ToString()));
@@ -8738,14 +8791,15 @@ where T : IEquatable<T>
             _viewInfo = new GUIContent(_sb0.ToString());
             _sb0.Length = 0;
             var infoSize = style.CalcSize(_viewInfo);
-            Rect infoRect = new Rect(area.x, area.y + area.height - infoSize.y, infoSize.x, infoSize.y);
+            Rect infoRect = new Rect(area.x + area.width - infoSize.x, area.y, infoSize.x, infoSize.y);
             EditorGUI.DropShadowLabel(infoRect, _viewInfo, style);
         }
 
         void OnGUI_Log(Rect r)
         {
             if (!_overlayEnabled) return;
-            Notice.OnGUI(r);
+            Rect area = new RectOffset(4, 4, 4, 4).Remove(r);
+            Notice.OnGUI(area);
         }
 
         void OnGUI_Gizmos(Rect r)

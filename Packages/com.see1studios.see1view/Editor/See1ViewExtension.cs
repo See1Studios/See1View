@@ -250,7 +250,6 @@ namespace See1Studios.See1View
         {
             using (EditorHelper.Horizontal.Do())
             {
-                GUILayout.Label("Data", EditorStyles.miniLabel);
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
                     int idx = instance.dataIndex;
@@ -922,7 +921,6 @@ namespace See1Studios.See1View
         public override void OnGUI()
         {
             AssemblerDataManager.OnManageGUI();
-            EditorGUILayout.HelpBox("Work in progress", MessageType.Info);
             if (rol != null)
             {
                 rol.DoLayoutList();
