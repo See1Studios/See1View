@@ -4,16 +4,7 @@
     "zoomSpeed": 3,
     "panSpeed": 3,
     "smoothFactor": 3,
-    "viewportSizes": [
-        {
-            "x": 600.0,
-            "y": 800.0
-        },
-        {
-            "x": 1024.0,
-            "y": 1024.0
-        }
-    ],
+    "viewportSizes": [],
     "imageSaveMode": 0,
     "openSavedImage": true,
     "alphaAppliedImage": true,
@@ -21,10 +12,10 @@
     "lastView": {
         "name": "",
         "rotation": {
-            "x": 140.92266845703126,
-            "y": 9.42059326171875
+            "x": 156.96572875976563,
+            "y": 12.779266357421875
         },
-        "distance": 4.5062360763549809,
+        "distance": 5.639338970184326,
         "pivot": {
             "x": 0.0,
             "y": 0.8849430084228516,
@@ -32,36 +23,7 @@
         },
         "fieldOfView": 30.0
     },
-    "viewList": [
-        {
-            "name": "",
-            "rotation": {
-                "x": -56.23777770996094,
-                "y": 43.942020416259769
-            },
-            "distance": 10.049875259399414,
-            "pivot": {
-                "x": 0.0,
-                "y": 1.0,
-                "z": 0.04987525939941406
-            },
-            "fieldOfView": 60.0
-        },
-        {
-            "name": "Main Camera",
-            "rotation": {
-                "x": 0.0,
-                "y": 0.0
-            },
-            "distance": 10.049875259399414,
-            "pivot": {
-                "x": 0.0,
-                "y": 1.0,
-                "z": 0.04987525939941406
-            },
-            "fieldOfView": 60.0
-        }
-    ],
+    "viewList": [],
     "bgColor": {
         "r": 0.3215686082839966,
         "g": 0.3215686082839966,
@@ -74,10 +36,10 @@
         "b": 0.5,
         "a": 1.0
     },
-    "clearFlag": 1,
+    "clearFlag": 0,
     "autoFloorHeightEnabled": false,
     "floorHeight": 0.0,
-    "floorScale": 24.0,
+    "floorScale": 10.0,
     "lastLighting": {
         "name": "",
         "lightList": [
@@ -87,10 +49,10 @@
                     "y": 0.0
                 },
                 "rotation": {
-                    "x": -0.14107732474803925,
-                    "y": -0.8894098401069641,
-                    "z": 0.42450419068336489,
-                    "w": -0.09404025226831436
+                    "x": -0.2241717278957367,
+                    "y": -0.8633292317390442,
+                    "z": 0.4518510401248932,
+                    "w": -0.015504861250519753
                 },
                 "lightColor": {
                     "r": 0.7689999938011169,
@@ -133,7 +95,7 @@
     "shadowStrength": 1.0,
     "shadowBias": 0.009999999776482582,
     "cameraType": 1,
-    "renderScale": 2.0,
+    "renderScale": 1.0,
     "wireLineColor": {
         "r": 1.0,
         "g": 1.0,
@@ -167,7 +129,7 @@
     "urpData": {
         "renderPostProcessing": true,
         "dithering": true,
-        "antialiasing": 1
+        "antialiasing": 0
     },
     "hdrpData": {
         "renderPostProcessing": true,

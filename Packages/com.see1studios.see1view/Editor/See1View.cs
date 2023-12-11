@@ -23,7 +23,7 @@
 //
 //#define URP
 #if URP || HDRP 
-#define VOLUME
+#define SRP
 #endif
 using System;
 using System.Collections;
@@ -46,8 +46,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using UnityEngine.EventSystems;
-using static See1Studios.See1View.See1View;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -750,6 +748,22 @@ where T : IEquatable<T>
         }
     }
 
+    public class Icons
+    {
+        public static GUIContent searchIcon = EditorGUIUtility.IconContent("d_Search Icon");
+        public static GUIContent plusIcon = EditorGUIUtility.IconContent("d_Toolbar Plus");
+        public static GUIContent minusIcon = EditorGUIUtility.IconContent("d_Toolbar Minus");
+        public static GUIContent clearIcon = EditorGUIUtility.IconContent("d_clear");
+        //public static GUIContent menuIcon = EditorGUIUtility.IconContent("d_Menu");
+        //public static GUIContent helpIcon = EditorGUIUtility.IconContent("d_Help");
+        //public static GUIContent popupIcon = EditorGUIUtility.IconContent("d_Popup");
+        public static GUIContent toolIcon = EditorGUIUtility.IconContent("d_CustomTool");
+        public static GUIContent favoriteIcon = EditorGUIUtility.IconContent("d_Favorite");
+        public static GUIContent favoriteColorIcon = EditorGUIUtility.IconContent("d_Favorite Icon");
+        //public static GUIContent renderDocIcon = EditorGUIUtility.IconContent("d_renderdoc");
+        public static GUIContent contextIcon = EditorGUIUtility.IconContent("d_Preset.Context");
+    }
+
     public class Shaders
     {
         private static Shader _heightFog;
@@ -1369,7 +1383,7 @@ where T : IEquatable<T>
                 {
                     using (EditorHelper.Horizontal.Do())
                     {
-                        if (GUILayout.Button(GUIContents.searchIcon, EditorStyles.miniButtonLeft,GUILayout.Width(25)))
+                        if (GUILayout.Button(Icons.searchIcon, EditorStyles.miniButtonLeft,GUILayout.Width(25)))
                         {
                             Selection.activeObject = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
                         }
@@ -1678,7 +1692,7 @@ where T : IEquatable<T>
                     instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
                 }
 
-                if (GUILayout.Button(GUIContents.plusIcon, EditorStyles.toolbarButton))
+                if (GUILayout.Button(Icons.plusIcon, EditorStyles.toolbarButton))
                 {
                     isAddName = true;
                     inputStr = "New";
@@ -1688,7 +1702,7 @@ where T : IEquatable<T>
 
                 using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
                 {
-                    if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.toolbarButton))
+                    if (GUILayout.Button(Icons.minusIcon, EditorStyles.toolbarButton))
                     {
                         if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
                         {
@@ -1697,7 +1711,7 @@ where T : IEquatable<T>
                     }
                 }
 
-                if (GUILayout.Button(GUIContents.contextIcon, EditorStyles.toolbarButton))
+                if (GUILayout.Button(Icons.contextIcon, EditorStyles.toolbarButton))
                 {
                     isEditName = true;
                     inputStr = instance.current.name;
@@ -3376,6 +3390,7 @@ where T : IEquatable<T>
         public List<Transform> children;
         private bool isDontAppectChildren;
         public bool isSymmetrical;
+        public Vector3 symmetricalAxis = Vector3.one; //축 방향이 다를 때 보정용
 
         private Vector3 orgPosition = Vector3.zero;
         private Quaternion orgRotation = Quaternion.identity;
@@ -3465,6 +3480,22 @@ where T : IEquatable<T>
             //transformPair.transform = (Transform)EditorGUILayout.ObjectField(transformPair.transform, typeof(Transform), false);
             using (var check = new EditorGUI.ChangeCheckScope())
             {
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (var checkSym = new EditorGUI.ChangeCheckScope())
+                        {
+                            isSymmetrical = GUILayout.Toggle(isSymmetrical, "Symmetry", EditorStyles.miniButton);
+
+                            symmetricalAxis = EditorGUILayout.Vector3Field("", symmetricalAxis);
+
+                            if (checkSym.changed)
+                            {
+                                ApplySymmetry();
+                            }
+                        }
+                    }
+                
                 using (new EditorGUILayout.VerticalScope(GUI.skin.box))
                 {
                     if (useOffset)
@@ -3592,7 +3623,7 @@ where T : IEquatable<T>
                 if (transformPair!=null)
                 {
                     //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
-                    transformPair.SetModification(Vector3.Scale(offset, new Vector3(-1,1,1)) , Quaternion.identity, scale);
+                    transformPair.SetModification(Vector3.Scale(offset, symmetricalAxis) , Quaternion.identity, scale);
                     transformPair.Apply();
                 }
             }
@@ -3611,7 +3642,7 @@ where T : IEquatable<T>
             {
                 if (transformPair != null)
                 {
-                    transformPair.SetModification(Vector3.Scale(offset, new Vector3(-1, 1, 1)), Quaternion.identity, scale);
+                    transformPair.SetModification(Vector3.Scale(offset, symmetricalAxis), Quaternion.identity, scale);
                     transformPair.ApplyToCurrent();
                 }
             }
@@ -4034,7 +4065,7 @@ where T : IEquatable<T>
                 position.x += position.width;
                 position.width = btnWidth;
                 //position.height = 18;
-                if (GUI.Button(position,GUIContents.searchIcon, EditorStyles.miniButtonRight))
+                if (GUI.Button(position, Icons.searchIcon, EditorStyles.miniButtonRight))
                 {
                     Selection.activeObject = clipInfoList[index].clip;
                 }
@@ -4487,7 +4518,7 @@ where T : IEquatable<T>
 
                     isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
 
-                    if (GUILayout.Button(GUIContents.minusIcon, "ButtonLeft", GUILayout.Height(30)))
+                    if (GUILayout.Button(Icons.minusIcon, "ButtonLeft", GUILayout.Height(30)))
                     {
                         timeSpeed = Mathf.Max(0, (timeSpeed * 10 - 1f) * 0.1f);
 
@@ -4517,7 +4548,7 @@ where T : IEquatable<T>
                     }
                     GUI.backgroundColor = Color.white;
 
-                    if (GUILayout.Button(GUIContents.plusIcon, "ButtonRight", GUILayout.Height(30)))
+                    if (GUILayout.Button(Icons.plusIcon, "ButtonRight", GUILayout.Height(30)))
                     {
                         timeSpeed = Mathf.Min(2, (timeSpeed * 10 + 1f) * 0.1f);
 
@@ -5876,7 +5907,7 @@ where T : IEquatable<T>
 #if UNITY_POST_PROCESSING_STACK_V2
         Recent<PostProcessProfile> _recentPostProcessProfile;
 #endif
-#if VOLUME
+#if SRP
         Recent<VolumeProfile> _recentVolumeProfile;
 #endif
         //Info
@@ -6220,7 +6251,7 @@ where T : IEquatable<T>
             {
                 // 소스가 프리팹이면 여기에서 적절하게 처리.
                 instance = PrefabUtility.InstantiatePrefab(src) as GameObject;
-                PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction); 
+                //PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction); 
             }
             else
             {
@@ -6785,7 +6816,7 @@ where T : IEquatable<T>
             _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(profile));
         }
 #endif
-#if VOLUME
+#if SRP
         void SetVolumeProfile(VolumeProfile profile)
         {
             currentData.volumeProfile = profile;
@@ -6802,7 +6833,7 @@ where T : IEquatable<T>
             var postVolume = _preview.camera.gameObject.GetComponent<PostProcessVolume>();
             if (postVolume) DestroyImmediate(postVolume);
 #endif
-#if VOLUME
+#if SRP
             var volume = _preview.camera.gameObject.GetComponent<Volume>();
             if (volume) DestroyImmediate(volume);
 #endif
@@ -6830,7 +6861,7 @@ where T : IEquatable<T>
                 Notice.Log("Post Process Initialized");
 #endif
             }
-#if VOLUME
+#if SRP
             else
             {
                 volume = _preview.camera.gameObject.GetComponent<Volume>();
@@ -7019,18 +7050,6 @@ where T : IEquatable<T>
             public static GUIContent recalculateBound = new GUIContent("Recalculate Bound", "모델을 생성할 때 바운딩 박스를 재계산합니다. Reframe 은 바운딩 박스에 기초합니다.");
             public static GUIContent forceUpdateComponent = new GUIContent("Force Update Components", "모델에 추가되어 있는 컴포넌트들을 강제로 실행합니다.");
 
-            public static GUIContent searchIcon = EditorGUIUtility.IconContent("d_Search Icon");
-            public static GUIContent plusIcon = EditorGUIUtility.IconContent("d_Toolbar Plus");
-            public static GUIContent minusIcon = EditorGUIUtility.IconContent("d_Toolbar Minus");
-            public static GUIContent clearIcon = EditorGUIUtility.IconContent("d_clear");
-            //public static GUIContent menuIcon = EditorGUIUtility.IconContent("d_Menu");
-            //public static GUIContent helpIcon = EditorGUIUtility.IconContent("d_Help");
-            //public static GUIContent popupIcon = EditorGUIUtility.IconContent("d_Popup");
-            public static GUIContent toolIcon = EditorGUIUtility.IconContent("d_CustomTool");
-            public static GUIContent favoriteIcon = EditorGUIUtility.IconContent("d_Favorite");
-            public static GUIContent favoriteColorIcon = EditorGUIUtility.IconContent("d_Favorite Icon");
-            //public static GUIContent renderDocIcon = EditorGUIUtility.IconContent("d_renderdoc");
-            public static GUIContent contextIcon = EditorGUIUtility.IconContent("d_Preset.Context");
 
             public static Texture2D logoTexture => Initializer.logoTexture;
 
@@ -7213,7 +7232,7 @@ where T : IEquatable<T>
                                 }
                                 else
                                 {
-#if VOLUME
+#if SRP
                                     EditorGUIUtility.ShowObjectPicker<VolumeProfile>(null, false, string.Empty, currentPickerWindow);
 #endif
                                 }
@@ -7236,7 +7255,7 @@ where T : IEquatable<T>
                         }
                         else
                         {
-#if VOLUME
+#if SRP
                             for (var i = 0; i < _recentVolumeProfile.size; i++)
                             {
                                 var recent = _recentVolumeProfile.Get(i);
@@ -7259,7 +7278,7 @@ where T : IEquatable<T>
                             }
                             else
                             {
-#if VOLUME
+#if SRP
                                 dataManager.current.volumeProfile = null;
 #endif
                                 InitializePostProcess();
@@ -7336,7 +7355,7 @@ where T : IEquatable<T>
                         }
                         else
                         {
-#if VOLUME
+#if SRP
                             var volumeProfile = EditorGUIUtility.GetObjectPickerObject() as VolumeProfile;
                             if (volumeProfile)
                             {
@@ -7642,7 +7661,7 @@ where T : IEquatable<T>
                         ResizeWindow(size);
                     }
 
-                    if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(30)))
+                    if (GUILayout.Button(Icons.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(30)))
                     {
                         currentData.viewportSizes.Remove(size);
                     }
@@ -7780,7 +7799,7 @@ where T : IEquatable<T>
                 {
                     if (i < 0 || i > currentData.viewList.Count - 1) return;
                     var view = currentData.viewList[i];
-                    if (GUILayout.Button(GUIContents.plusIcon, EditorStyles.miniButtonLeft, GUILayout.Width(20)))
+                    if (GUILayout.Button(Icons.plusIcon, EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                     {
                         view.rotation = _destRot;
                         view.distance = _destDistance;
@@ -7795,7 +7814,7 @@ where T : IEquatable<T>
                         ApplyView(i);
                     }
 
-                    if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(20)))
+                    if (GUILayout.Button(Icons.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(20)))
                     {
                         currentData.viewList.Remove(view);
                         Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
@@ -7900,7 +7919,7 @@ where T : IEquatable<T>
                     {
                         if (i < 0 || i > currentData.lightingList.Count - 1) return;
                         var lighting = currentData.lightingList[i];
-                        if (GUILayout.Button(GUIContents.plusIcon, EditorStyles.miniButtonLeft, GUILayout.Width(20)))
+                        if (GUILayout.Button(Icons.plusIcon, EditorStyles.miniButtonLeft, GUILayout.Width(20)))
                         {
                             lighting.ambientSkyColor = dataManager.current.ambientSkyColor;
                             lighting.lightList.Clear();
@@ -7923,7 +7942,7 @@ where T : IEquatable<T>
                             ApplyLighting(lighting);
                         }
 
-                        if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(20)))
+                        if (GUILayout.Button(Icons.minusIcon, EditorStyles.miniButtonRight, GUILayout.Width(20)))
                         {
                             currentData.lightingList.Remove(lighting);
                             Notice.Log(string.Format("Slot {0} Removed", i.ToString()), false);
@@ -8140,7 +8159,7 @@ where T : IEquatable<T>
                     }
                     else
                     {
-#if VOLUME
+#if SRP
                         currentData.volumeProfile = (VolumeProfile)EditorGUILayout.ObjectField("", currentData.volumeProfile, typeof(VolumeProfile), false);
 #endif
                     }
@@ -8148,10 +8167,10 @@ where T : IEquatable<T>
                     if (check.changed)
                     {
                         InitializePostProcess();
-#if UNITY_POST_PROCESSING_STACK_V2 && !VOLUME
+#if UNITY_POST_PROCESSING_STACK_V2 && !SRP
                         _recentPostProcessProfile.Add(AssetDatabase.GetAssetPath(currentData.profile));
 #endif
-#if VOLUME
+#if SRP
                         _recentVolumeProfile.Add(AssetDatabase.GetAssetPath(currentData.volumeProfile));
 #endif
                     }
@@ -8217,7 +8236,16 @@ where T : IEquatable<T>
             {
                 dataManager.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)dataManager.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
                 Tooltip.Generate(GUIContents.Tooltip.createMode);
-
+                if (_mainTarget)
+                {
+                    using (EditorHelper.Colorize.Do(Color.white, Color.green))
+                    {
+                        if (GUILayout.Button("Clone Model To Scene"))
+                        {
+                            CloneTargetToScene();
+                        }
+                    }
+                }
                 switch (dataManager.current.modelCreateMode)
                 {
                     case ModelCreateMode.Default:
@@ -8354,7 +8382,7 @@ where T : IEquatable<T>
                         {
                             EditorGUILayout.ObjectField("", target.Key, typeof(GameObject), false, GUILayout.Width(100));
                             EditorGUILayout.ObjectField("", target.Value, typeof(GameObject), false, GUILayout.Width(100));
-                            if (GUILayout.Button(GUIContents.minusIcon, EditorStyles.miniButton))
+                            if (GUILayout.Button(Icons.minusIcon, EditorStyles.miniButton))
                             {
                                 RemoveModel(target.Value);
                             }
@@ -8419,6 +8447,7 @@ where T : IEquatable<T>
                 }
             });
         }
+
 
         void OnGUI_Animation()
         {
@@ -8490,14 +8519,14 @@ where T : IEquatable<T>
                         using (new EditorGUILayout.HorizontalScope())
                         {
                             GUILayout.Label(modifier.name, EditorStyles.boldLabel);
-                            using (var check = new EditorGUI.ChangeCheckScope())
-                            {
-                                modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym", EditorStyles.miniButton, GUILayout.Width(40));
-                                if(check.changed)
-                                {
-                                    modifier.ApplySymmetry();
-                                }
-                            }
+                            //using (var check = new EditorGUI.ChangeCheckScope())
+                            //{
+                            //    modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym", EditorStyles.miniButton, GUILayout.Width(40));
+                            //    if(check.changed)
+                            //    {
+                            //        modifier.ApplySymmetry();
+                            //    }
+                            //}
                             using (EditorHelper.Colorize.Do(Color.white, Color.red))
                             {
                                 if (GUILayout.Button("Remove", GUILayout.Width(60)))
@@ -9572,6 +9601,33 @@ where T : IEquatable<T>
             }
             root = root.parent;
             return AnimationUtility.CalculateTransformPath(tr, root); //지정한 루트로부터의 path를 생성해줌
+        }
+
+
+        public void CloneTargetToScene()
+        {
+            if (_mainTarget)
+            {
+                var activeScene = EditorSceneManager.GetActiveScene();
+                if (activeScene == null) activeScene = EditorSceneManager.GetSceneAt(0); // EditorSceneManager.GetTargetSceneForNewGameObjects()
+
+                GameObject clone = null;
+                bool isPrefabInstance = PrefabUtility.IsPartOfPrefabInstance(_mainTarget);
+                if (isPrefabInstance)
+                {
+                    clone = GameObject.Instantiate(_mainTarget);
+                    //clone = (GameObject)PrefabUtility.InstantiatePrefab(_mainTarget, activeScene);
+                }
+                else
+                {
+                    clone = GameObject.Instantiate(_mainTarget);
+                    if (activeScene != null) EditorSceneManager.MoveGameObjectToScene(clone, activeScene);
+                }
+                if (activeScene != null && clone) EditorSceneManager.MoveGameObjectToScene(clone, activeScene);
+                SetFlagsAll(clone, HideFlags.None);
+                SetLayerAll(clone, 0);
+                Notice.Log(string.Format("{0} Instantiated to {1}", isPrefabInstance ? "Prefab" : "GameObject", string.IsNullOrEmpty(activeScene.name) ? "Untitled Scene" : activeScene.name));
+            }
         }
 
         #endregion
