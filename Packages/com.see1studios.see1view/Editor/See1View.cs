@@ -5625,7 +5625,6 @@ where T : IEquatable<T>
 
         public static GUIStyle centeredMiniLabel;
         public static GUIStyle centeredMiniBoldLabel;
-
         public static GUIStyle rightAlignedMiniLabel;
         //public static GUIStyle tabToolBar;
 
@@ -5719,17 +5718,17 @@ where T : IEquatable<T>
             ////tabToolBar.onNormal.textColor = Color.white;
             //tabToolBar.fontSize = 9;
             //tabToolBar.alignment = TextAnchor.MiddleCenter;
-            //centeredMiniLabel = new GUIStyle();
-            //centeredMiniLabel.alignment = TextAnchor.MiddleCenter;
-            //centeredMiniBoldLabel = new GUIStyle();
-            //centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
-            //rightAlignedMinilabel = new GUIStyle();
-            //rightAlignedMinilabel.alignment = TextAnchor.MiddleRight;
+            centeredMiniLabel = new GUIStyle(EditorStyles.miniLabel);
+            centeredMiniLabel.alignment = TextAnchor.MiddleCenter;
+            centeredMiniBoldLabel = new GUIStyle(EditorStyles.miniBoldLabel);
+            centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
+            centeredMiniBoldLabel.padding = new RectOffset(-4,-4,-4,-4);
+            rightAlignedMiniLabel = new GUIStyle(EditorStyles.miniBoldLabel);
+            rightAlignedMiniLabel.alignment = TextAnchor.MiddleRight;
             //tabToolBar = new GUIStyle("dragtab");
             //tabToolBar.onNormal.textColor = Color.white;
             //tabToolBar.fontSize = 9;
             //tabToolBar.alignment = TextAnchor.MiddleCenter;
-            //
         }
     }
     // additional Tooltip 
@@ -8230,12 +8229,6 @@ where T : IEquatable<T>
                 {
                     currentData.forceUpdateComponent = GUILayout.Toggle(currentData.forceUpdateComponent, GUIContents.forceUpdateComponent, EditorStyles.miniButton);
                 }
-            });
-
-            EditorHelper.FoldGroup.Do("Create Mode", true, () =>
-            {
-                dataManager.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)dataManager.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
-                Tooltip.Generate(GUIContents.Tooltip.createMode);
                 if (_mainTarget)
                 {
                     using (EditorHelper.Colorize.Do(Color.white, Color.green))
@@ -8246,6 +8239,13 @@ where T : IEquatable<T>
                         }
                     }
                 }
+            });
+
+            EditorHelper.FoldGroup.Do("Create Mode", true, () =>
+            {
+                dataManager.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)dataManager.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
+                Tooltip.Generate(GUIContents.Tooltip.createMode);
+
                 switch (dataManager.current.modelCreateMode)
                 {
                     case ModelCreateMode.Default:
@@ -8774,7 +8774,8 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Shortcuts", true, () => { EditorGUILayout.HelpBox(Shortcuts.Print(), MessageType.None); });
             GUILayout.Space(10);
-            EditorGUILayout.LabelField(GUIContents.copyright, EditorStyles.centeredGreyMiniLabel);
+
+            EditorGUILayout.LabelField(GUIContents.copyright, Styles.centeredMiniBoldLabel);
         }
 
         void OnGUI_Info(Rect r)
