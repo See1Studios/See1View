@@ -46,6 +46,7 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
+using UnityEngine.UIElements;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -762,6 +763,7 @@ where T : IEquatable<T>
         public static GUIContent favoriteColorIcon = EditorGUIUtility.IconContent("d_Favorite Icon");
         //public static GUIContent renderDocIcon = EditorGUIUtility.IconContent("d_renderdoc");
         public static GUIContent contextIcon = EditorGUIUtility.IconContent("d_Preset.Context");
+        public static GUIContent resetIcon = new GUIContent("↺", "Reset");
     }
 
     public class Shaders
@@ -3377,81 +3379,9 @@ where T : IEquatable<T>
         }
     }
 
-    public class TransformModifier
+    public class TransformHelper
     {
-        static Vector3 centerOffset; // 다리 본의 길이를 조정했을 때 pelvis 높이를 재조정하는 용도?
-
-        public string targetName = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
-        public string name = string.Empty;
-        public Transform root;
-        public Transform transform;
-        public TransformModifier transformPair;
-        // 1차 자식
-        public List<Transform> children;
-        private bool isDontAppectChildren;
-        public bool isSymmetrical;
-        public Vector3 symmetricalAxis = Vector3.one; //축 방향이 다를 때 보정용
-
-        private Vector3 orgPosition = Vector3.zero;
-        private Quaternion orgRotation = Quaternion.identity;
-        private Vector3 orgScale = Vector3.one;
-
-        private Vector3 offset = Vector3.zero;
-        private Quaternion rotation = Quaternion.identity;
-        private Vector3 scale = Vector3.one;
-        public bool useOffset = true;
-        public bool useRotation = false;
-        public bool useScale = true;
-        public bool useUniformScale = true;
-        public bool isLocked; // 붙은 본임을 나타냄. 붙은 본의 길이를 조절하면 부모의 길이가 조절?. 맥스의 본 에디트 모드 같은 것일까.
-        public bool isPath; // 경로 기반 탐색할지 이름 기반 탐색할지
-        internal bool enabled;
-
-        // 생성할 때 BindPose 가 아니면 문제가 생기게 될 것이다...
-        public TransformModifier(Transform root, string targetName, bool isPath, bool isDontAppectChildren = false)
-        {
-            this.targetName = targetName;
-            this.root = root;
-            this.isPath = isPath;
-            this.isDontAppectChildren = isDontAppectChildren;
-            if (isPath)
-            {
-                transform = GetHierachyTarget(root, targetName);
-            }
-            else
-            {
-                transform = FindTransformRecursive(root, targetName);
-            }
-            this.name = Path.GetFileName(targetName);
-
-            if (transform)
-            {
-                orgPosition = transform.localPosition;
-                orgRotation = transform.localRotation;
-                orgScale = transform.localScale;
-            }
-        }
-        private void FindSymmetricalBone()
-        {
-            string[] L_IDs = { " L", "_L", "_Left", "Left_" };
-            string[] R_IDs = { " R", "_R", "_Right", "Right_" };
-            if (L_IDs.Length == R_IDs.Length)
-            {
-                for (int i = 0; i < L_IDs.Length; i++)
-                {
-                    if (targetName.Contains(L_IDs[i]))
-                    {
-                        transformPair = new TransformModifier(root, targetName.Replace(L_IDs[i], R_IDs[i]), isPath);
-                    }
-                    else if (targetName.Contains(R_IDs[i]))
-                    {
-                        transformPair = new TransformModifier(root, targetName.Replace(R_IDs[i], L_IDs[i]), isPath);
-                    }
-                }
-            }
-        }
-
-        private Transform GetHierachyTarget(Transform root, string relativePath)
+        public static Transform GetHierachyTarget(Transform root, string relativePath)
         {
             //루트 트랜스폼 오브젝트 상태 저장 및 강제 활성화
             var rootActive = root.gameObject.activeInHierarchy;
@@ -3459,7 +3389,7 @@ where T : IEquatable<T>
             string path = relativePath.Replace(root.name + "/", "");
             //Debug.Log(path);
             Transform objToFind = root.Find(path); // GameObject.Find 는 비활성화된 오브젝트에 적용불가
-            //GameObject go = GameObject.Find(path);
+                                                   //GameObject go = GameObject.Find(path);
             if (objToFind)
             {
                 root.gameObject.SetActive(rootActive);
@@ -3468,133 +3398,30 @@ where T : IEquatable<T>
             else return root.transform;
         }
 
-        public void SetModification(Vector3 positionOffset, Quaternion rotation, Vector3 scale)
+        public static Transform FindSymmetricalTransform(Transform transform)
         {
-            this.offset = positionOffset;
-            this.rotation = rotation;
-            this.scale = scale;
-        }
-
-        public void OnGUI()
-        {
-            //transformPair.transform = (Transform)EditorGUILayout.ObjectField(transformPair.transform, typeof(Transform), false);
-            using (var check = new EditorGUI.ChangeCheckScope())
+            Transform node = null;
+            // 일단 이름으로 찾아보는 방식
+            string nameToParse = transform.name;
+            string[] L_IDs = { " L", "_L", "_Left", "Left_" };
+            string[] R_IDs = { " R", "_R", "_Right", "Right_" };
+            if (L_IDs.Length == R_IDs.Length)
             {
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (var checkSym = new EditorGUI.ChangeCheckScope())
-                        {
-                            isSymmetrical = GUILayout.Toggle(isSymmetrical, "Symmetry", EditorStyles.miniButton);
-
-                            symmetricalAxis = EditorGUILayout.Vector3Field("", symmetricalAxis);
-
-                            if (checkSym.changed)
-                            {
-                                ApplySymmetry();
-                            }
-                        }
-                    }
-                
-                using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+                for (int i = 0; i < L_IDs.Length; i++)
                 {
-                    if (useOffset)
+                    if (nameToParse.Contains(L_IDs[i]))
                     {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            GUILayout.Label("Offset", EditorStyles.boldLabel);
-                            if (GUILayout.Button("Reset", GUILayout.Width(50))) this.offset = Vector3.zero;
-                        }
-                        float x = offset.x;
-                        float y = offset.y;
-                        float z = offset.z;
-                        x = EditorGUILayout.Slider("X", x, -1f, 1f);
-                        y = EditorGUILayout.Slider("Y", y, -1f, 1f);
-                        z = EditorGUILayout.Slider("Z", z, -1f, 1f);
-                        this.offset = new Vector3(x, y, z);
                     }
-                    if (useRotation)
+                    else if (nameToParse.Contains(R_IDs[i]))
                     {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            GUILayout.Label("Rotation", EditorStyles.boldLabel);
-                            if (GUILayout.Button("Reset", GUILayout.Width(50))) this.rotation = Quaternion.identity;
-                        }
-                        float x = rotation.eulerAngles.x;
-                        float y = rotation.eulerAngles.y;
-                        float z = rotation.eulerAngles.z;
-                        x = EditorGUILayout.Slider("X", x, -180f, 180f);
-                        y = EditorGUILayout.Slider("Y", y, -180f, 180f);
-                        z = EditorGUILayout.Slider("Z", z, -180f, 180f);
-                        this.rotation = Quaternion.Euler(x, y, z);
-                    }
-                    if (useScale)
-                    {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            GUILayout.Label("Scale", EditorStyles.boldLabel);
-                            useUniformScale = GUILayout.Toggle(useUniformScale, "Uniform", EditorStyles.miniButton, GUILayout.Width(60));
-                            if (GUILayout.Button("Reset", GUILayout.Width(50))) this.scale = Vector3.one;
-                        }
-                        float x = this.scale.x;
-                        float y = this.scale.y;
-                        float z = this.scale.z;
-                        if (!useUniformScale)
-                        {
-                            x = EditorGUILayout.Slider("X", x, 0f, 2f);
-                            y = EditorGUILayout.Slider("Y", y, 0f, 2f);
-                            z = EditorGUILayout.Slider("Z", z, 0f, 2f);
-                        }
-                        else
-                        {
-                            x = y = z = EditorGUILayout.Slider("XYZ", x, 0f, 2f);
-                        }
-                        this.scale = new Vector3(x, y, z);
                     }
                 }
-                if (check.changed) Apply();
             }
+            // 다음은 위치로 찾아보는 방식
+            return node;
         }
 
-        public void Apply()
-        {
-            if (transform)
-            {
-                transform.localPosition = orgPosition + offset;
-                transform.localRotation = orgRotation * rotation;
-                transform.localScale = Vector3.Scale(orgScale, scale);
-            }
-            ApplySymmetry();
-            ApplyCenterOffset();
-        }
-
-        private void ApplyCenterOffset()
-        {
-            //다리 길이를 조절한 결과에 따른 높이 값
-            float offsetLength = 0;
-            centerOffset = new Vector3(0, offsetLength, 0);
-        }
-
-        public void ApplyToCurrent()
-        {
-            if (transform)
-            {
-                transform.localPosition += offset;
-                transform.localRotation *= rotation;
-                transform.localScale = scale;
-            }
-            ApplySymmetryCurrent();
-        }
-
-        public void Reset()
-        {
-            offset = Vector3.zero;
-            rotation = Quaternion.identity;
-            scale = Vector3.one;
-            Apply();
-        }
-
-        Transform FindTransformRecursive(Transform parent, string name)
+        public static Transform FindTransformRecursive(Transform parent, string name)
         {
             Transform result = null;
             if (parent.name == name) result = parent;
@@ -3603,7 +3430,7 @@ where T : IEquatable<T>
                 for (int i = 0; i < parent.childCount; i++)
                 {
                     Transform child = parent.GetChild(i);
-                    Transform foundInChildren = FindTransformRecursive(child, name);
+                    Transform foundInChildren = FindTransformRecursive(child, (x)=>x.name == name);
                     if (foundInChildren != null)
                     {
                         result = foundInChildren;
@@ -3614,45 +3441,516 @@ where T : IEquatable<T>
             return result;
         }
 
-        internal void ApplySymmetry()
+        public static Transform FindTransformRecursive(Transform parent,Func<Transform, bool> action)
         {
-            if (isSymmetrical)
-            {
-                //없으면 한 번 더 찾아봄
-                if (transformPair== null) FindSymmetricalBone();
-                if (transformPair!=null)
-                {
-                    //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
-                    transformPair.SetModification(Vector3.Scale(offset, symmetricalAxis) , Quaternion.identity, scale);
-                    transformPair.Apply();
-                }
-            }
+            Transform result = null;
+            if (action.Invoke(parent)) result = parent;
             else
             {
-                //원상복구시킴
-                if (transformPair!=null)
+                for (int i = 0; i < parent.childCount; i++)
                 {
-                    transformPair.Reset();
+                    Transform child = parent.GetChild(i);
+                    Transform foundInChildren = FindTransformRecursive(child, action);
+                    if (foundInChildren != null)
+                    {
+                        result = foundInChildren;
+                        break;
+                    }
+                }
+            }
+            return result;
+        }
+
+        //모든 트랜스폼의 path를 생성해서 리스트로 뽑음
+        public static string[] BuildHierachialPath(Transform root)
+        {
+            Transform[] all = root.GetComponentsInChildren<Transform>();
+            List<string> list = new List<string>();
+            foreach (var tr in all)
+            {
+                list.Add(GetTransformPath(tr));
+            }
+            return list.ToArray();
+        }
+
+        public static string GetTransformPath(GameObject go)
+        {
+            string path = string.Join("/", go.GetComponentsInParent<Transform>().Select(t => t.name).Reverse().ToArray());
+            //AS_Debug.Log(path);
+            return path;
+        }
+
+        public static string GetTransformPath(Transform tr)
+        {
+            Transform root = tr;
+            while (root.parent != null)
+            {
+                root = root.parent;
+            }
+            root = root.parent;
+            return AnimationUtility.CalculateTransformPath(tr, root); //지정한 루트로부터의 path를 생성해줌
+        }
+    }
+
+    public class TransformModifier
+    {
+
+        // 로테이션에는 관여하지 않고 해당 노드의 길이와 스케일에만 관여하는 것으로 함.
+        // 부모와 자식의 원래 정보를 저장하고 상황에 따라 부모를 본 진행 반대 방향으로 이동시키거나 자식을 본 진행 방향으로 이동시키자. 
+        public class ModifiedTransform
+        {
+            TransformModifier modifier;
+            public string targetName = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
+            public string name = string.Empty;
+            public Transform root;
+            public Transform parent;
+            public Transform transform;
+            public ModifiedTransform transformPair;
+            public bool isSymmetrical;
+
+            float bias;
+            private float scale = 1;
+
+            Vector3 originalParentPosition = Vector3.zero;
+            Vector3 originalPosition = Vector3.zero;
+            Vector3 originalScale = Vector3.one;
+
+            Vector3 directionFromParent;
+            public float rootHeightBiasFactor = 0;
+            public bool isPath; // 경로 기반 탐색할지 이름 기반 탐색할지
+            public bool isLeg; // 표면에 고정되었는지 여부. 길이를 조절하면 부모 방향으로 전파되어야 함.
+            internal bool enabled;
+
+            // 생성할 때 BindPose 가 아니면 문제가 생기게 될 것이다...
+            public ModifiedTransform(TransformModifier modifier, string targetName, bool isPath)
+            {
+                this.modifier = modifier;
+                modifier.onRemoveModifier.AddListener(Reset);
+                this.targetName = targetName;
+                this.root = modifier.objectRoot;
+                this.isPath = isPath;
+                if (isPath)
+                {
+                    transform = TransformHelper.GetHierachyTarget(root, targetName);
+                }
+                else
+                {
+                    transform = TransformHelper.FindTransformRecursive(root, targetName);
+                }
+                this.name = Path.GetFileName(targetName);
+                //Debug.Log(transform.name);
+                if (transform)
+                {
+                    originalPosition = transform.position;
+                    originalScale = transform.localScale;
+                    if (transform.parent != null)
+                    {
+                        this.parent = transform.parent;
+                        originalParentPosition = transform.parent.position;
+                        directionFromParent = Vector3.Normalize(originalPosition - originalParentPosition);
+                    }
+
+                }
+            }
+            private void FindSymmetricalBone()
+            {
+                // 이름 기반
+                string[] L_IDs = { " L", "_L", "_Left", "Left_" };
+                string[] R_IDs = { " R", "_R", "_Right", "Right_" };
+                if (L_IDs.Length == R_IDs.Length)
+                {
+                    for (int i = 0; i < L_IDs.Length; i++)
+                    {
+                        if (targetName.Contains(L_IDs[i]))
+                        {
+                            transformPair = new ModifiedTransform(modifier, targetName.Replace(L_IDs[i], R_IDs[i]), isPath);
+                        }
+                        else if (targetName.Contains(R_IDs[i]))
+                        {
+                            transformPair = new ModifiedTransform(modifier, targetName.Replace(R_IDs[i], L_IDs[i]), isPath);
+                        }
+                    }
+                }
+                // Todo : 위치 기반 추가
+            }
+
+            Vector3 MovePointInDirection(Vector3 point, Vector3 direction, float distance)
+            {
+                // 방향을 정규화하여 거리를 적용하고 새로운 위치 계산
+                Vector3 newPosition = point + direction.normalized * distance;
+                return newPosition;
+            }
+            public void SetModification(float lengthBias, float scale)
+            {
+                this.bias = lengthBias;
+                this.scale = scale;
+            }
+
+            public void OnGUI()
+            {
+                //transformPair.transform = (Transform)EditorGUILayout.ObjectField(transformPair.transform, typeof(Transform), false);
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        using (var checkSym = new EditorGUI.ChangeCheckScope())
+                        {
+                            isSymmetrical = GUILayout.Toggle(isSymmetrical, "Symmetry", EditorStyles.miniButton, GUILayout.Width(80));
+                            EditorGUILayout.ObjectField(transformPair?.transform, typeof(Transform), false);
+                            //symmetricalAxis = EditorHelper.FlipAxisDrawer(symmetricalAxis);
+                            if (checkSym.changed)
+                            {
+                                ApplySymmetry();
+                            }
+                        }
+                    }
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        isLeg = GUILayout.Toggle(isLeg, "Leg");
+                        GUILayout.Label(rootHeightBiasFactor.ToString());
+                    }
+                    using (EditorHelper.LabelWidth.Do(50))
+                    {
+                        using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+                        {
+
+                            using (new EditorGUILayout.HorizontalScope())
+                            {
+                                this.bias = EditorGUILayout.Slider("Bias", this.bias, -1f, 1f);
+                                if (GUILayout.Button(Icons.resetIcon)) this.bias = 0;
+                            }
+
+
+                            using (new EditorGUILayout.HorizontalScope())
+                            {
+                                this.scale = EditorGUILayout.Slider("Scale", this.scale, 0f, 2f);
+                                if (GUILayout.Button(Icons.resetIcon)) this.scale = 1;
+                            }
+
+                        }
+                    }
+                    if (check.changed) Apply();
+                }
+            }
+
+            public void Apply()
+            {
+                if (transform)
+                {
+                    transform.position = isLeg ? originalPosition : MovePointInDirection(originalPosition, directionFromParent, bias);
+                    rootHeightBiasFactor = isLeg ? bias : 0;
+                    transform.localScale = originalScale * scale;
+                }
+                ApplySymmetry();
+            }
+
+            // for overriding transform animation evaluated.
+            public void ApplyToCurrent()
+            {
+                if (transform)
+                {
+                    transform.position = MovePointInDirection(transform.position, directionFromParent, bias);
+                    transform.localScale = new Vector3(scale, scale, scale);
+                }
+                ApplySymmetryCurrent();
+            }
+
+            public void Reset()
+            {
+                bias = 0;
+                scale = 1;
+                Apply();
+            }
+
+
+            internal void ApplySymmetry()
+            {
+                if (isSymmetrical)
+                {
+                    //없으면 한 번 더 찾아봄
+                    if (transformPair == null) FindSymmetricalBone();
+                    if (transformPair != null)
+                    {
+                        //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
+                        transformPair.isLeg = isLeg;
+                        transformPair.SetModification(bias, scale);
+                        transformPair.Apply();
+                    }
+                }
+                else
+                {
+                    //원상복구시킴
+                    if (transformPair != null)
+                    {
+                        transformPair.Reset();
+                    }
+                }
+            }
+            internal void ApplySymmetryCurrent()
+            {
+                if (isSymmetrical)
+                {
+                    if (transformPair != null)
+                    {
+                        transformPair.SetModification(bias, scale);
+                        transformPair.ApplyToCurrent();
+                    }
+                }
+                else
+                {
+                    //원상복구시킴
+                    if (transformPair != null)
+                    {
+                        transformPair.Reset();
+                    }
                 }
             }
         }
-        internal void ApplySymmetryCurrent()
+
+        public string _modifierFilter;
+        public List<ModifiedTransform> modifidTransformList = new List<ModifiedTransform>();
+        internal UnityEditorInternal.ReorderableList reorderableModifierList;
+        public string[] _modelRootHierachy;
+        public UnityEvent onRemoveModifier = new UnityEvent();
+
+        Transform objectRoot;
+        Transform pelvisReference;
+        Transform footReference;
+
+        public Vector3 originalPelvisPosition;
+        public float rootHeight;
+        public float rootHeightBias;
+
+        // Constructor
+        public TransformModifier(Transform root)
         {
-            if (isSymmetrical)
+            this.objectRoot = root;
+            this.pelvisReference = TransformHelper.FindTransformRecursive(root, (x) => x.position != Vector3.zero);
+            if(pelvisReference)
+                originalPelvisPosition = pelvisReference.position;
+            footReference = TransformHelper.FindTransformRecursive(pelvisReference, (x) =>
             {
-                if (transformPair != null)
+                bool isEndNode = x.childCount == 0;// 자식이 없고
+                bool lowerThanParent = x.position.y < x.parent.position.y; // 부모보다 낮은 위치에 있으면
+                return isEndNode && lowerThanParent; // 본 구조에서 바닥을 지지하는 발이라고 하자
+            });
+            if (pelvisReference && footReference)
+            {
+                rootHeight = pelvisReference.position.y - footReference.position.y;
+            }
+            _modelRootHierachy =TransformHelper.BuildHierachialPath(root);
+            InitModifierList();
+        }
+
+        private void ApplyPelvisHeightControl()
+        {
+            float heightOffet = 0;
+            foreach (var item in modifidTransformList)
+            {
+                heightOffet += item.rootHeightBiasFactor;
+            }
+            pelvisReference.position = originalPelvisPosition + new Vector3(0, heightOffet, 0);
+        }
+
+        public void OnGUI()
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                _modifierFilter = EditorHelper.SearchField(_modifierFilter);
+                if (GUILayout.Button(string.IsNullOrEmpty(_modifierFilter) ? "Root" : "Find"))
                 {
-                    transformPair.SetModification(Vector3.Scale(offset, symmetricalAxis), Quaternion.identity, scale);
-                    transformPair.ApplyToCurrent();
+                    AddModifierHandler(_modifierFilter);                    
                 }
+            }
+            //EditorGUILayout.ObjectField("Root",objectRoot, typeof(Transform), false);
+            EditorGUILayout.ObjectField("Pelvis", pelvisReference, typeof(Transform), false);
+            EditorGUILayout.ObjectField("Foot", footReference, typeof(Transform), false);
+            GUILayout.Label($"Pelvis Height : {rootHeight.ToString()}");
+            for (int i = 0; i < modifidTransformList.Count; i++)
+            {
+                ModifiedTransform mod = modifidTransformList[i];
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label(mod.name, EditorStyles.boldLabel);
+                    using (EditorHelper.Colorize.Do(Color.white, Color.red))
+                    {
+                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                        {
+                            mod.Reset();
+                            modifidTransformList.Remove(mod);
+                        }
+                    }
+                }
+                mod.OnGUI();
+            }
+            ApplyPelvisHeightControl();
+            //reorderableModifierList.DoLayoutList();
+        }
+
+        private void InitModifierList()
+        {
+            modifidTransformList = new List<ModifiedTransform>();
+            reorderableModifierList = new UnityEditorInternal.ReorderableList(modifidTransformList, typeof(ModifiedTransform), true, true, false, false);
+            //fields
+            reorderableModifierList.showDefaultBackground = false;
+            reorderableModifierList.headerHeight = 20;
+            reorderableModifierList.elementHeight = 18;
+            reorderableModifierList.footerHeight = 20;
+            //draw callback
+            reorderableModifierList.drawHeaderCallback = (position) =>
+            {
+                Event evt = Event.current;
+                var btn30 = position.width * 0.3333f;
+                position.width = btn30;
+                if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
+                {
+                    reorderableModifierList.onAddDropdownCallback.Invoke(position, reorderableModifierList);
+                }
+
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(reorderableModifierList.index < 0))
+                {
+                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
+                    {
+                        reorderableModifierList.onRemoveCallback(reorderableModifierList);
+                    }
+                }
+                position.x += position.width;
+                position.width = btn30;
+                using (new EditorGUI.DisabledScope(modifidTransformList.Count == 0))
+                {
+                    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                    {
+                        modifidTransformList.Clear();
+                    }
+                }
+            };
+            reorderableModifierList.drawElementCallback = (position, index, isActive, isFocused) =>
+            {
+                float rectWidth = position.width;
+                float rectHeight = position.height;
+                float tglWidth = 15;
+                float btnWidth = 55;
+                position.width = tglWidth;
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    modifidTransformList[index].enabled = EditorGUI.Toggle(position, modifidTransformList[index].enabled);
+                    if (check.changed)
+                    {
+                    }
+                }
+                position.x += position.width;
+                position.width = rectWidth - btnWidth - tglWidth;
+                var style0 = new GUIStyle(EditorStyles.miniLabel);
+                EditorGUI.LabelField(position, string.Format("{0}", modifidTransformList[index].name), style0);
+                var style1 = new GUIStyle(EditorStyles.miniLabel);
+                style1.alignment = TextAnchor.MiddleRight;
+                style1.normal.textColor = Color.gray;
+                position.x += position.width;
+                position.width = btnWidth;
+                position.height = 16;
+            };
+            reorderableModifierList.drawFooterCallback = position =>
+            {
+                //var btn20 = position.width * 0.2f;
+                //var btn25 = position.width * 0.25f;
+                //var btn30 = position.width * 0.3f;
+                var btn50 = position.width * 0.5f;
+                position.width = btn50;
+                if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
+                {
+                    foreach (var modifier in modifidTransformList)
+                    {
+                        modifier.enabled = true;
+                    }
+                }
+
+                position.x += position.width;
+                position.width = btn50;
+                if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
+                {
+                    foreach (var modifier in modifidTransformList)
+                    {
+                        modifier.enabled = false;
+                    }
+                }
+
+                position.x += position.width;
+            };
+            //btn callback
+            reorderableModifierList.onAddDropdownCallback = (buttonRect, list) =>
+            {
+                AddModifierHandler();
+
+            };
+            reorderableModifierList.onRemoveCallback = (list) =>
+            {
+                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
+                if (modifidTransformList.Count > 0)
+                {
+                    modifidTransformList.RemoveAt(reorderableModifierList.index);
+                }
+                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
+            };
+            reorderableModifierList.onChangedCallback = list => { };
+            reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight * 3;
+        }
+
+        public void AddModifierHandler(string filter = "")
+        {
+            var path = string.Empty;
+            if (string.IsNullOrEmpty(filter))
+            {
+                ShowMenu(path, _modelRootHierachy, _modelRootHierachy, (x) =>
+                {
+                    path = (string)x;
+                    AddModifier(path);
+                });
             }
             else
             {
-                //원상복구시킴
-                if (transformPair != null)
+                var filteredList = _modelRootHierachy.Where(x => Path.GetFileName(x).ToLower().Contains(filter.ToLower())).ToArray();
+                var filteredNames = filteredList.Select(x => Path.GetFileName(x)).ToArray();
+                var tempDic = new Dictionary<string, string>();
+                for (int i = 0; i < filteredList.Length; i++)
                 {
-                    transformPair.Reset();
+                    string f = filteredList[i];
+                    tempDic.Add(filteredNames[i], filteredList[i]);
                 }
+                ShowMenu(path, filteredNames, filteredNames, (x) =>
+                {
+                    string key = (string)x;
+                    path = tempDic[key];
+                    AddModifier(path);
+                });
+            }
+
+        }
+
+        private void AddModifier(string path)
+        {
+            modifidTransformList.Add(new ModifiedTransform(this, path, true));
+        }
+
+        private static void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
+        {
+            // create the menu and add items to it
+            GenericMenu menu = new GenericMenu();
+            for (int i = 0; i < itemNames.Length; i++)
+            {
+                menu.AddItem(new GUIContent(itemNames[i]), selected.Equals(items[i]), OnSelected, items[i]);
+            }
+            menu.ShowAsContext();
+        }
+
+        // 애니메이션이 적용된 이후에 적용하는 상황에 사용
+        internal void ApplyToCurrent()
+        {
+            foreach (var item in modifidTransformList)
+            {
+                item.ApplyToCurrent();
             }
         }
     }
@@ -3752,12 +4050,10 @@ where T : IEquatable<T>
         public string name = string.Empty;
         internal UnityEditorInternal.ReorderableList reorderableActorList;
         internal UnityEditorInternal.ReorderableList reorderableClipList;
-        internal UnityEditorInternal.ReorderableList reorderableModifierList;
         internal List<Actor> actorList = new List<Actor>();
         internal List<AnimationClip> playList = new List<AnimationClip>();
         internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
-        internal List<TransformModifier> modifierList = new List<TransformModifier>();
-        public string[] _modelRootHierachy;
+        public TransformModifier modifier;
         private int current;
         internal double time = 0.0f;
         internal float timeSpeed = 1.0f;
@@ -3782,29 +4078,8 @@ where T : IEquatable<T>
         {
             InitActorList();
             InitClipList();
-            InitModifierList();
         }
 
-        private static string[] BuildHierachialPath(Transform root)
-        {
-            Transform[] all = root.GetComponentsInChildren<Transform>();
-            List<string> list = new List<string>();
-            foreach (var tr in all)
-            {
-                list.Add(GetTransformPath(tr));
-            }
-            return list.ToArray();
-        }
-        private static string GetTransformPath(Transform tr)
-        {
-            Transform root = tr;
-            while (root.parent != null)
-            {
-                root = root.parent;
-            }
-            root = root.parent;
-            return AnimationUtility.CalculateTransformPath(tr, root); //지정한 루트로부터의 path를 생성해줌
-        }
 
         public void Dispose()
         {
@@ -4120,116 +4395,6 @@ where T : IEquatable<T>
             reorderableClipList.onChangedCallback = list => { RefreshPlayList(); };
         }
 
-        private void InitModifierList()
-        {
-            modifierList = new List<TransformModifier>();
-            reorderableModifierList = new UnityEditorInternal.ReorderableList(modifierList, typeof(TransformModifier), true, true, false, false);
-            //fields
-            reorderableModifierList.showDefaultBackground = false;
-            reorderableModifierList.headerHeight = 20;
-            reorderableModifierList.elementHeight = 18;
-            reorderableModifierList.footerHeight = 20;
-            //draw callback
-            reorderableModifierList.drawHeaderCallback = (position) =>
-            {
-                Event evt = Event.current;
-                var btn30 = position.width * 0.3333f;
-                position.width = btn30;
-                if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
-                {
-                    reorderableModifierList.onAddDropdownCallback.Invoke(position, reorderableModifierList);
-                }
-
-                position.x += position.width;
-                position.width = btn30;
-                using (new EditorGUI.DisabledScope(reorderableModifierList.index < 0))
-                {
-                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
-                    {
-                        reorderableModifierList.onRemoveCallback(reorderableModifierList);
-                    }
-                }
-                position.x += position.width;
-                position.width = btn30;
-                using (new EditorGUI.DisabledScope(clipInfoList.Count == 0))
-                {
-                    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
-                    {
-                        modifierList.Clear();
-                    }
-                }
-            };
-            reorderableModifierList.drawElementCallback = (position, index, isActive, isFocused) =>
-            {
-                float rectWidth = position.width;
-                float rectHeight = position.height;
-                float tglWidth = 15;
-                float btnWidth = 55;
-                position.width = tglWidth;
-                using (var check = new EditorGUI.ChangeCheckScope())
-                {
-                    modifierList[index].enabled = EditorGUI.Toggle(position, modifierList[index].enabled);
-                    if (check.changed)
-                    {
-                    }
-                }
-                position.x += position.width;
-                position.width = rectWidth - btnWidth - tglWidth;
-                var style0 = new GUIStyle(EditorStyles.miniLabel);
-                EditorGUI.LabelField(position, string.Format("{0}", modifierList[index].name), style0);
-                var style1 = new GUIStyle(EditorStyles.miniLabel);
-                style1.alignment = TextAnchor.MiddleRight;
-                style1.normal.textColor = Color.gray;
-                position.x += position.width;
-                position.width = btnWidth;
-                position.height = 16;
-            };
-            reorderableModifierList.drawFooterCallback = position =>
-            {
-                //var btn20 = position.width * 0.2f;
-                //var btn25 = position.width * 0.25f;
-                //var btn30 = position.width * 0.3f;
-                var btn50 = position.width * 0.5f;
-                position.width = btn50;
-                if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
-                {
-                    foreach (var modifier in modifierList)
-                    {
-                        modifier.enabled = true;
-                    }
-                }
-
-                position.x += position.width;
-                position.width = btn50;
-                if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
-                {
-                    foreach (var modifier in modifierList)
-                    {
-                        modifier.enabled = false;
-                    }
-                }
-
-                position.x += position.width;
-            };
-            //btn callback
-            reorderableModifierList.onAddDropdownCallback = (buttonRect, list) =>
-            {
-                AddModifierHandler();
-
-            };
-            reorderableModifierList.onRemoveCallback = (list) =>
-            {
-                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
-                if (modifierList.Count > 0)
-                {
-                    modifierList.RemoveAt(reorderableModifierList.index);
-                }
-                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
-            };
-            reorderableModifierList.onChangedCallback = list => { };
-            reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight * 3;
-        }
-
         public void PlayInstant(int index)
         {
             foreach (var info in clipInfoList)
@@ -4286,7 +4451,7 @@ where T : IEquatable<T>
             {
                 InitAnimatorAndClips(actor.animator);
             }
-            _modelRootHierachy = BuildHierachialPath(actorList[0].instance.transform);
+            modifier = new TransformModifier(actorList[0].instance.transform);
         }
 
         public void RemoveActor(Actor actor)
@@ -4322,56 +4487,8 @@ where T : IEquatable<T>
             RefreshPlayList();
         }
 
-        public void AddModifier(string name)
-        {
-            bool isContains = modifierList.Any(x => x.targetName == name);
-            if (!isContains) modifierList.Add(new TransformModifier(actorList[0].instance.transform, name, true));
-        }
 
-        public void AddModifier(TransformModifier modifier)
-        {
-            modifierList.Add(modifier);
-        }
 
-        private static void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
-        {
-            // create the menu and add items to it
-            GenericMenu menu = new GenericMenu();
-            for (int i = 0; i < itemNames.Length; i++)
-            {
-                menu.AddItem(new GUIContent(itemNames[i]), selected.Equals(items[i]), OnSelected, items[i]);
-            }
-            menu.ShowAsContext();
-        }
-        public void AddModifierHandler(string filter = "")
-        {
-            var path = string.Empty;
-            if (string.IsNullOrEmpty(filter))
-            {
-                ShowMenu(path, _modelRootHierachy, _modelRootHierachy, (x) =>
-                {
-                    path = (string)x;
-                    AddModifier(path);
-                });
-            }
-            else
-            {
-                var filteredList = _modelRootHierachy.Where(x =>Path.GetFileName(x).ToLower().Contains(filter.ToLower())).ToArray();
-                var filteredNames = filteredList.Select(x => Path.GetFileName(x)).ToArray();
-                var tempDic = new Dictionary<string, string>();
-                for (int i = 0; i < filteredList.Length; i++)
-                {
-                    string f = filteredList[i];
-                    tempDic.Add(filteredNames[i], filteredList[i]);
-                }
-                ShowMenu(path, filteredNames, filteredNames, (x) =>
-                {
-                    string key = (string)x;
-                    path = tempDic[key];
-                    AddModifier(path);
-                });
-            }
-        }
         void ToggleAnimationMode()
         {
             if (AnimationMode.InAnimationMode())
@@ -4399,22 +4516,7 @@ where T : IEquatable<T>
                         if (animated.enabled)
                         {
                             AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
-                            foreach (var modifier in modifierList)
-                            {
-                                //var clip = new AnimationClip();
-                                //Keyframe[] keys;
-                                //keys = new Keyframe[3];
-                                //keys[0] = new Keyframe(0.0f, 0.0f);
-                                //keys[1] = new Keyframe(1.0f, 1.5f);
-                                //keys[2] = new Keyframe(2.0f, 0.0f);
-                                //var curve = new AnimationCurve(keys);
-                                //clip.SetCurve("", typeof(Transform), "localPosition.x", curve);
-                                //// update the clip to a change the red color
-                                //curve = AnimationCurve.Linear(0.0f, 1.0f, 2.0f, 0.0f);
-                                //clip.SetCurve("", typeof(Material), "_Color.r", curve);
-                                //AnimationUtility.SetAdditiveReferencePose(_currentClip, clip, (float)time);
-                                modifier.ApplyToCurrent();
-                            }
+                            modifier.ApplyToCurrent();                            
                         }
                     }
                     AnimationMode.EndSampling();
@@ -5444,6 +5546,70 @@ where T : IEquatable<T>
                 }
             }
         }
+
+        public static readonly string[] vector3Names = {"X","Y","Z"};
+        public static readonly string[] vector4Names = { "X", "Y", "Z","W" };
+
+        public static Vector3 FlipAxisDrawer(Vector3 vector, string[] names = null, params GUILayoutOption[] options)
+        {
+            if (names == null) names = vector3Names;
+            float x = vector.x;
+            float y = vector.y;
+            float z = vector.z;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUI.BeginChangeCheck();
+                var bgColor = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(1f, 0.5f, 0.25f, 1);
+                x = GUILayout.Toggle(x == -1f, "X", "ButtonLeft") ? -1 : 1;
+                GUI.backgroundColor = new Color(0.5f, 1, 0.25f, 1); ;
+                y = GUILayout.Toggle(y == -1f, "Y", "ButtonMid") ? -1 : 1;
+                GUI.backgroundColor = new Color(0.25f, 0.5f, 1, 1); ;
+                z = GUILayout.Toggle(z == -1f, "Z", "ButtonRight") ? -1 : 1;
+                GUI.backgroundColor = bgColor;
+                if (EditorGUI.EndChangeCheck())
+                {
+                    vector = new Vector3(x, y, z);
+                }
+            }
+            return vector;
+        }
+
+        public static int EnumFlagSelector<T>(int enumValue) where T : Enum
+        {
+            using (EditorHelper.Horizontal.Do())
+            {
+                string[] enumNames = Enum.GetNames(typeof(T));
+                bool[] buttons = new bool[enumNames.Length];
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    enumValue = GUILayout.Toggle((int)enumValue == 0, "None", EditorStyles.miniButtonLeft)
+                        ? 0
+                        : enumValue;
+                    int buttonsValue = 0;
+                    for (int i = 0; i < buttons.Length; i++)
+                    {
+                        buttons[i] = ((int)enumValue & (1 << i + 1)) == (1 << i + 1);
+                        buttons[i] = GUILayout.Toggle(buttons[i], enumNames[i], EditorStyles.miniButtonMid);
+                        if (buttons[i])
+                        {
+                            buttonsValue += 1 << i + 1;
+                        }
+                    }
+
+                    if (check.changed)
+                    {
+                        enumValue = buttonsValue;
+                    }
+                    if (GUILayout.Button("All", EditorStyles.miniButtonRight))
+                    {
+                        enumValue = ~0;
+                    }
+                }
+            }
+            return enumValue;
+        }
+
 
         public static bool Foldout(bool display, string title)
         {
@@ -7026,11 +7192,6 @@ where T : IEquatable<T>
             _playerList.Clear();
         }
 
-        public void AddModifier(TransformModifier modifier)
-        {
-            _playerList[0].AddModifier(modifier);
-        }
-
         #endregion
 
         #region GUIContents
@@ -8180,35 +8341,38 @@ where T : IEquatable<T>
             {
                 using (EditorHelper.Horizontal.Do())
                 {
-                    string[] enumNames = Enum.GetNames(_gizmoMode.GetType());
-                    bool[] buttons = new bool[enumNames.Length];
-                    using (var check = new EditorGUI.ChangeCheckScope())
-                    {
-                        _gizmoMode = GUILayout.Toggle((int)_gizmoMode == 0, "None", EditorStyles.miniButtonLeft)
-                            ? 0
-                            : _gizmoMode;
-                        int buttonsValue = 0;
-                        for (int i = 0; i < buttons.Length; i++)
-                        {
-                            buttons[i] = ((int)_gizmoMode & (1 << i + 1)) == (1 << i + 1);
-                            buttons[i] = GUILayout.Toggle(buttons[i], enumNames[i], EditorStyles.miniButtonMid);
-                            if (buttons[i])
-                            {
-                                buttonsValue += 1 << i + 1;
-                            }
-                        }
+                    //string[] enumNames = Enum.GetNames(_gizmoMode.GetType());
+                    //bool[] buttons = new bool[enumNames.Length];
+                    //using (var check = new EditorGUI.ChangeCheckScope())
+                    //{
+                    //    _gizmoMode = GUILayout.Toggle((int)_gizmoMode == 0, "None", EditorStyles.miniButtonLeft)
+                    //        ? 0
+                    //        : _gizmoMode;
+                    //    int buttonsValue = 0;
+                    //    for (int i = 0; i < buttons.Length; i++)
+                    //    {
+                    //        buttons[i] = ((int)_gizmoMode & (1 << i + 1)) == (1 << i + 1);
+                    //        buttons[i] = GUILayout.Toggle(buttons[i], enumNames[i], EditorStyles.miniButtonMid);
+                    //        if (buttons[i])
+                    //        {
+                    //            buttonsValue += 1 << i + 1;
+                    //        }
+                    //    }
 
-                        if (check.changed)
-                        {
-                            _gizmoMode = (GizmoMode)buttonsValue;
-                        }
+                    //    if (check.changed)
+                    //    {
+                    //        _gizmoMode = (GizmoMode)buttonsValue;
+                    //    }
 
-                        //_gizmoMode = GUILayout.Toggle((int)_gizmoMode == ~0, "All", EditorStyles.miniButtonRight) ? (GizmoMode)~0 : _gizmoMode;
-                        if (GUILayout.Button("All", EditorStyles.miniButtonRight))
-                        {
-                            _gizmoMode = (GizmoMode)~0;
-                        }
-                    }
+                    //    //_gizmoMode = GUILayout.Toggle((int)_gizmoMode == ~0, "All", EditorStyles.miniButtonRight) ? (GizmoMode)~0 : _gizmoMode;
+                    //    if (GUILayout.Button("All", EditorStyles.miniButtonRight))
+                    //    {
+                    //        _gizmoMode = (GizmoMode)~0;
+                    //    }
+                    //}
+                    int intValue = (int)_gizmoMode;
+                    intValue =  EditorHelper.EnumFlagSelector<GizmoMode>(intValue);
+                    _gizmoMode = (GizmoMode)intValue;
                 }
             });
         }
@@ -8493,51 +8657,10 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Transform Modifier", true, () =>
             {
-                //for (int a = 0; a < _playerList.Count; a++)
-                //{
-                //    var player = _playerList[a];
-                //    player.reorderableModifierList.DoLayoutList();
-                //}
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    _modifierFilter = EditorHelper.SearchField(_modifierFilter);
-                    if (GUILayout.Button(string.IsNullOrEmpty(_modifierFilter) ? "Root" : "Find"))
-                    {
-                        if (_playerList.Count > 0)
-                        {
-                            var player = _playerList[0];
-                            player.AddModifierHandler(_modifierFilter);
-                        }
-                    }
-                }
                 if (_playerList.Count > 0)
                 {
                     var player = _playerList[0];
-                    for (int i = 0; i < player.modifierList.Count; i++)
-                    {
-                        TransformModifier modifier = player.modifierList[i];
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            GUILayout.Label(modifier.name, EditorStyles.boldLabel);
-                            //using (var check = new EditorGUI.ChangeCheckScope())
-                            //{
-                            //    modifier.isSymmetrical = GUILayout.Toggle(modifier.isSymmetrical, "Sym", EditorStyles.miniButton, GUILayout.Width(40));
-                            //    if(check.changed)
-                            //    {
-                            //        modifier.ApplySymmetry();
-                            //    }
-                            //}
-                            using (EditorHelper.Colorize.Do(Color.white, Color.red))
-                            {
-                                if (GUILayout.Button("Remove", GUILayout.Width(60)))
-                                {
-                                    modifier.Reset();
-                                    player.modifierList.Remove(modifier);
-                                }
-                            }
-                        }
-                        modifier.OnGUI();
-                    }
+                    player.modifier.OnGUI();
                 }
             });
             EditorHelper.FoldGroup.Do("Recent", true, () =>
@@ -9573,37 +9696,6 @@ where T : IEquatable<T>
             }
             menu.ShowAsContext();
         }
-        
-        //모든 트랜스폼의 path를 생성해서 리스트로 뽑음
-        private static string[] BuildHierachialPath(Transform root)
-        {
-            Transform[] all = root.GetComponentsInChildren<Transform>();
-            List<string> list = new List<string>();
-            foreach (var tr in all)
-            {
-                list.Add(GetTransformPath(tr));
-            }
-            return list.ToArray();
-        }
-
-        private static string GetTransformPath(GameObject go)
-        {
-            string path = string.Join("/", go.GetComponentsInParent<Transform>().Select(t => t.name).Reverse().ToArray());
-            //AS_Debug.Log(path);
-            return path;
-        }
-
-        private static string GetTransformPath(Transform tr)
-        {
-            Transform root = tr;
-            while (root.parent != null)
-            {
-                root = root.parent;
-            }
-            root = root.parent;
-            return AnimationUtility.CalculateTransformPath(tr, root); //지정한 루트로부터의 path를 생성해줌
-        }
-
 
         public void CloneTargetToScene()
         {
