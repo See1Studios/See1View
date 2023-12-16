@@ -17,22 +17,22 @@
     "lastView": {
         "name": "",
         "rotation": {
-            "x": 142.53497314453126,
-            "y": 17.118057250976564
+            "x": 180.07943725585938,
+            "y": 11.834020614624024
         },
-        "distance": 8.978958129882813,
+        "distance": 6.614290237426758,
         "pivot": {
             "x": 0.0,
-            "y": 0.8849430084228516,
-            "z": 0.010344117879867554
+            "y": 0.5,
+            "z": 0.0
         },
         "fieldOfView": 30.0
     },
     "viewList": [],
     "bgColor": {
-        "r": 0.3215686082839966,
-        "g": 0.3215686082839966,
-        "b": 0.3215686082839966,
+        "r": 0.0,
+        "g": 0.0,
+        "b": 0.0,
         "a": 1.0
     },
     "ambientSkyColor": {
@@ -54,10 +54,10 @@
                     "y": 0.0
                 },
                 "rotation": {
-                    "x": -0.019398558884859086,
-                    "y": -0.8619279265403748,
-                    "z": 0.5065212249755859,
-                    "w": -0.01184366550296545
+                    "x": 0.0,
+                    "y": -1.0,
+                    "z": 0.0,
+                    "w": -4.371138828673793e-8
                 },
                 "lightColor": {
                     "r": 0.7689999938011169,
@@ -115,7 +115,7 @@
     },
     "wireThickness": 0.10000000149011612,
     "wireUseDiscard": 1.0,
-    "planeShadowEnabled": true,
+    "planeShadowEnabled": false,
     "planeShadowColor": {
         "r": 0.5,
         "g": 0.5,
@@ -151,6 +151,6 @@
         "instanceID": 0
     },
     "cubemapPath": "",
-    "profilePath": "Packages/com.see1studios.see1view/Runtime/See1ViewDefaultVolume.asset",
+    "profilePath": "",
     "renderPipelinePath": "Assets/See1ViewURP.asset"
 }

@@ -42,6 +42,7 @@ namespace See1Studios.See1View
             }
             if(GUILayout.Button("Test"))
             {
+                _view.GetMainPlayer().boneModifier.Add("Foot");
             }
         }
     }

@@ -46,7 +46,6 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using UnityEngine.UIElements;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -57,7 +56,7 @@ using UnityEngine.Rendering.HighDefinition;
 
 namespace See1Studios.See1View
 {
-    #region Enum & Flags //-----------------------------------------------------------------------------------------------------------------------------------------------
+    #region Enum & Flags
 
     [Flags]
     public enum GizmoMode
@@ -112,7 +111,7 @@ namespace See1Studios.See1View
 
     #endregion
 
-    #region Classes //-----------------------------------------------------------------------------------------------------------------------------------------------
+    #region Core
 
     [InitializeOnLoad]
     public static class Initializer
@@ -248,6 +247,872 @@ namespace See1Studios.See1View
         }
     }
 
+
+    // unique data for URP
+    [Serializable]
+    public class URPData : ICloneable
+    {
+        public bool renderPostProcessing = true;
+        public bool dithering = true;
+        public int antialiasing;
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
+    // unique data for HDRP
+    [Serializable]
+    public class HDRPData : ICloneable
+    {
+        public bool renderPostProcessing = true;
+        public bool dithering = true;
+        public int antialiasing;
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
+    // Container for all data worth saving
+    [Serializable]
+    public class See1ViewData : ICloneable
+    {
+        public string name;
+        // Control
+        public int rotSpeed = 3;
+        public int zoomSpeed = 3;
+        public int panSpeed = 3;
+        public int smoothFactor = 3;
+        // Size
+        public List<Vector2> viewportSizes = new List<Vector2>();
+        // Image
+        public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
+        public bool openSavedImage = true;
+        public bool alphaAppliedImage = true;
+        public int imageSizeMultiplier = 1;
+        // View
+        public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
+        public List<View> viewList = new List<View>();
+        // Environment
+        public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
+        public Color ambientSkyColor = Color.gray;
+        public ClearFlags clearFlag = ClearFlags.Color;
+        public bool autoFloorHeightEnabled = false;
+        public float floorHeight = 0f;
+        public float floorScale = 10f;
+        // Lighting
+        public Lighting lastLighting = new Lighting();
+        public List<Lighting> lightingList = new List<Lighting>();
+        // Shadows
+        public bool shadowEnabled = true;
+        public float shadowStrength = 1f;
+        public float shadowBias = 0.01f;
+        //Render
+        public CameraType cameraType = CameraType.Game;
+        public float renderScale = 2;
+        // Custom Render Features
+        public Color wireLineColor = Color.white;
+        public Color wireFillColor = Color.black;
+        public float wireThickness = 0.1f;
+        public float wireUseDiscard = 1;
+        public bool planeShadowEnabled = true;
+        public Color planeShadowColor = Color.gray;
+        public bool heightFogEnabled = true;
+        public Color heightFogColor = new Color(0, 0, 0, 0.5f);
+        public float heightFogHeight = 1;
+        // Post Process
+        public bool postProcessEnabled = true;
+        public URPData urpData = new URPData();
+        public HDRPData hdrpData = new HDRPData();
+        // Animation
+        public List<Steel> steelList = new List<Steel>();
+        // Model
+        public bool reframeToTarget = true;
+        public bool recalculateBound = true;
+        public bool forceUpdateComponent = true;
+        public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
+        public string lastTargetPath = string.Empty;
+        public GameObject _lastTarget;
+        public GameObject lastTarget
+
+        {
+            get
+            {
+                return _lastTarget
+                    ? _lastTarget
+                    : _lastTarget = AssetDatabase.LoadAssetAtPath<GameObject>(lastTargetPath);
+            }
+            set
+            {
+                _lastTarget = value;
+                lastTargetPath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+
+        public string cubemapPath = string.Empty;
+        private Texture _cubeMap;
+        public Texture cubeMap
+        {
+            get { return _cubeMap ? _cubeMap : _cubeMap = AssetDatabase.LoadAssetAtPath<Cubemap>(cubemapPath); }
+            set
+            {
+                _cubeMap = value;
+                cubemapPath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+
+        private float _cubeMapMipMapBias;
+        public float CubeMapMipMapBias
+        {
+            get { return _cubeMapMipMapBias; }
+            set
+            {
+                _cubeMapMipMapBias = value;
+                if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
+            }
+        }
+        public string profilePath = string.Empty;
+
+        //Post Processing Stack
+#if UNITY_POST_PROCESSING_STACK_V2
+        private PostProcessProfile _postProcessProfile;
+
+        public PostProcessProfile profile
+        {
+            get
+            {
+                return _postProcessProfile
+                    ? _postProcessProfile
+                    : _postProcessProfile = AssetDatabase.LoadAssetAtPath<PostProcessProfile>(profilePath);
+            }
+            set
+            {
+                _postProcessProfile = value;
+                profilePath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+
+#endif
+        //Scriptable RenderPipeline Support.
+        public string renderPipelinePath = string.Empty;
+
+        //Tells you the current render pipeline.
+        public RenderPipelineMode renderPipelineMode
+        {
+            get
+            {
+                RenderPipelineMode mode = RenderPipelineMode.BuiltIn;
+                if (renderPipelineAsset != null)
+                {
+#if URP
+                    if (renderPipelineAsset is UniversalRenderPipelineAsset) mode = RenderPipelineMode.Universal;
+#endif
+
+#if HDRP
+                        if (renderPipelineAsset is HDRenderPipelineAsset) mode = RenderPipelineMode.HighDefinition;
+#endif
+                }
+                return mode;
+            }
+        }
+
+        private RenderPipelineAsset _renderPipelineAsset;
+        public RenderPipelineAsset renderPipelineAsset
+        {
+            get
+            {
+                return _renderPipelineAsset ? _renderPipelineAsset : _renderPipelineAsset = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(renderPipelinePath);
+            }
+            set
+            {
+                _renderPipelineAsset = value;
+                renderPipelinePath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+#if URP || HDRP
+        private VolumeProfile _volumeProfile;
+
+        public VolumeProfile volumeProfile
+        {
+            get
+            {
+                return _volumeProfile
+                ? _volumeProfile
+                    : _volumeProfile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
+            }
+            set
+            {
+                _volumeProfile = value;
+                profilePath = AssetDatabase.GetAssetPath(value);
+            }
+        }
+#endif
+        public See1ViewData(string name)
+        {
+            this.name = name;
+        }
+
+        public object Clone()
+        {
+            return this.MemberwiseClone();
+        }
+    }
+    // all configuration and settings
+    [Serializable]
+    class DataManager
+    {
+        public enum SaveType
+        {
+            Project,
+            UserSetting,
+            EditorPreferences,
+            Registry
+        }
+
+        static SaveType saveType = SaveType.UserSetting;
+
+
+        private static DataManager _instance;
+
+        public static DataManager instance
+        {
+            get { return (_instance != null) ? _instance : Load(); }
+            set { _instance = value; }
+        }
+
+        public List<See1ViewData> dataList = new List<See1ViewData>();
+
+        public See1ViewData current
+        {
+            get { return dataList[dataIndex]; }
+        }
+
+
+        private int _dataIndex;
+
+        public int dataIndex
+        {
+            get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
+            set { _dataIndex = value; }
+        }
+
+        public static string[] dataNames
+        {
+            get { return instance.dataList.Select((x) => x.name).ToArray(); }
+        }
+
+        public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view", GetProjectName().ToLower());
+        public static readonly string filePrefix = "See1ViewData_";
+        public static UnityEvent onDataChanged = new UnityEvent();
+        static bool isAddName;
+        static bool isEditName;
+        private static string inputStr;
+        public static bool _isDirty;
+
+
+        public static string GetPath()
+        {
+            string targetPath = string.Empty;
+            switch (saveType)
+            {
+                case SaveType.Project:
+                    targetPath = $"Assets/Editor/";
+                    break;
+                case SaveType.UserSetting:
+                    targetPath = $"UserSettings/";
+                    break;
+                case SaveType.EditorPreferences:
+                    targetPath = $"Assets/Editor/";
+                    break;
+                case SaveType.Registry:
+                    targetPath = $"Assets/Editor/";
+                    break;
+            }
+            return targetPath;
+        }
+
+        public static string BuildSavePath(string dataName)
+        {
+            string savePath = GetPath() + $"{filePrefix}{dataName}.json";
+            //UnityEditorInternal.InternalEditorUtility.SaveToSerializedFileAndForget();
+            string systemProjectPath = Application.dataPath.Replace("Assets", "");
+            DirectoryInfo di = new DirectoryInfo(systemProjectPath + Path.GetDirectoryName(savePath));
+            if (!di.Exists) di.Create();
+            return savePath;
+        }
+
+        public bool Add(string name)
+        {
+            bool canAdd = CheckName(name);
+            while (!canAdd)
+            {
+                name += "_1";
+                canAdd = CheckName(name);
+            }
+
+            See1ViewData data = Initializer.defaultData;
+            if (data == null) data = new See1ViewData("Default"); // 방어
+            data.name = name;
+            dataList.Add(data);
+            dataIndex = dataList.Count - 1;
+            Save();
+            return canAdd;
+        }
+
+        public bool RemoveCurrent()
+        {
+            dataList.Remove(dataList[dataIndex]);
+            dataIndex -= 1;
+            Save();
+            return true;
+        }
+
+        public bool Remove(string name)
+        {
+            dataList.Remove(dataList.FirstOrDefault(x => x.name == name));
+            dataIndex -= 1;
+            Save();
+            return true;
+        }
+
+        public bool Remove(See1ViewData data)
+        {
+            if (dataList.Contains(data))
+            {
+                dataList.Remove(data);
+                Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
+                return true;
+            }
+            Save();
+            return false;
+        }
+
+        private static string[] GetSavedDataFiles()
+        {
+            return Directory.GetFiles(GetPath(), $"{filePrefix}*.json");
+        }
+
+        private static DataManager Load()
+        {
+            _instance = new DataManager();
+            string[] matchingFiles = GetSavedDataFiles();
+            if (matchingFiles.Length > 0)
+            {
+                foreach (var file in matchingFiles)
+                {
+
+                    string json = File.ReadAllText(file);
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        string name = Path.GetFileName(file).Replace(filePrefix, "");
+                        See1ViewData data = new See1ViewData(name);
+                        JsonUtility.FromJsonOverwrite(json, data);
+                        instance.dataList.Add(data);
+                        _isDirty = false;
+                    }
+                }
+            }
+            else
+            {
+                _instance.Add("Default");
+                SetDirty();
+            }
+            return _instance;
+        }
+
+        public static void Save()
+        {
+            // 다시 저장할거니까 일단 모든 세이브파일을 지움.
+            string[] matchingFiles = GetSavedDataFiles();
+            foreach (var file in matchingFiles)
+            {
+                File.Delete(file);
+            }
+            foreach (var data in _instance.dataList)
+            {
+                var json = JsonUtility.ToJson(data, true);
+                File.WriteAllText(BuildSavePath(data.name), json);
+            }
+        }
+
+        public static void DeleteAll()
+        {
+            if (EditorPrefs.HasKey(key))
+            {
+                if (EditorUtility.DisplayDialog("Removing " + key + "?", "Are you sure you want to " + "delete the editor key " + key + "?, This action cant be undone", "Yes", "No"))
+                    EditorPrefs.DeleteKey(key);
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Could not find " + key, "Seems that " + key + " does not exists or it has been deleted already, " + "check that you have typed correctly the name of the key.", "Ok");
+            }
+        }
+
+        public static bool CheckName(string dataName)
+        {
+            if (string.IsNullOrEmpty(dataName)) return false;
+            if (_instance.dataList.Count(x => x.name == dataName) != 0) return false;
+            return true;
+        }
+
+        public static string GetProjectName()
+        {
+            string[] s = Application.dataPath.Split('/');
+            string projectName = s[s.Length - 2];
+            return projectName;
+        }
+
+        public static void SetDirty()
+        {
+            _isDirty = true;
+        }
+
+        public static void ConfirmSave()
+        {
+            if (_isDirty)
+            {
+                if (EditorUtility.DisplayDialog("", "", "", ""))
+                {
+                    Save();
+                }
+            }
+        }
+
+        public bool Duplicate()
+        {
+            See1ViewData data = current.Clone() as See1ViewData;
+            bool canDuplicate = data != null;
+            if (canDuplicate)
+            {
+                data.name += "_1";
+                canDuplicate = CheckName(data.name);
+                if (canDuplicate)
+                {
+                    dataList.Add(data);
+                    dataIndex = dataList.Count - 1;
+                    SetDirty();
+                }
+            }
+
+            return canDuplicate;
+        }
+
+        static void ResetInputState()
+        {
+            isAddName = false;
+            isEditName = false;
+            inputStr = string.Empty;
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+        }
+
+        internal static void OnManageGUI()
+        {
+            using (var check = new EditorGUI.ChangeCheckScope())
+            {
+                int idx = instance.dataIndex;
+                bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                float width = 100f;
+                if (isAddName || isEditName)
+                {
+                    GUI.SetNextControlName("input");
+                    inputStr = EditorGUILayout.TextField(inputStr, GUILayout.Width(width));
+                    if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
+                    {
+                        if (CheckName(inputStr))
+                        {
+                            if (isAddName)
+                            {
+                                instance.Add(inputStr);
+                            }
+
+                            if (isEditName)
+                            {
+                                instance.current.name = inputStr;
+                            }
+                            ResetInputState();
+                        }
+                        else
+                        {
+                            ResetInputState();
+                        }
+                    }
+
+                    bool focusLost = GUI.GetNameOfFocusedControl() != "input";
+                    if (focusLost || escapePressed)
+                    {
+                        ResetInputState();
+                    }
+                }
+                else
+                {
+                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
+                }
+
+                if (GUILayout.Button(Icons.plusIcon, EditorStyles.toolbarButton))
+                {
+                    isAddName = true;
+                    inputStr = "New";
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                    EditorGUI.FocusTextInControl("input");
+                }
+
+                using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
+                {
+                    if (GUILayout.Button(Icons.minusIcon, EditorStyles.toolbarButton))
+                    {
+                        if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
+                        {
+                            instance.RemoveCurrent();
+                        }
+                    }
+                }
+
+                if (GUILayout.Button(Icons.contextIcon, EditorStyles.toolbarButton))
+                {
+                    isEditName = true;
+                    inputStr = instance.current.name;
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                    EditorGUI.FocusTextInControl("input");
+                }
+
+                if (check.changed)
+                {
+                    if (idx != instance.dataIndex)
+                    {
+                        onDataChanged.Invoke();
+                        Notice.Log(string.Format("Data Chaneged to {0}", instance.current.name));
+                    }
+                }
+            }
+        }
+    }
+
+    // camera information
+    [Serializable]
+    public class View
+    {
+        public string name;
+        public Vector2 rotation;
+        public float distance;
+        public Vector3 pivot;
+        public float fieldOfView = 30f;
+
+        public View(Vector2 rotation, float distance, Vector3 pivot, float fieldOfView)
+        {
+            this.name = string.Empty;
+            this.rotation = rotation;
+            this.distance = distance;
+            this.pivot = pivot;
+            this.fieldOfView = fieldOfView;
+        }
+
+        public View(Camera camera)
+        {
+            this.name = camera.name;
+            this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y, camera.transform.rotation.eulerAngles.x);
+            var distanceToZero = Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
+            this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f, 0.5f, 0)) + camera.transform.rotation * Vector3.forward * distanceToZero;
+            this.distance = Vector3.Distance(camera.transform.position, this.pivot);
+            this.fieldOfView = camera.fieldOfView;
+        }
+    }
+    // scene lighting infomation
+    [Serializable]
+    public class Lighting
+    {
+        [Serializable]
+        public class LightInfo
+        {
+            public Vector2 position = Vector2.zero;
+            public Quaternion rotation = Quaternion.identity;
+            public Color lightColor = Color.white;
+            public float intensity = 1;
+        }
+
+        public string name = string.Empty;
+        public List<LightInfo> lightList = new List<LightInfo>();
+        public Color ambientSkyColor = Color.gray;
+        public string cubemapPath = string.Empty;
+    }
+
+    // recent list
+    [Serializable]
+    internal class Recent<T> where T : UnityEngine.Object
+    {
+        private int _maxSize = 10;
+        private List<string> _list = new List<string>();
+        public int size { get { return _list.Count; } }
+        private string keyPrefix = "see1view.recent.";
+        private string key => keyPrefix + typeof(T).Name.ToLower();
+        public Action<T> onClickEvent;
+
+        public Recent(int maxSize)
+        {
+            this._maxSize = maxSize;
+            Load();
+        }
+
+        public void Add(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            if (!_list.Contains(path))
+            {
+                if (_list.Count > _maxSize)
+                {
+                    _list = _list.GetRange(1, _list.Count - 1);
+                }
+                _list.Add(path);
+            }
+            Save();
+        }
+
+        public T Get(int index)
+        {
+            return (T)AssetDatabase.LoadAssetAtPath<T>(_list[index]);
+        }
+
+        internal string GetName(int index)
+        {
+            if (index < _list.Count)
+            {
+                return Path.GetFileNameWithoutExtension(_list[index]);
+            }
+            return string.Empty;
+        }
+
+        public void Clear()
+        {
+            _list.Clear();
+            Save();
+        }
+
+        void Load()
+        {
+            string temp = EditorPrefs.GetString(key);
+            string[] tempArray = temp.Split(",".ToCharArray());
+
+            for (int i = 0; i < tempArray.Length; i++)
+            {
+                if (i <= _maxSize) _list.Add(tempArray[i]);
+            }
+        }
+
+        void Save()
+        {
+            string temp = string.Empty;
+            //for (int i = 0; i < _list.Count; i++)
+            //{
+            //    if (i != _list.Count - 1)
+            //        temp += _list[i].ToString() + ",";//note that the last character you add
+            //                                          //is important
+            //    else
+            //        temp += _list[i].ToString();
+            //}
+            temp = string.Join(",", _list);
+            EditorPrefs.SetString(key, temp);
+        }
+
+        public void OnGUI()
+        {
+            using (EditorHelper.Colorize.Do(Color.white, Color.red))
+            {
+                if (GUILayout.Button("Clear", EditorStyles.miniButton))
+                {
+                    Clear();
+                }
+            }
+
+            for (int i = size - 1; i > 0; --i)
+            {
+                {
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        if (GUILayout.Button(Icons.searchIcon, EditorStyles.miniButtonLeft, GUILayout.Width(25)))
+                        {
+                            Selection.activeObject = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
+                        }
+                        if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButtonRight))
+                        {
+                            var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
+                            if (obj)
+                            {
+                                onClickEvent?.Invoke(obj);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // model animation frame information
+    [Serializable]
+    public class Steel
+    {
+        public string clipPath;
+        public double time;
+        private AnimationClip _animationClip;
+        public AnimationClip animationClip
+        {
+            get
+            {
+                if (!_animationClip)
+                    _animationClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+                return _animationClip;
+            }
+            set
+            {
+                _animationClip = value;
+                clipPath = AssetDatabase.GetAssetPath(_animationClip);
+            }
+        }
+
+        public Steel(AnimationClip clip, double time)
+        {
+            this.animationClip = clip;
+            this.time = time;
+        }
+    }
+
+    // view target object. model, particle, etc
+    class TargetInfo
+    {
+        public string assetPath;
+        private StringBuilder sb = new StringBuilder();
+        public Bounds bounds;
+        public List<Renderer> renderers = new List<Renderer>();
+        public List<Transform> bones = new List<Transform>();
+        public List<Material> materials = new List<Material>();
+        public List<Animator> animators = new List<Animator>();
+        public List<MeshRenderer> meshRenderers = new List<MeshRenderer>();
+        public List<SkinnedMeshRenderer> skinnedMeshRenderers = new List<SkinnedMeshRenderer>();
+        public List<ParticleSystem> particleSystems = new List<ParticleSystem>();
+        public List<MonoBehaviour> behaviours = new List<MonoBehaviour>();
+
+        public List<ParticleSystemRenderer> particleSystemRenderers = new List<ParticleSystemRenderer>();
+        //public Mesh[] meshes;
+
+        void Cleanup()
+        {
+            sb.Length = 0;
+            bounds = new Bounds();
+            renderers.Clear();
+            bones.Clear();
+            materials.Clear();
+            animators = null;
+            meshRenderers = null;
+            skinnedMeshRenderers = null;
+            particleSystems = null;
+            particleSystemRenderers = null;
+            behaviours = null;
+        }
+
+        public void Init(GameObject source, GameObject instance)
+        {
+            Cleanup();
+            var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(source);
+            assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : AssetDatabase.GetAssetPath(source);
+            sb.Append(source.name);
+            sb.Append("\n");
+            animators = instance.GetComponentsInChildren<Animator>().ToList();
+            renderers = instance.GetComponentsInChildren<Renderer>().ToList();
+            meshRenderers = instance.GetComponentsInChildren<MeshRenderer>().ToList();
+            skinnedMeshRenderers = instance.GetComponentsInChildren<SkinnedMeshRenderer>().ToList();
+            particleSystems = instance.GetComponentsInChildren<ParticleSystem>().ToList();
+            particleSystemRenderers = instance.GetComponentsInChildren<ParticleSystemRenderer>().ToList();
+            behaviours = instance.GetComponentsInChildren<MonoBehaviour>().ToList();
+
+            foreach (var renderer in renderers)
+            {
+                materials.AddRange(renderer.sharedMaterials);
+                bounds.Encapsulate(renderer.bounds);
+            }
+
+            materials = materials.Where(x => x != null).Distinct().ToList();
+
+            if (animators.Count > 0)
+            {
+                sb.Append(string.Format("Animators : {0}\n", animators.Count().ToString()));
+            }
+
+            if (meshRenderers.Count > 0)
+            {
+                sb.Append(string.Format("MeshRenderer : {0}\n", meshRenderers.Count.ToString()));
+            }
+
+            if (skinnedMeshRenderers.Count > 0)
+            {
+                bones.AddRange(skinnedMeshRenderers.SelectMany(x => x.bones).Distinct());
+                sb.Append(string.Format("SkinnedMeshRenderer : {0}\n", skinnedMeshRenderers.Count.ToString()));
+                sb.Append(string.Format("Bones : {0}\n",
+                    skinnedMeshRenderers.SelectMany(x => x.bones).Distinct().Count().ToString()));
+            }
+
+            if (particleSystems.Count > 0)
+            {
+                foreach (var ps in particleSystems)
+                {
+                    ParticleSystemRenderer component = ps.GetComponent<ParticleSystemRenderer>();
+                    ps.Simulate(1, true, true, false);
+                    bounds.Encapsulate(component.bounds);
+                    ps.Clear();
+                    ps.Stop();
+                }
+
+                sb.Append(string.Format("ParticleSystem : {0}\n", particleSystems.Count.ToString()));
+                if (particleSystemRenderers.Count > 0)
+                {
+                    sb.Append(string.Format("ParticleSystemRenderer : {0}\n",
+                        particleSystemRenderers.Count.ToString()));
+                }
+            }
+
+            sb.Append(string.Format("Materials : {0}\n",
+                renderers.SelectMany(x => x.sharedMaterials).Distinct().Count().ToString()));
+
+            if (behaviours.Count > 0)
+            {
+                sb.Append(string.Format("Monobehaviour : {0}\n", behaviours.Count.ToString()));
+            }
+        }
+
+        public string GetMeshInfo(Mesh target)
+        {
+            //namespace UnityEditor
+            //{
+            //  internal sealed class InternalMeshUtil
+            //  {
+            //    public static extern int GetPrimitiveCount(Mesh mesh);
+            //    public static extern int CalcTriangleCount(Mesh mesh);
+            //    public static extern bool HasNormals(Mesh mesh);
+            //    public static extern string GetVertexFormat(Mesh mesh);
+            //    public static extern float GetCachedMeshSurfaceArea(MeshRenderer meshRenderer);
+            //  }
+            //}
+            Type internalMeshUtil = Type.GetType("InternalMeshUtil");
+            MethodInfo getPrimitiveCount = internalMeshUtil.GetMethod("GetPrimitiveCount", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            MethodInfo getVertexFormat = internalMeshUtil.GetMethod("GetVertexFormat", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            string str = target.vertexCount.ToString() + " verts, " + (object)getPrimitiveCount.Invoke(this, new object[] { target }) + " tris";
+            int subMeshCount = target.subMeshCount;
+            if (subMeshCount > 1)
+                str = str + ", " + (object)subMeshCount + " submeshes";
+            int blendShapeCount = target.blendShapeCount;
+            if (blendShapeCount > 1)
+                str = str + ", " + (object)blendShapeCount + " blendShapes";
+            return str + "\n" + getVertexFormat.Invoke(this, new object[] { target });
+        }
+
+        public string Print()
+        {
+            return sb.ToString();
+        }
+    }
+
+    #endregion
+
+    #region Helpers
     public static class PathHelper
     {
         public static string ScriptPath
@@ -256,7 +1121,7 @@ namespace See1Studios.See1View
             {
                 string path = string.Empty;
                 var guids = AssetDatabase.FindAssets($"t:Script {nameof(See1View)}");
-                foreach(var guid in guids)
+                foreach (var guid in guids)
                 {
                     string p = Path.GetFileName(AssetDatabase.GUIDToAssetPath(guid));
                     if (p == "See1View.cs")
@@ -603,6 +1468,93 @@ namespace See1Studios.See1View
         }
     }
 
+    // simple command buffer manager
+    public class CommandBufferManager
+    {
+        class Blitter
+        {
+            public Camera camera;
+            public CommandBuffer commandBuffer;
+            public CameraEvent cameraEvent;
+            public RenderTexture rt;
+            public Material mat;
+            //public RenderPipelineAsset pipelineAsset;
+
+            public Blitter(Camera cam, CameraEvent cameraEvent, Material mat)
+            {
+                this.camera = cam;
+                this.cameraEvent = cameraEvent;
+                commandBuffer = new CommandBuffer();
+                this.mat = mat;
+            }
+
+            public void Blit()
+            {
+                rt = RenderTexture.GetTemporary(camera.targetTexture.width, camera.targetTexture.height, 24);
+                camera.AddCommandBuffer(cameraEvent, commandBuffer);
+                commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, rt, mat);
+                commandBuffer.Blit(rt, BuiltinRenderTextureType.CameraTarget);
+
+            }
+        }
+
+        private List<Blitter> blitterList = new List<Blitter>();
+
+        //private DepthTextureMode _mode = DepthTextureMode.None;
+        private Camera _camera;
+
+        public CommandBufferManager(Camera camera)
+        {
+            this._camera = camera;
+        }
+
+        public void Add(DepthTextureMode mode, Material mat)
+        {
+            //this._mode = mode;
+            _camera.depthTextureMode = mode;
+            foreach (var blitter in blitterList)
+            {
+                blitter.rt =
+                    RenderTexture.GetTemporary(_camera.targetTexture.width, _camera.targetTexture.height, 24);
+                _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
+                blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
+                blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
+            }
+        }
+
+        public static void RemoveBufferFromAllEvent(Camera camera, CommandBuffer buffer)
+        {
+            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthNormalsTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterDepthNormalsTexture, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeGBuffer, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterGBuffer, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterLighting, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeFinalPass, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterFinalPass, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterForwardOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffectsOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffectsOpaque, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeSkybox, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterSkybox, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterEverything, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeReflections, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterReflections, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.BeforeHaloAndLensFlares, buffer);
+            camera.RemoveCommandBuffer(CameraEvent.AfterHaloAndLensFlares, buffer);
+        }
+    }
+    #endregion
+
+    #region SavedData
+
     //saved parameters from URP GUI
     class SavedParameter<T>
 where T : IEquatable<T>
@@ -682,72 +1634,9 @@ where T : IEquatable<T>
             : base(key, value, EditorPrefs.GetString, EditorPrefs.SetString) { }
     }
 
-    public static class EditorCoroutineUtility
-    {
-        public static EditorCoroutine StartCoroutine(IEnumerator routine, object owner)
-        {
-            return new EditorCoroutine(routine, owner);
-        }
+    #endregion
 
-        public static EditorCoroutine StartCoroutineOwnerless(IEnumerator routine)
-        {
-            return new EditorCoroutine(routine);
-        }
-
-        public static void StopCoroutine(EditorCoroutine coroutine)
-        {
-            if (coroutine == null)
-            {
-                return;
-            }
-
-            coroutine.Stop();
-        }
-    }
-
-    public static class EditorWindowControl
-    {
-        public enum SelectWindowType
-        {
-            Inspector,
-            ProjectBrowser,
-            Game,
-            Console,
-            Hierarchy,
-            Scene
-        };
-
-        public static Type GetBuiltinWindowType(SelectWindowType swt)
-        {
-            System.Type unityEditorWindowType = null;
-            switch (swt)
-            {
-                case SelectWindowType.Inspector:
-                    unityEditorWindowType =
-                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.InspectorWindow");
-                    break;
-                case SelectWindowType.ProjectBrowser:
-                    unityEditorWindowType =
-                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ProjectBrowser");
-                    break;
-                case SelectWindowType.Game:
-                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
-                    break;
-                case SelectWindowType.Console:
-                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ConsoleView");
-                    break;
-                case SelectWindowType.Hierarchy:
-                    unityEditorWindowType =
-                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneHierarchyWindow");
-                    break;
-                case SelectWindowType.Scene:
-                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneView");
-                    break;
-            }
-
-            return unityEditorWindowType;
-        }
-    }
+    #region Resources
 
     public class Icons
     {
@@ -848,996 +1737,99 @@ where T : IEquatable<T>
             }
         }
     }
-    // animated bool for GUI
-    [Serializable]
-    class AnimBoolS : BaseAnimValue<bool>
+
+    internal class Meshes
     {
-        [SerializeField] private float m_Value;
+        static Mesh _quad;
+        public static Mesh Quad => _quad ? _quad : _quad = CreateQuad();
+        static Mesh _diamond;
+        public static Mesh Diamond => _diamond ? _diamond : _diamond = CreateDiamond();
 
-        public AnimBoolS()
-            : base(false)
+        static Meshes()
         {
+            if (_quad == null) _quad = CreateQuad();
+            if (_diamond == null) _diamond = CreateDiamond();
         }
 
-        public AnimBoolS(bool value)
-            : base(value)
+        private static Mesh CreateQuad()
         {
-        }
-
-        public AnimBoolS(UnityAction callback)
-            : base(false, callback)
-        {
-        }
-
-        public AnimBoolS(bool value, UnityAction callback)
-            : base(value, callback)
-        {
-        }
-
-        public float faded
-        {
-            get
+            var quad = new Mesh();
+            float halfWidth = 1 / 2f;
+            float halfHeight = 1 / 2f;
+            Vector3[] vertices = new Vector3[4]
             {
-                this.GetValue();
-                return this.m_Value;
-            }
-        }
-
-        protected override bool GetValue()
-        {
-            float a = !this.target ? 1f : 0.0f;
-            float b = 1f - a;
-            this.m_Value = Mathf.SmoothStep(a, b, this.lerpPosition);
-            return (double)this.m_Value > 0.5;
-        }
-
-        public float Fade(float from, float to)
-        {
-            return Mathf.SmoothStep(from, to, this.faded);
-        }
-    }
-    // gui helper
-    class RectSlicer
-    {
-        private EditorWindow window;
-        private Rect _rect;
-
-        public Rect rect
-        {
-            get { return window ? window.position : _rect; }
-            set { _rect = value; }
-        }
-
-        //EditiorWindow GUI
-        public AnimBoolS openTop;
-        public AnimBoolS openLeft;
-        public AnimBoolS openRight;
-        public AnimBoolS openBottom;
-        public float topTargetHeight = 100;
-        public float bottomTargetHeight = 100;
-        public float leftTargetWidth = 200;
-        public float rightTargetWidth = 200;
-
-        public float topHeight
-        {
-            get { return openTop.faded * topTargetHeight; }
-        }
-
-        public float bottomHeight
-        {
-            get { return openBottom.faded * bottomTargetHeight; }
-        }
-
-        public float leftWidth
-        {
-            get { return openLeft.faded * leftTargetWidth; }
-        }
-
-        public float rightWidth
-        {
-            get { return openRight.faded * rightTargetWidth; }
-        }
-
-        public Rect center
-        {
-            get
-            {
-                return new Rect(leftWidth, topHeight, rect.width - leftWidth - rightWidth,
-                    rect.height - topHeight - bottomHeight);
-            }
-        } // { width = rect.width - leftWidth - rightWidth, height = rect.height - topHeight - bottomHeight, x = leftWidth, y = topHeight }; } }
-
-        public Rect top
-        {
-            get { return new Rect(leftWidth, 0, rect.width - leftWidth - rightWidth, topHeight); }
-        } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
-
-        public Rect stretchedTop
-        {
-            get { return new Rect(0, 0, rect.width, topHeight); }
-        } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
-
-        public Rect bottom
-        {
-            get
-            {
-                return new Rect(leftWidth, topHeight + center.height, rect.width - leftWidth - rightWidth,
-                    bottomHeight);
-            }
-        }
-
-        public Rect stretchedBottom
-        {
-            get { return new Rect(0, topHeight + center.height, rect.width, bottomHeight); }
-        } // { width = rect.width, height = bottomHeight, x = 0, y = topHeight + center.height }; } }
-
-        public Rect left
-        {
-            get { return new Rect(0, topHeight, leftWidth, center.height); }
-        } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
-
-        public Rect stretchedLeft
-        {
-            get { return new Rect(0, 0, leftWidth, rect.height); }
-        } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
-
-        public Rect right
-        {
-            get { return new Rect(leftWidth + center.width, topHeight, rightWidth, center.height); }
-        } // { width = rightWidth, height = center.height, x = leftWidth + center.width, y = topHeight }; } }
-
-        public Rect stretchedRight
-        {
-            get { return new Rect(leftWidth + center.width, 0, rightWidth, rect.height); }
-        }
-
-        public Rect full
-        {
-            get { return new Rect(0, 0, rect.width, rect.height); }
-        } // { width = rect.width, height = rect.height, x = 0, y = 0 }; } }
-
-        public RectSlicer()
-        {
-            this.openTop = new AnimBoolS(false);
-            this.openBottom = new AnimBoolS(false);
-            this.openLeft = new AnimBoolS(false);
-            this.openRight = new AnimBoolS(false);
-        }
-
-
-        public RectSlicer(EditorWindow window)
-        {
-            this.window = window;
-            UnityAction onChangeCallback = window.Repaint;
-            this.openTop = new AnimBoolS(false);
-            this.openTop.valueChanged.AddListener(onChangeCallback);
-            this.openBottom = new AnimBoolS(false);
-            this.openBottom.valueChanged.AddListener(onChangeCallback);
-            this.openLeft = new AnimBoolS(false);
-            this.openLeft.valueChanged.AddListener(onChangeCallback);
-            this.openRight = new AnimBoolS(false);
-            this.openRight.valueChanged.AddListener(onChangeCallback);
-        }
-
-        public RectSlicer(UnityAction onChangeCallback)
-        {
-            this.openTop = new AnimBoolS(false);
-            this.openTop.valueChanged.AddListener(onChangeCallback);
-            this.openBottom = new AnimBoolS(false);
-            this.openBottom.valueChanged.AddListener(onChangeCallback);
-            this.openLeft = new AnimBoolS(false);
-            this.openLeft.valueChanged.AddListener(onChangeCallback);
-            this.openRight = new AnimBoolS(false);
-            this.openRight.valueChanged.AddListener(onChangeCallback);
-        }
-
-        public RectSlicer(Rect r, UnityAction onChangeCallback)
-        {
-            this.rect = r;
-            this.openTop = new AnimBoolS(false);
-            this.openTop.valueChanged.AddListener(onChangeCallback);
-            this.openBottom = new AnimBoolS(false);
-            this.openBottom.valueChanged.AddListener(onChangeCallback);
-            this.openLeft = new AnimBoolS(false);
-            this.openLeft.valueChanged.AddListener(onChangeCallback);
-            this.openRight = new AnimBoolS(false);
-            this.openRight.valueChanged.AddListener(onChangeCallback);
-        }
-
-        public RectSlicer(Rect r, float topHeight, float bottomHeight, float leftWidth, float rightWidth,
-            UnityAction onChangeCallback)
-        {
-            this.rect = r;
-            this.openTop = new AnimBoolS(false);
-            this.openTop.valueChanged.AddListener(onChangeCallback);
-            this.openBottom = new AnimBoolS(false);
-            this.openBottom.valueChanged.AddListener(onChangeCallback);
-            this.openLeft = new AnimBoolS(false);
-            this.openLeft.valueChanged.AddListener(onChangeCallback);
-            this.openRight = new AnimBoolS(false);
-            this.openRight.valueChanged.AddListener(onChangeCallback);
-
-            this.topTargetHeight = topHeight;
-            this.bottomTargetHeight = bottomHeight;
-            this.leftTargetWidth = leftWidth;
-            this.rightTargetWidth = rightWidth;
-        }
-
-        public RectSlicer(Rect r, bool openTop, float topHeight, bool openBottom, float bottomHeight, bool openLeft,
-            float leftWidth, bool openRight, float rightWidth, UnityAction onChangeCallback)
-        {
-            this.rect = r;
-            this.openTop = new AnimBoolS(openTop);
-            this.openTop.valueChanged.AddListener(onChangeCallback);
-            this.openBottom = new AnimBoolS(openBottom);
-            this.openBottom.valueChanged.AddListener(onChangeCallback);
-            this.openLeft = new AnimBoolS(openLeft);
-            this.openLeft.valueChanged.AddListener(onChangeCallback);
-            this.openRight = new AnimBoolS(openRight);
-            this.openRight.valueChanged.AddListener(onChangeCallback);
-
-            this.topTargetHeight = topHeight;
-            this.bottomTargetHeight = bottomHeight;
-            this.leftTargetWidth = leftWidth;
-            this.rightTargetWidth = rightWidth;
-        }
-    }
-
-    // unique data for URP
-    [Serializable]
-    public class URPData : ICloneable
-    {
-        public bool renderPostProcessing = true;
-        public bool dithering = true;
-        public int antialiasing;
-
-        public object Clone()
-        {
-            return this.MemberwiseClone();
-        }
-    }
-    // unique data for HDRP
-    [Serializable]
-    public class HDRPData : ICloneable
-    {
-        public bool renderPostProcessing = true;
-        public bool dithering = true;
-        public int antialiasing;
-
-        public object Clone()
-        {
-            return this.MemberwiseClone();
-        }
-    }
-    // Container for all data worth saving
-    [Serializable]
-    public class See1ViewData : ICloneable
-    {
-        public string name;
-        // Control
-        public int rotSpeed = 3;
-        public int zoomSpeed = 3;
-        public int panSpeed = 3;
-        public int smoothFactor = 3;
-        // Size
-        public List<Vector2> viewportSizes = new List<Vector2>();
-        // Image
-        public ImageSaveMode imageSaveMode = ImageSaveMode.Overwrite;
-        public bool openSavedImage = true;
-        public bool alphaAppliedImage = true;
-        public int imageSizeMultiplier = 1;
-        // View
-        public View lastView = new View(new Vector2(180f, 0f), 0f, Vector3.zero, 30f);
-        public List<View> viewList = new List<View>();
-        // Environment
-        public Color bgColor = new Color(0.3215686f, 0.3215686f, 0.3215686f, 1f);
-        public Color ambientSkyColor = Color.gray;
-        public ClearFlags clearFlag = ClearFlags.Color;
-        public bool autoFloorHeightEnabled = false;
-        public float floorHeight = 0f;
-        public float floorScale = 10f;
-        // Lighting
-        public Lighting lastLighting = new Lighting();
-        public List<Lighting> lightingList = new List<Lighting>();
-        // Shadows
-        public bool shadowEnabled = true;
-        public float shadowStrength = 1f;
-        public float shadowBias = 0.01f;
-        //Render
-        public CameraType cameraType = CameraType.Game;
-        public float renderScale = 2;
-        // Custom Render Features
-        public Color wireLineColor = Color.white;
-        public Color wireFillColor = Color.black;
-        public float wireThickness = 0.1f;
-        public float wireUseDiscard = 1;
-        public bool planeShadowEnabled = true;
-        public Color planeShadowColor = Color.gray;
-        public bool heightFogEnabled = true;
-        public Color heightFogColor = new Color(0, 0, 0, 0.5f);
-        public float heightFogHeight = 1;
-        // Post Process
-        public bool postProcessEnabled = true;
-        public URPData urpData = new URPData();
-        public HDRPData hdrpData = new HDRPData();
-        // Animation
-        public List<Steel> steelList = new List<Steel>();
-        // Model
-        public bool reframeToTarget = true;
-        public bool recalculateBound = true;
-        public bool forceUpdateComponent = true;
-        public ModelCreateMode modelCreateMode = ModelCreateMode.Default;
-        public string lastTargetPath = string.Empty;
-        public GameObject _lastTarget;
-        public GameObject lastTarget
-
-        {
-            get
-            {
-                return _lastTarget
-                    ? _lastTarget
-                    : _lastTarget = AssetDatabase.LoadAssetAtPath<GameObject>(lastTargetPath);
-            }
-            set
-            {
-                _lastTarget = value;
-                lastTargetPath = AssetDatabase.GetAssetPath(value);
-            }
-        }
-
-        public string cubemapPath = string.Empty;
-        private Texture _cubeMap;
-        public Texture cubeMap
-        {
-            get { return _cubeMap ? _cubeMap : _cubeMap = AssetDatabase.LoadAssetAtPath<Cubemap>(cubemapPath); }
-            set
-            {
-                _cubeMap = value;
-                cubemapPath = AssetDatabase.GetAssetPath(value);
-            }
-        }
-
-        private float _cubeMapMipMapBias;
-        public float CubeMapMipMapBias
-        {
-            get { return _cubeMapMipMapBias; }
-            set
-            {
-                _cubeMapMipMapBias = value;
-                if (_cubeMap) _cubeMap.mipMapBias = _cubeMapMipMapBias;
-            }
-        }
-        public string profilePath = string.Empty;
-
-        //Post Processing Stack
-#if UNITY_POST_PROCESSING_STACK_V2
-        private PostProcessProfile _postProcessProfile;
-
-        public PostProcessProfile profile
-        {
-            get
-            {
-                return _postProcessProfile
-                    ? _postProcessProfile
-                    : _postProcessProfile = AssetDatabase.LoadAssetAtPath<PostProcessProfile>(profilePath);
-            }
-            set
-            {
-                _postProcessProfile = value;
-                profilePath = AssetDatabase.GetAssetPath(value);
-            }
-        }
-
-#endif
-        //Scriptable RenderPipeline Support.
-        public string renderPipelinePath = string.Empty;
-
-        //Tells you the current render pipeline.
-        public RenderPipelineMode renderPipelineMode
-        {
-            get
-            {
-                RenderPipelineMode mode = RenderPipelineMode.BuiltIn;
-                if (renderPipelineAsset != null)
-                {
-#if URP
-                    if (renderPipelineAsset is UniversalRenderPipelineAsset) mode = RenderPipelineMode.Universal;
-#endif
-
-#if HDRP
-                        if (renderPipelineAsset is HDRenderPipelineAsset) mode = RenderPipelineMode.HighDefinition;
-#endif
-                }
-                return mode;
-            }
-        }
-
-        private RenderPipelineAsset _renderPipelineAsset;
-        public RenderPipelineAsset renderPipelineAsset
-        {
-            get
-            {
-                return _renderPipelineAsset ? _renderPipelineAsset : _renderPipelineAsset = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(renderPipelinePath);
-            }
-            set
-            {
-                _renderPipelineAsset = value;
-                renderPipelinePath = AssetDatabase.GetAssetPath(value);
-            }
-        }
-#if URP || HDRP
-        private VolumeProfile _volumeProfile;
-
-        public VolumeProfile volumeProfile
-        {
-            get
-            {
-                return _volumeProfile
-                ? _volumeProfile
-                    : _volumeProfile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
-            }
-            set
-            {
-                _volumeProfile = value;
-                profilePath = AssetDatabase.GetAssetPath(value);
-            }
-        }
-#endif
-        public See1ViewData(string name)
-        {
-            this.name = name;
-        }
-
-        public object Clone()
-        {
-            return this.MemberwiseClone();
-        }
-    }
-    // recent list
-    [Serializable]
-    internal class Recent<T> where T : UnityEngine.Object
-    {
-        private int _maxSize = 10;
-        private List<string> _list = new List<string>();
-        public int size { get { return _list.Count; } }
-        private string keyPrefix = "see1view.recent.";
-        private string key => keyPrefix + typeof(T).Name.ToLower();
-        public Action<T> onClickEvent;
-
-        public Recent(int maxSize)
-        {
-            this._maxSize = maxSize;
-            Load();
-        }
-
-        public void Add(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return;
-            if (!_list.Contains(path))
-            {
-                if (_list.Count > _maxSize)
-                {
-                    _list = _list.GetRange(1, _list.Count - 1);
-                }
-                _list.Add(path);
-            }
-            Save();
-        }
-
-        public T Get(int index)
-        {
-            return (T)AssetDatabase.LoadAssetAtPath<T>(_list[index]);
-        }
-
-        internal string GetName(int index)
-        {
-            if (index < _list.Count)
-            {
-                return Path.GetFileNameWithoutExtension(_list[index]);
-            }
-            return string.Empty;
-        }
-
-        public void Clear()
-        {
-            _list.Clear();
-            Save();
-        }
-
-        void Load()
-        {
-            string temp = EditorPrefs.GetString(key);
-            string[] tempArray = temp.Split(",".ToCharArray());
-
-            for (int i = 0; i < tempArray.Length; i++)
-            {
-                if (i <= _maxSize) _list.Add(tempArray[i]);
-            }
-        }
-
-        void Save()
-        {
-            string temp = string.Empty;
-            //for (int i = 0; i < _list.Count; i++)
-            //{
-            //    if (i != _list.Count - 1)
-            //        temp += _list[i].ToString() + ",";//note that the last character you add
-            //                                          //is important
-            //    else
-            //        temp += _list[i].ToString();
-            //}
-            temp = string.Join(",", _list);
-            EditorPrefs.SetString(key, temp);
-        }
-
-        public void OnGUI()
-        {
-            using (EditorHelper.Colorize.Do(Color.white, Color.red))
-            {
-                if (GUILayout.Button("Clear", EditorStyles.miniButton))
-                {
-                    Clear();
-                }
-            }
-
-            for (int i = size - 1; i > 0; --i)
-            {
-                {
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        if (GUILayout.Button(Icons.searchIcon, EditorStyles.miniButtonLeft,GUILayout.Width(25)))
-                        {
-                            Selection.activeObject = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
-                        }
-                        if (GUILayout.Button(new GUIContent(GetName(i), _list[i]), EditorStyles.miniButtonRight))
-                        {
-                            var obj = (T)AssetDatabase.LoadAssetAtPath<T>(_list[i]);
-                            if (obj)
-                            {
-                                onClickEvent?.Invoke(obj);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // all configuration and settings
-    [Serializable]
-    class DataManager
-    {
-        public enum SaveType
-        {
-            Project,
-            UserSetting,
-            EditorPreferences,
-            Registry
-        }
-
-        static SaveType saveType = SaveType.UserSetting;
-
-
-        private static DataManager _instance;
-
-        public static DataManager instance
-        {
-            get { return (_instance != null) ? _instance : Load(); }
-            set { _instance = value; }
-        }
-
-        public List<See1ViewData> dataList = new List<See1ViewData>();
-
-        public See1ViewData current
-        {
-            get { return dataList[dataIndex]; }
-        }
-
-
-        private int _dataIndex;
-
-        public int dataIndex
-        {
-            get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
-            set { _dataIndex = value; }
-        }
-
-        public static string[] dataNames
-        {
-            get { return instance.dataList.Select((x) => x.name).ToArray(); }
-        }
-
-        public static readonly string key = string.Format("{0}.{1}", "com.see1studios.see1view", GetProjectName().ToLower());
-        public static readonly string filePrefix = "See1ViewData_";
-        public static UnityEvent onDataChanged = new UnityEvent();
-        static bool isAddName;
-        static bool isEditName;
-        private static string inputStr;
-        public static bool _isDirty;
-
-
-        public static string GetPath()
-        {
-            string targetPath = string.Empty;
-            switch (saveType)
-            {
-                case SaveType.Project:
-                    targetPath = $"Assets/Editor/";
-                    break;
-                case SaveType.UserSetting:
-                    targetPath = $"UserSettings/";
-                    break;
-                case SaveType.EditorPreferences:
-                    targetPath = $"Assets/Editor/";
-                    break;
-                case SaveType.Registry:
-                    targetPath = $"Assets/Editor/";
-                    break;
-            }
-            return targetPath;
-        }
-
-        public static string BuildSavePath(string dataName)
-        {
-            string savePath = GetPath() + $"{filePrefix}{dataName}.json";
-            //UnityEditorInternal.InternalEditorUtility.SaveToSerializedFileAndForget();
-            string systemProjectPath = Application.dataPath.Replace("Assets", "");
-            DirectoryInfo di = new DirectoryInfo(systemProjectPath + Path.GetDirectoryName(savePath));
-            if (!di.Exists) di.Create();
-            return savePath;
-        }
-
-        public bool Add(string name)
-        {
-            bool canAdd = CheckName(name);
-            while (!canAdd)
-            {
-                name += "_1";
-                canAdd = CheckName(name);
-            }
-
-            See1ViewData data = Initializer.defaultData;
-            if (data == null) data = new See1ViewData("Default"); // 방어
-            data.name =name;
-            dataList.Add(data);
-            dataIndex = dataList.Count - 1;
-            Save();
-            return canAdd;
-        }
-
-        public bool RemoveCurrent()
-        {
-            dataList.Remove(dataList[dataIndex]);
-            dataIndex -= 1;
-            Save();
-            return true;
-        }
-
-        public bool Remove(string name)
-        {
-            dataList.Remove(dataList.FirstOrDefault(x => x.name == name));
-            dataIndex -= 1;
-            Save();
-            return true;
-        }
-
-        public bool Remove(See1ViewData data)
-        {
-            if (dataList.Contains(data))
-            {
-                dataList.Remove(data);
-                Mathf.Clamp(dataIndex -= 1, 0, dataList.Count);
-                return true;
-            }
-            Save();
-            return false;
-        }
-
-        private static string[] GetSavedDataFiles()
-        {
-            return Directory.GetFiles(GetPath(), $"{filePrefix}*.json");
-        }
-
-        private static DataManager Load()
-        {
-            _instance = new DataManager();
-            string[] matchingFiles = GetSavedDataFiles();
-            if (matchingFiles.Length > 0)
-            {
-                foreach (var file in matchingFiles)
-                {
-                    
-                    string json = File.ReadAllText(file);
-                    if (!string.IsNullOrEmpty(json))
-                    {
-                        string name = Path.GetFileName(file).Replace(filePrefix, "");
-                        See1ViewData data = new See1ViewData(name);
-                        JsonUtility.FromJsonOverwrite(json, data);
-                        instance.dataList.Add(data);
-                        _isDirty = false;
-                    }
-                }
-            }
-            else
-            {
-                _instance.Add("Default");
-                SetDirty();
-            }
-            return _instance;
-        }
-
-        public static void Save()
-        {
-            // 다시 저장할거니까 일단 모든 세이브파일을 지움.
-            string[] matchingFiles = GetSavedDataFiles();
-            foreach (var file in matchingFiles)
-            {
-                File.Delete(file);
-            }
-            foreach (var data in _instance.dataList )
-            {
-                var json = JsonUtility.ToJson(data, true);
-                File.WriteAllText(BuildSavePath(data.name), json);
-            }
-        }
-
-        public static void DeleteAll()
-        {
-            if (EditorPrefs.HasKey(key))
-            {
-                if (EditorUtility.DisplayDialog("Removing " + key + "?", "Are you sure you want to " + "delete the editor key " + key + "?, This action cant be undone", "Yes", "No"))
-                    EditorPrefs.DeleteKey(key);
-            }
-            else
-            {
-                EditorUtility.DisplayDialog("Could not find " + key, "Seems that " + key + " does not exists or it has been deleted already, " + "check that you have typed correctly the name of the key.", "Ok");
-            }
-        }
-
-        public static bool CheckName(string dataName)
-        {
-            if (string.IsNullOrEmpty(dataName)) return false;
-            if (_instance.dataList.Count(x => x.name == dataName) != 0) return false;
-            return true;
-        }
-
-        public static string GetProjectName()
-        {
-            string[] s = Application.dataPath.Split('/');
-            string projectName = s[s.Length - 2];
-            return projectName;
-        }
-
-        public static void SetDirty()
-        {
-            _isDirty = true;
-        }
-
-        public static void ConfirmSave()
-        {
-            if (_isDirty)
-            {
-                if (EditorUtility.DisplayDialog("", "", "", ""))
-                {
-                    Save();
-                }
-            }
-        }
-
-        public bool Duplicate()
-        {
-            See1ViewData data = current.Clone() as See1ViewData;
-            bool canDuplicate = data != null;
-            if (canDuplicate)
-            {
-                data.name += "_1";
-                canDuplicate = CheckName(data.name);
-                if (canDuplicate)
-                {
-                    dataList.Add(data);
-                    dataIndex = dataList.Count - 1;
-                    SetDirty();
-                }
-            }
-
-            return canDuplicate;
-        }
-
-        static void ResetInputState()
-        {
-            isAddName = false;
-            isEditName = false;
-            inputStr = string.Empty;
-            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-        }
-
-        internal static void OnManageGUI()
-        {
-            using (var check = new EditorGUI.ChangeCheckScope())
-            {
-                int idx = instance.dataIndex;
-                bool enterPressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
-                bool escapePressed = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
-                float width = 100f;
-                if (isAddName || isEditName)
-                {
-                    GUI.SetNextControlName("input");
-                    inputStr = EditorGUILayout.TextField(inputStr, GUILayout.Width(width));
-                    if (enterPressed && GUI.GetNameOfFocusedControl() == "input")
-                    {
-                        if (CheckName(inputStr))
-                        {
-                            if (isAddName)
-                            {
-                                instance.Add(inputStr);
-                            }
-
-                            if (isEditName)
-                            {
-                                instance.current.name = inputStr;
-                            }
-                            ResetInputState();
-                        }
-                        else
-                        {
-                            ResetInputState();
-                        }
-                    }
-
-                    bool focusLost = GUI.GetNameOfFocusedControl() != "input";
-                    if (focusLost || escapePressed)
-                    {
-                        ResetInputState();
-                    }
-                }
-                else
-                {
-                    instance.dataIndex = (int)EditorGUILayout.Popup(instance.dataIndex, dataNames, EditorStyles.toolbarPopup, GUILayout.Width(width));
-                }
-
-                if (GUILayout.Button(Icons.plusIcon, EditorStyles.toolbarButton))
-                {
-                    isAddName = true;
-                    inputStr = "New";
-                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                    EditorGUI.FocusTextInControl("input");
-                }
-
-                using (new EditorGUI.DisabledGroupScope(instance.dataList.Count == 1))
-                {
-                    if (GUILayout.Button(Icons.minusIcon, EditorStyles.toolbarButton))
-                    {
-                        if (EditorUtility.DisplayDialog("Confirm", string.Format("{0}{1}{2}", "Delete ", instance.current.name, "?"), "Ok", "Cancel"))
-                        {
-                            instance.RemoveCurrent();
-                        }
-                    }
-                }
-
-                if (GUILayout.Button(Icons.contextIcon, EditorStyles.toolbarButton))
-                {
-                    isEditName = true;
-                    inputStr = instance.current.name;
-                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-                    EditorGUI.FocusTextInControl("input");
-                }
-
-                if (check.changed)
-                {
-                    if (idx != instance.dataIndex)
-                    {
-                        onDataChanged.Invoke();
-                        Notice.Log(string.Format("Data Chaneged to {0}", instance.current.name));
-                    }
-                }
-            }
-        }
-    }
-    // camera information
-    [Serializable]
-    public class View
-    {
-        public string name;
-        public Vector2 rotation;
-        public float distance;
-        public Vector3 pivot;
-        public float fieldOfView = 30f;
-
-        public View(Vector2 rotation, float distance, Vector3 pivot, float fieldOfView)
-        {
-            this.name = string.Empty;
-            this.rotation = rotation;
-            this.distance = distance;
-            this.pivot = pivot;
-            this.fieldOfView = fieldOfView;
-        }
-
-        public View(Camera camera)
-        {
-            this.name = camera.name;
-            this.rotation = new Vector2(camera.transform.rotation.eulerAngles.y, camera.transform.rotation.eulerAngles.x);
-            var distanceToZero = Vector3.Distance(camera.transform.position, Vector3.zero); //카메라 뷰 타겟 거리로 적당히 쓸만한 거리
-            this.pivot = camera.ScreenToWorldPoint(new Vector3(0.5f, 0.5f, 0)) + camera.transform.rotation * Vector3.forward * distanceToZero;
-            this.distance = Vector3.Distance(camera.transform.position, this.pivot);
-            this.fieldOfView = camera.fieldOfView;
-        }
-    }
-    // scene lighting infomation
-    [Serializable]
-    public class Lighting
-    {
-        [Serializable]
-        public class LightInfo
-        {
-            public Vector2 position = Vector2.zero;
-            public Quaternion rotation = Quaternion.identity;
-            public Color lightColor = Color.white;
-            public float intensity = 1;
-        }
-
-        public string name = string.Empty;
-        public List<LightInfo> lightList = new List<LightInfo>();
-        public Color ambientSkyColor = Color.gray;
-        public string cubemapPath = string.Empty;
-    }
-
-    internal class Quad
-    {
-        static Mesh mesh;
-
-        static Quad()
-        {
-            Create();
-        }
-
-        private static void Create()
-        {
-            if (mesh == null)
-            {
-                mesh = new Mesh();
-                float halfWidth = 1 / 2f;
-                float halfHeight = 1 / 2f;
-                Vector3[] vertices = new Vector3[4]
-                {
                     new Vector3(-halfWidth, 0, -halfHeight),
                     new Vector3(halfHeight, 0, -halfHeight),
                     new Vector3(-halfHeight, 0, halfHeight),
                     new Vector3(halfWidth, 0, halfHeight)
-                };
-                mesh.vertices = vertices;
+            };
+            quad.vertices = vertices;
 
-                int[] tris = new int[6]
-                {
+            int[] tris = new int[6]
+            {
                     // lower left triangle
                     0, 2, 1,
                     // upper right triangle
                     2, 3, 1
-                };
-                mesh.triangles = tris;
+            };
+            quad.triangles = tris;
 
-                Vector3[] normals = new Vector3[4]
-                {
+            Vector3[] normals = new Vector3[4]
+            {
                     Vector3.up,
                     Vector3.up,
                     Vector3.up,
                     Vector3.up
-                };
-                mesh.normals = normals;
+            };
+            quad.normals = normals;
 
-                Vector2[] uv = new Vector2[4]
-                {
+            Vector2[] uv = new Vector2[4]
+            {
                     new Vector2(0, 0),
                     new Vector2(1, 0),
                     new Vector2(0, 1),
                     new Vector2(1, 1)
-                };
-                mesh.uv = uv;
-            }
+            };
+            quad.uv = uv;
+            return quad;
         }
 
-        public static Mesh Get()
+        public static Mesh CreateDiamond()
         {
-            if (!mesh) Create();
-            return mesh;
+            float size = 0.5f;
+            float height = 1f;
+            var diamond = new Mesh();
+            Vector3[] vertices = new Vector3[6];
+
+            float midP = height * 0.5f;
+            // side
+            vertices[0] = new Vector3(-size, midP, 0);
+            vertices[1] = new Vector3(0, midP, -size);
+            vertices[2] = new Vector3(size, midP, 0);
+            vertices[3] = new Vector3(0, midP, size);
+            // Top
+            vertices[4] = new Vector3(0, height, 0);
+            // Bottom
+            vertices[5] = new Vector3(0, 0, 0);
+            int[] triangles = {
+                // Bottom faces (counter-clockwise)
+                0, 1, 5,
+                1, 2, 5,
+                2, 3, 5,
+                3, 0, 5,
+
+                // Side faces (clockwise)
+                0, 4, 1,
+                1, 4, 2,
+                2, 4, 3,
+                3, 4, 0
+            };
+            diamond.vertices = vertices;
+            diamond.triangles = triangles;
+            diamond.RecalculateNormals();
+            diamond.RecalculateTangents();
+            diamond.RecalculateBounds();
+            return diamond;
         }
     }
 
@@ -1866,174 +1858,199 @@ where T : IEquatable<T>
                         _highDefinition = new Material(Shader.Find("HDRP/Lit"));
                     _highDefinition.SetColor("_BaseColor", Color.gray);
                     return _highDefinition;
-                default: 
+                default:
                     return _builtIn;
             }
         }
     }
-
-    // model animation frame information
-    [Serializable]
-    public class Steel
+    // texture helpers not use.
+    class Textures
     {
-        public string clipPath;
-        public double time;
-        private AnimationClip _animationClip;
-        public AnimationClip animationClip
+        static Texture2D m_WhiteTexture;
+
+        /// <summary>
+        /// A 1x1 white texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture2D whiteTexture
         {
             get
             {
-                if (!_animationClip)
-                    _animationClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
-                return _animationClip;
-            }
-            set
-            {
-                _animationClip = value;
-                clipPath = AssetDatabase.GetAssetPath(_animationClip);
+                if (m_WhiteTexture == null)
+                {
+                    m_WhiteTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "White Texture" };
+                    m_WhiteTexture.SetPixel(0, 0, Color.white);
+                    m_WhiteTexture.Apply();
+                }
+
+                return m_WhiteTexture;
             }
         }
 
-        public Steel(AnimationClip clip, double time)
+        static Texture3D m_WhiteTexture3D;
+
+        /// <summary>
+        /// A 1x1x1 white texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture3D whiteTexture3D
         {
-            this.animationClip = clip;
-            this.time = time;
+            get
+            {
+                if (m_WhiteTexture3D == null)
+                {
+                    m_WhiteTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
+                    { name = "White Texture 3D" };
+                    m_WhiteTexture3D.SetPixels(new Color[] { Color.white });
+                    m_WhiteTexture3D.Apply();
+                }
+
+                return m_WhiteTexture3D;
+            }
+        }
+
+        static Texture2D m_BlackTexture;
+
+        /// <summary>
+        /// A 1x1 black texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture2D blackTexture
+        {
+            get
+            {
+                if (m_BlackTexture == null)
+                {
+                    m_BlackTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "Black Texture" };
+                    m_BlackTexture.SetPixel(0, 0, Color.black);
+                    m_BlackTexture.Apply();
+                }
+
+                return m_BlackTexture;
+            }
+        }
+
+        static Texture3D m_BlackTexture3D;
+
+        /// <summary>
+        /// A 1x1x1 black texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture3D blackTexture3D
+        {
+            get
+            {
+                if (m_BlackTexture3D == null)
+                {
+                    m_BlackTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
+                    { name = "Black Texture 3D" };
+                    m_BlackTexture3D.SetPixels(new Color[] { Color.black });
+                    m_BlackTexture3D.Apply();
+                }
+
+                return m_BlackTexture3D;
+            }
+        }
+
+        static Texture2D m_TransparentTexture;
+
+        /// <summary>
+        /// A 1x1 transparent texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture2D transparentTexture
+        {
+            get
+            {
+                if (m_TransparentTexture == null)
+                {
+                    m_TransparentTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false)
+                    { name = "Transparent Texture" };
+                    m_TransparentTexture.SetPixel(0, 0, Color.clear);
+                    m_TransparentTexture.Apply();
+                }
+
+                return m_TransparentTexture;
+            }
+        }
+
+        static Texture3D m_TransparentTexture3D;
+
+        /// <summary>
+        /// A 1x1x1 transparent texture.
+        /// </summary>
+        /// <remarks>
+        /// This texture is only created once and recycled afterward. You shouldn't modify it.
+        /// </remarks>
+        public static Texture3D transparentTexture3D
+        {
+            get
+            {
+                if (m_TransparentTexture3D == null)
+                {
+                    m_TransparentTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
+                    { name = "Transparent Texture 3D" };
+                    m_TransparentTexture3D.SetPixels(new Color[] { Color.clear });
+                    m_TransparentTexture3D.Apply();
+                }
+
+                return m_TransparentTexture3D;
+            }
         }
     }
 
-    // view target object. model, particle, etc
-    class TargetInfo
+    // simple grid mesh builder
+    class Grid
     {
-        public string assetPath;
-        private StringBuilder sb = new StringBuilder();
-        public Bounds bounds;
-        public List<Renderer> renderers = new List<Renderer>();
-        public List<Transform> bones = new List<Transform>();
-        public List<Material> materials = new List<Material>();
-        public List<Animator> animators = new List<Animator>();
-        public List<MeshRenderer> meshRenderers = new List<MeshRenderer>();
-        public List<SkinnedMeshRenderer> skinnedMeshRenderers = new List<SkinnedMeshRenderer>();
-        public List<ParticleSystem> particleSystems = new List<ParticleSystem>();
-        public List<MonoBehaviour> behaviours = new List<MonoBehaviour>();
+        private static List<Vector3> verticies;
+        private static List<int> indicies;
+        private static Mesh mesh;
 
-        public List<ParticleSystemRenderer> particleSystemRenderers = new List<ParticleSystemRenderer>();
-        //public Mesh[] meshes;
-
-        void Cleanup()
+        public static Mesh Get(int size)
         {
-            sb.Length = 0;
-            bounds = new Bounds();
-            renderers.Clear();
-            bones.Clear();
-            materials.Clear();
-            animators = null;
-            meshRenderers = null;
-            skinnedMeshRenderers = null;
-            particleSystems = null;
-            particleSystemRenderers = null;
-            behaviours = null;
-        }
+            if (mesh == null) mesh = new Mesh();
+            if (indicies == null) indicies = new List<int>();
+            if (verticies == null) verticies = new List<Vector3>();
 
-        public void Init(GameObject source,GameObject instance)
-        {
-            Cleanup();
-            var srcPrefab = PrefabUtility.GetCorrespondingObjectFromSource(source);
-            assetPath = srcPrefab ? AssetDatabase.GetAssetPath(srcPrefab) : AssetDatabase.GetAssetPath(source);
-            sb.Append(source.name);
-            sb.Append("\n");
-            animators = instance.GetComponentsInChildren<Animator>().ToList();
-            renderers = instance.GetComponentsInChildren<Renderer>().ToList();
-            meshRenderers = instance.GetComponentsInChildren<MeshRenderer>().ToList();
-            skinnedMeshRenderers = instance.GetComponentsInChildren<SkinnedMeshRenderer>().ToList();
-            particleSystems = instance.GetComponentsInChildren<ParticleSystem>().ToList();
-            particleSystemRenderers = instance.GetComponentsInChildren<ParticleSystemRenderer>().ToList();
-            behaviours = instance.GetComponentsInChildren<MonoBehaviour>().ToList();
+            mesh.Clear();
+            verticies.Clear();
+            indicies.Clear();
 
-            foreach (var renderer in renderers)
+            for (int i = 0; i < size; i++)
             {
-                materials.AddRange(renderer.sharedMaterials);
-                bounds.Encapsulate(renderer.bounds);
+                verticies.Add(new Vector3(i, 0, 0));
+                verticies.Add(new Vector3(i, 0, size));
+
+                indicies.Add(4 * i + 0);
+                indicies.Add(4 * i + 1);
+
+                verticies.Add(new Vector3(0, 0, i));
+                verticies.Add(new Vector3(size, 0, i));
+
+                indicies.Add(4 * i + 2);
+                indicies.Add(4 * i + 3);
             }
 
-            materials = materials.Where(x => x != null).Distinct().ToList();
-
-            if (animators.Count > 0)
-            {
-                sb.Append(string.Format("Animators : {0}\n", animators.Count().ToString()));
-            }
-
-            if (meshRenderers.Count > 0)
-            {
-                sb.Append(string.Format("MeshRenderer : {0}\n", meshRenderers.Count.ToString()));
-            }
-
-            if (skinnedMeshRenderers.Count > 0)
-            {
-                bones.AddRange(skinnedMeshRenderers.SelectMany(x => x.bones).Distinct());
-                sb.Append(string.Format("SkinnedMeshRenderer : {0}\n", skinnedMeshRenderers.Count.ToString()));
-                sb.Append(string.Format("Bones : {0}\n",
-                    skinnedMeshRenderers.SelectMany(x => x.bones).Distinct().Count().ToString()));
-            }
-
-            if (particleSystems.Count > 0)
-            {
-                foreach (var ps in particleSystems)
-                {
-                    ParticleSystemRenderer component = ps.GetComponent<ParticleSystemRenderer>();
-                    ps.Simulate(1, true, true, false);
-                    bounds.Encapsulate(component.bounds);
-                    ps.Clear();
-                    ps.Stop();
-                }
-
-                sb.Append(string.Format("ParticleSystem : {0}\n", particleSystems.Count.ToString()));
-                if (particleSystemRenderers.Count > 0)
-                {
-                    sb.Append(string.Format("ParticleSystemRenderer : {0}\n",
-                        particleSystemRenderers.Count.ToString()));
-                }
-            }
-
-            sb.Append(string.Format("Materials : {0}\n",
-                renderers.SelectMany(x => x.sharedMaterials).Distinct().Count().ToString()));
-
-            if (behaviours.Count > 0)
-            {
-                sb.Append(string.Format("Monobehaviour : {0}\n", behaviours.Count.ToString()));
-            }
-        }
-
-        public string GetMeshInfo(Mesh target)
-        {
-            //namespace UnityEditor
-            //{
-            //  internal sealed class InternalMeshUtil
-            //  {
-            //    public static extern int GetPrimitiveCount(Mesh mesh);
-            //    public static extern int CalcTriangleCount(Mesh mesh);
-            //    public static extern bool HasNormals(Mesh mesh);
-            //    public static extern string GetVertexFormat(Mesh mesh);
-            //    public static extern float GetCachedMeshSurfaceArea(MeshRenderer meshRenderer);
-            //  }
-            //}
-            Type internalMeshUtil = Type.GetType("InternalMeshUtil");
-            MethodInfo getPrimitiveCount = internalMeshUtil.GetMethod("GetPrimitiveCount", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            MethodInfo getVertexFormat = internalMeshUtil.GetMethod("GetVertexFormat", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            string str = target.vertexCount.ToString() + " verts, " + (object)getPrimitiveCount.Invoke(this, new object[] { target }) + " tris";
-            int subMeshCount = target.subMeshCount;
-            if (subMeshCount > 1)
-                str = str + ", " + (object)subMeshCount + " submeshes";
-            int blendShapeCount = target.blendShapeCount;
-            if (blendShapeCount > 1)
-                str = str + ", " + (object)blendShapeCount + " blendShapes";
-            return str + "\n" + getVertexFormat.Invoke(this, new object[] { target });
-        }
-
-        public string Print()
-        {
-            return sb.ToString();
+            mesh.vertices = verticies.ToArray();
+            mesh.SetIndices(indicies.ToArray(), MeshTopology.Lines, 0);
+            return mesh;
         }
     }
+
+    #endregion
+
+    #region ScopeHelper
+
     // override quality setting in scope
     class QualitySettingsOverrider : IDisposable
     {
@@ -2264,7 +2281,7 @@ where T : IEquatable<T>
         Renderer renderer;
         bool enabled;
 
-        public ShowHideRendererScope(Renderer renderer,bool enabled)
+        public ShowHideRendererScope(Renderer renderer, bool enabled)
         {
             this.renderer = renderer;
             this.enabled = renderer.enabled;
@@ -2277,295 +2294,242 @@ where T : IEquatable<T>
         }
     }
 
-    // simple command buffer manager
-    class CommandBufferManager
+    #endregion
+
+    #region GUI
+    // animated bool for GUI
+    [Serializable]
+    class AnimBoolS : BaseAnimValue<bool>
     {
-        class Blitter
+        [SerializeField] private float m_Value;
+
+        public AnimBoolS()
+            : base(false)
         {
-            public Camera camera;
-            public CommandBuffer commandBuffer;
-            public CameraEvent cameraEvent;
-            public RenderTexture rt;
-            public Material mat;
-            //public RenderPipelineAsset pipelineAsset;
-
-            public Blitter(Camera cam, CameraEvent cameraEvent, Material mat)
-            {
-                this.camera = cam;
-                this.cameraEvent = cameraEvent;
-                commandBuffer = new CommandBuffer();
-                this.mat = mat;
-            }
-
-            public void Blit()
-            {
-                rt = RenderTexture.GetTemporary(camera.targetTexture.width, camera.targetTexture.height, 24);
-                camera.AddCommandBuffer(cameraEvent, commandBuffer);
-                commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, rt, mat);
-                commandBuffer.Blit(rt, BuiltinRenderTextureType.CameraTarget);
-
-            }
         }
 
-        private List<Blitter> blitterList = new List<Blitter>();
-
-        //private DepthTextureMode _mode = DepthTextureMode.None;
-        private Camera _camera;
-
-        public CommandBufferManager(Camera camera)
+        public AnimBoolS(bool value)
+            : base(value)
         {
-            this._camera = camera;
         }
 
-        public void Add(DepthTextureMode mode, Material mat)
+        public AnimBoolS(UnityAction callback)
+            : base(false, callback)
         {
-            //this._mode = mode;
-            _camera.depthTextureMode = mode;
-            foreach (var blitter in blitterList)
+        }
+
+        public AnimBoolS(bool value, UnityAction callback)
+            : base(value, callback)
+        {
+        }
+
+        public float faded
+        {
+            get
             {
-                blitter.rt =
-                    RenderTexture.GetTemporary(_camera.targetTexture.width, _camera.targetTexture.height, 24);
-                _camera.AddCommandBuffer(blitter.cameraEvent, blitter.commandBuffer);
-                blitter.commandBuffer.Blit(BuiltinRenderTextureType.CameraTarget, blitter.rt, mat);
-                blitter.commandBuffer.Blit(blitter.rt, BuiltinRenderTextureType.CameraTarget);
+                this.GetValue();
+                return this.m_Value;
             }
         }
 
-        public static void RemoveBufferFromAllEvent(Camera camera, CommandBuffer buffer)
+        protected override bool GetValue()
         {
-            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeDepthNormalsTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterDepthNormalsTexture, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeGBuffer, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterGBuffer, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterLighting, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeFinalPass, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterFinalPass, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterForwardOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffectsOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffectsOpaque, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeSkybox, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterSkybox, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterEverything, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeReflections, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterReflections, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.BeforeHaloAndLensFlares, buffer);
-            camera.RemoveCommandBuffer(CameraEvent.AfterHaloAndLensFlares, buffer);
+            float a = !this.target ? 1f : 0.0f;
+            float b = 1f - a;
+            this.m_Value = Mathf.SmoothStep(a, b, this.lerpPosition);
+            return (double)this.m_Value > 0.5;
+        }
+
+        public float Fade(float from, float to)
+        {
+            return Mathf.SmoothStep(from, to, this.faded);
         }
     }
-    // calculate fps info
-    class FPS
+
+    // gui helper
+    class RectSlicer
     {
-        static string formatedString = "{0} FPS ({1}ms)";
+        private EditorWindow window;
+        private Rect _rect;
 
-        static float ms
+        public Rect rect
         {
-            get { return (float)System.Math.Round(1000f / fps, 1); }
+            get { return window ? window.position : _rect; }
+            set { _rect = value; }
         }
 
-        public static float updateInterval = 0.25f;
-        static float elapsedTime = 0;
-        static float fps = 0.0F;
+        //EditiorWindow GUI
+        public AnimBoolS openTop;
+        public AnimBoolS openLeft;
+        public AnimBoolS openRight;
+        public AnimBoolS openBottom;
+        public float topTargetHeight = 100;
+        public float bottomTargetHeight = 100;
+        public float leftTargetWidth = 200;
+        public float rightTargetWidth = 200;
 
-        public static void Calculate(float deltaTime)
+        public float topHeight
         {
-            elapsedTime += deltaTime;
-            if (elapsedTime / updateInterval > 1)
+            get { return openTop.faded * topTargetHeight; }
+        }
+
+        public float bottomHeight
+        {
+            get { return openBottom.faded * bottomTargetHeight; }
+        }
+
+        public float leftWidth
+        {
+            get { return openLeft.faded * leftTargetWidth; }
+        }
+
+        public float rightWidth
+        {
+            get { return openRight.faded * rightTargetWidth; }
+        }
+
+        public Rect center
+        {
+            get
             {
-                fps = 1 / deltaTime;
-                elapsedTime = 0;
+                return new Rect(leftWidth, topHeight, rect.width - leftWidth - rightWidth,
+                    rect.height - topHeight - bottomHeight);
             }
+        } // { width = rect.width - leftWidth - rightWidth, height = rect.height - topHeight - bottomHeight, x = leftWidth, y = topHeight }; } }
 
-            fps = (float)System.Math.Round(fps, 1);
-        }
-
-        public static string GetString()
+        public Rect top
         {
-            return string.Format(formatedString, fps.ToString(), ms.ToString());
-        }
-    }
-    // texture utilities. not use.
-    class TexUtil
-    {
-        public enum ImageFilterMode : int
+            get { return new Rect(leftWidth, 0, rect.width - leftWidth - rightWidth, topHeight); }
+        } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
+
+        public Rect stretchedTop
         {
-            Nearest = 0,
-            Biliner = 1,
-            Average = 2
-        }
+            get { return new Rect(0, 0, rect.width, topHeight); }
+        } //{ width = rect.width, height = topHeight, x = 0, y = 0 }; } }
 
-        public static Texture2D ResizeTexture(Texture2D pSource, ImageFilterMode pFilterMode, Vector2 size)
+        public Rect bottom
         {
-
-            //*** Variables
-            int i;
-
-            //*** Get All the source pixels
-            Color[] aSourceColor = pSource.GetPixels(0);
-            Vector2 vSourceSize = new Vector2(pSource.width, pSource.height);
-
-            //*** Calculate New Size
-            float xWidth = Mathf.RoundToInt((float)size.x);
-            float xHeight = Mathf.RoundToInt((float)size.y);
-
-            //*** Make New
-            Texture2D oNewTex = new Texture2D((int)xWidth, (int)xHeight, TextureFormat.RGBA32, false);
-
-            //*** Make destination array
-            int xLength = (int)xWidth * (int)xHeight;
-            Color[] aColor = new Color[xLength];
-
-            Vector2 vPixelSize = new Vector2(vSourceSize.x / xWidth, vSourceSize.y / xHeight);
-
-            //*** Loop through destination pixels and process
-            Vector2 vCenter = new Vector2();
-            for (i = 0; i < xLength; i++)
+            get
             {
-
-                //*** Figure out x&y
-                float xX = (float)i % xWidth;
-                float xY = Mathf.Floor((float)i / xWidth);
-
-                //*** Calculate Center
-                vCenter.x = (xX / xWidth) * vSourceSize.x;
-                vCenter.y = (xY / xHeight) * vSourceSize.y;
-
-                //*** Do Based on mode
-                //*** Nearest neighbour (testing)
-                if (pFilterMode == ImageFilterMode.Nearest)
-                {
-
-                    //*** Nearest neighbour (testing)
-                    vCenter.x = Mathf.Round(vCenter.x);
-                    vCenter.y = Mathf.Round(vCenter.y);
-
-                    //*** Calculate source index
-                    int xSourceIndex = (int)((vCenter.y * vSourceSize.x) + vCenter.x);
-
-                    //*** Copy Pixel
-                    aColor[i] = aSourceColor[xSourceIndex];
-                }
-
-                //*** Bilinear
-                else if (pFilterMode == ImageFilterMode.Biliner)
-                {
-
-                    //*** Get Ratios
-                    float xRatioX = vCenter.x - Mathf.Floor(vCenter.x);
-                    float xRatioY = vCenter.y - Mathf.Floor(vCenter.y);
-
-                    //*** Get Pixel index's
-                    int xIndexTL = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
-                    int xIndexTR = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
-                    int xIndexBL = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
-                    int xIndexBR = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
-
-                    //*** Calculate Color
-                    aColor[i] = Color.Lerp(
-                        Color.Lerp(aSourceColor[xIndexTL], aSourceColor[xIndexTR], xRatioX),
-                        Color.Lerp(aSourceColor[xIndexBL], aSourceColor[xIndexBR], xRatioX),
-                        xRatioY
-                    );
-                }
-
-                //*** Average
-                else if (pFilterMode == ImageFilterMode.Average)
-                {
-
-                    //*** Calculate grid around point
-                    int xXFrom = (int)Mathf.Max(Mathf.Floor(vCenter.x - (vPixelSize.x * 0.5f)), 0);
-                    int xXTo = (int)Mathf.Min(Mathf.Ceil(vCenter.x + (vPixelSize.x * 0.5f)), vSourceSize.x);
-                    int xYFrom = (int)Mathf.Max(Mathf.Floor(vCenter.y - (vPixelSize.y * 0.5f)), 0);
-                    int xYTo = (int)Mathf.Min(Mathf.Ceil(vCenter.y + (vPixelSize.y * 0.5f)), vSourceSize.y);
-
-                    //*** Loop and accumulate
-                    //Vector4 oColorTotal = new Vector4();
-                    Color oColorTemp = new Color();
-                    float xGridCount = 0;
-                    for (int iy = xYFrom; iy < xYTo; iy++)
-                    {
-                        for (int ix = xXFrom; ix < xXTo; ix++)
-                        {
-
-                            //*** Get Color
-                            oColorTemp += aSourceColor[(int)(((float)iy * vSourceSize.x) + ix)];
-
-                            //*** Sum
-                            xGridCount++;
-                        }
-                    }
-
-                    //*** Average Color
-                    aColor[i] = oColorTemp / (float)xGridCount;
-                }
+                return new Rect(leftWidth, topHeight + center.height, rect.width - leftWidth - rightWidth,
+                    bottomHeight);
             }
-
-            //*** Set Pixels
-            oNewTex.SetPixels(aColor);
-            oNewTex.Apply();
-
-            //*** Return
-            return oNewTex;
         }
 
-        public static Texture2D ApplyGammaCorrection(Texture2D src)
+        public Rect stretchedBottom
         {
-            Color[] srcColors = src.GetPixels(0);
-            Texture2D newTex = new Texture2D((int)src.width, (int)src.height, TextureFormat.RGBA32, false);
-            int pixelCount = (int)src.width * (int)src.height;
-            Color[] newColors = new Color[pixelCount];
-            for (int i = 0; i < pixelCount; i++)
-            {
-                newColors[i] = srcColors[i].gamma;
-            }
+            get { return new Rect(0, topHeight + center.height, rect.width, bottomHeight); }
+        } // { width = rect.width, height = bottomHeight, x = 0, y = topHeight + center.height }; } }
 
-            newTex.SetPixels(newColors);
-            newTex.Apply();
-            return newTex;
+        public Rect left
+        {
+            get { return new Rect(0, topHeight, leftWidth, center.height); }
+        } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
+
+        public Rect stretchedLeft
+        {
+            get { return new Rect(0, 0, leftWidth, rect.height); }
+        } //{ width = leftWidth, height = center.height, x = 0, y = topHeight }; } }
+
+        public Rect right
+        {
+            get { return new Rect(leftWidth + center.width, topHeight, rightWidth, center.height); }
+        } // { width = rightWidth, height = center.height, x = leftWidth + center.width, y = topHeight }; } }
+
+        public Rect stretchedRight
+        {
+            get { return new Rect(leftWidth + center.width, 0, rightWidth, rect.height); }
         }
-    }
-    // simple grid mesh builder
-    class Grid
-    {
-        private static List<Vector3> verticies;
-        private static List<int> indicies;
-        private static Mesh mesh;
 
-        public static Mesh Get(int size)
+        public Rect full
         {
-            if (mesh == null) mesh = new Mesh();
-            if (indicies == null) indicies = new List<int>();
-            if (verticies == null) verticies = new List<Vector3>();
+            get { return new Rect(0, 0, rect.width, rect.height); }
+        } // { width = rect.width, height = rect.height, x = 0, y = 0 }; } }
 
-            mesh.Clear();
-            verticies.Clear();
-            indicies.Clear();
+        public RectSlicer()
+        {
+            this.openTop = new AnimBoolS(false);
+            this.openBottom = new AnimBoolS(false);
+            this.openLeft = new AnimBoolS(false);
+            this.openRight = new AnimBoolS(false);
+        }
 
-            for (int i = 0; i < size; i++)
-            {
-                verticies.Add(new Vector3(i, 0, 0));
-                verticies.Add(new Vector3(i, 0, size));
 
-                indicies.Add(4 * i + 0);
-                indicies.Add(4 * i + 1);
+        public RectSlicer(EditorWindow window)
+        {
+            this.window = window;
+            UnityAction onChangeCallback = window.Repaint;
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+        }
 
-                verticies.Add(new Vector3(0, 0, i));
-                verticies.Add(new Vector3(size, 0, i));
+        public RectSlicer(UnityAction onChangeCallback)
+        {
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+        }
 
-                indicies.Add(4 * i + 2);
-                indicies.Add(4 * i + 3);
-            }
+        public RectSlicer(Rect r, UnityAction onChangeCallback)
+        {
+            this.rect = r;
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+        }
 
-            mesh.vertices = verticies.ToArray();
-            mesh.SetIndices(indicies.ToArray(), MeshTopology.Lines, 0);
-            return mesh;
+        public RectSlicer(Rect r, float topHeight, float bottomHeight, float leftWidth, float rightWidth,
+            UnityAction onChangeCallback)
+        {
+            this.rect = r;
+            this.openTop = new AnimBoolS(false);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(false);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(false);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(false);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+
+            this.topTargetHeight = topHeight;
+            this.bottomTargetHeight = bottomHeight;
+            this.leftTargetWidth = leftWidth;
+            this.rightTargetWidth = rightWidth;
+        }
+
+        public RectSlicer(Rect r, bool openTop, float topHeight, bool openBottom, float bottomHeight, bool openLeft,
+            float leftWidth, bool openRight, float rightWidth, UnityAction onChangeCallback)
+        {
+            this.rect = r;
+            this.openTop = new AnimBoolS(openTop);
+            this.openTop.valueChanged.AddListener(onChangeCallback);
+            this.openBottom = new AnimBoolS(openBottom);
+            this.openBottom.valueChanged.AddListener(onChangeCallback);
+            this.openLeft = new AnimBoolS(openLeft);
+            this.openLeft.valueChanged.AddListener(onChangeCallback);
+            this.openRight = new AnimBoolS(openRight);
+            this.openRight.valueChanged.AddListener(onChangeCallback);
+
+            this.topTargetHeight = topHeight;
+            this.bottomTargetHeight = bottomHeight;
+            this.leftTargetWidth = leftWidth;
+            this.rightTargetWidth = rightWidth;
         }
     }
     // simple hierachy view
@@ -2910,152 +2874,6 @@ where T : IEquatable<T>
             transforms.RemoveAll(t => IsDescendantOf(t, transforms));
         }
     }
-    // texture helpers not use.
-    class Textures
-    {
-        static Texture2D m_WhiteTexture;
-
-        /// <summary>
-        /// A 1x1 white texture.
-        /// </summary>
-        /// <remarks>
-        /// This texture is only created once and recycled afterward. You shouldn't modify it.
-        /// </remarks>
-        public static Texture2D whiteTexture
-        {
-            get
-            {
-                if (m_WhiteTexture == null)
-                {
-                    m_WhiteTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "White Texture" };
-                    m_WhiteTexture.SetPixel(0, 0, Color.white);
-                    m_WhiteTexture.Apply();
-                }
-
-                return m_WhiteTexture;
-            }
-        }
-
-        static Texture3D m_WhiteTexture3D;
-
-        /// <summary>
-        /// A 1x1x1 white texture.
-        /// </summary>
-        /// <remarks>
-        /// This texture is only created once and recycled afterward. You shouldn't modify it.
-        /// </remarks>
-        public static Texture3D whiteTexture3D
-        {
-            get
-            {
-                if (m_WhiteTexture3D == null)
-                {
-                    m_WhiteTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                    { name = "White Texture 3D" };
-                    m_WhiteTexture3D.SetPixels(new Color[] { Color.white });
-                    m_WhiteTexture3D.Apply();
-                }
-
-                return m_WhiteTexture3D;
-            }
-        }
-
-        static Texture2D m_BlackTexture;
-
-        /// <summary>
-        /// A 1x1 black texture.
-        /// </summary>
-        /// <remarks>
-        /// This texture is only created once and recycled afterward. You shouldn't modify it.
-        /// </remarks>
-        public static Texture2D blackTexture
-        {
-            get
-            {
-                if (m_BlackTexture == null)
-                {
-                    m_BlackTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false) { name = "Black Texture" };
-                    m_BlackTexture.SetPixel(0, 0, Color.black);
-                    m_BlackTexture.Apply();
-                }
-
-                return m_BlackTexture;
-            }
-        }
-
-        static Texture3D m_BlackTexture3D;
-
-        /// <summary>
-        /// A 1x1x1 black texture.
-        /// </summary>
-        /// <remarks>
-        /// This texture is only created once and recycled afterward. You shouldn't modify it.
-        /// </remarks>
-        public static Texture3D blackTexture3D
-        {
-            get
-            {
-                if (m_BlackTexture3D == null)
-                {
-                    m_BlackTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                    { name = "Black Texture 3D" };
-                    m_BlackTexture3D.SetPixels(new Color[] { Color.black });
-                    m_BlackTexture3D.Apply();
-                }
-
-                return m_BlackTexture3D;
-            }
-        }
-
-        static Texture2D m_TransparentTexture;
-
-        /// <summary>
-        /// A 1x1 transparent texture.
-        /// </summary>
-        /// <remarks>
-        /// This texture is only created once and recycled afterward. You shouldn't modify it.
-        /// </remarks>
-        public static Texture2D transparentTexture
-        {
-            get
-            {
-                if (m_TransparentTexture == null)
-                {
-                    m_TransparentTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false)
-                    { name = "Transparent Texture" };
-                    m_TransparentTexture.SetPixel(0, 0, Color.clear);
-                    m_TransparentTexture.Apply();
-                }
-
-                return m_TransparentTexture;
-            }
-        }
-
-        static Texture3D m_TransparentTexture3D;
-
-        /// <summary>
-        /// A 1x1x1 transparent texture.
-        /// </summary>
-        /// <remarks>
-        /// This texture is only created once and recycled afterward. You shouldn't modify it.
-        /// </remarks>
-        public static Texture3D transparentTexture3D
-        {
-            get
-            {
-                if (m_TransparentTexture3D == null)
-                {
-                    m_TransparentTexture3D = new Texture3D(1, 1, 1, TextureFormat.ARGB32, false)
-                    { name = "Transparent Texture 3D" };
-                    m_TransparentTexture3D.SetPixels(new Color[] { Color.clear });
-                    m_TransparentTexture3D.Apply();
-                }
-
-                return m_TransparentTexture3D;
-            }
-        }
-    }
-
     // popup window context for size input.
     public class SizePopup : PopupWindowContent
     {    //Search results can be filtered by specifying a series of properties that sounds should match. 
@@ -3298,6 +3116,9 @@ where T : IEquatable<T>
         }
     }
     // draw text on viewport directly.
+
+
+
     static class Notice
     {
         private static StringBuilder _sb;
@@ -3430,7 +3251,7 @@ where T : IEquatable<T>
                 for (int i = 0; i < parent.childCount; i++)
                 {
                     Transform child = parent.GetChild(i);
-                    Transform foundInChildren = FindTransformRecursive(child, (x)=>x.name == name);
+                    Transform foundInChildren = FindTransformRecursive(child, (x) => x.name == name);
                     if (foundInChildren != null)
                     {
                         result = foundInChildren;
@@ -3441,7 +3262,7 @@ where T : IEquatable<T>
             return result;
         }
 
-        public static Transform FindTransformRecursive(Transform parent,Func<Transform, bool> action)
+        public static Transform FindTransformRecursive(Transform parent, Func<Transform, bool> action)
         {
             Transform result = null;
             if (action.Invoke(parent)) result = parent;
@@ -3492,42 +3313,107 @@ where T : IEquatable<T>
         }
     }
 
-    public class TransformModifier
+    #endregion
+
+    #region Animation
+
+    // 애니메이션을 적용할 수 있는 대상
+    public class Actor
     {
+        public bool enabled;
+        public GameObject prefab;
+        public GameObject instance;
+        public Animator animator;
+        public Bounds bounds;
 
-        // 로테이션에는 관여하지 않고 해당 노드의 길이와 스케일에만 관여하는 것으로 함.
-        // 부모와 자식의 원래 정보를 저장하고 상황에 따라 부모를 본 진행 반대 방향으로 이동시키거나 자식을 본 진행 방향으로 이동시키자. 
-        public class ModifiedTransform
+        public bool isSceneObject
         {
-            TransformModifier modifier;
-            public string targetName = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
-            public string name = string.Empty;
-            public Transform root;
-            public Transform parent;
-            public Transform transform;
-            public ModifiedTransform transformPair;
-            public bool isSymmetrical;
+            get { return prefab == null; }
+        }
+        public string name
+        {
+            get { return isSceneObject ? instance.name : prefab.name; }
+        }
+        public Actor(GameObject src, bool sceneObject)
+        {
+            this.enabled = true;
+            if (sceneObject)
+            {
+                this.instance = src;
+            }
+            else
+            {
+                this.prefab = src;
+                this.instance = (GameObject)PrefabUtility.InstantiatePrefab((prefab));
+                if (!instance)
+                {
+                    Debug.Log(string.Format("Can't instantiate : {0}", src.name));
+                    return;
+                }
+                this.instance.name = prefab.name + "(Actor)";
+            }
+            Animator animator = instance.GetComponent<Animator>();
+            if (animator)
+            {
+                this.animator = animator;
+            }
+            var renderers = instance.GetComponentsInChildren<Renderer>().ToList();
+            foreach (var renderer in renderers)
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+    }
 
-            float bias;
-            private float scale = 1;
+    // apply modification to actor bone hierachy
+    public class BoneModifier
+    {
+        // 로테이션에는 관여하지 않고 해당 노드의 길이와 스케일에만 관여하는 것으로 함.
+        [Serializable]
+        public class BoneInfo
+        {
+            BoneModifier modifier;
+            public string path = string.Empty;
+            public string targetName = string.Empty; //입력한 최초값. 중복 비교를 위해 사용
+            public string displayName = string.Empty;
+
+            public string rootPath;
+            private Transform _root;
+            public Transform root;
+
+            public string parentPath;
+            private Transform _parent;
+            public Transform parent;
+
+            public string transformPath;
+            private Transform _transform;
+            public Transform transform;
+
+            public bool isSymmetrical;
+            public BoneInfo pair;
+
+            public float bias = 0;
+            public float scale = 1;
 
             Vector3 originalParentPosition = Vector3.zero;
             Vector3 originalPosition = Vector3.zero;
-            Vector3 originalScale = Vector3.one;
+            Vector3 originalLocalPosition = Vector3.zero;
+            Vector3 originalLocalScale = Vector3.one;
 
-            Vector3 directionFromParent;
+            Vector3 directionWS = Vector3.forward;
+            Vector3 directionLS = Vector3.forward;
             public float rootHeightBiasFactor = 0;
             public bool isPath; // 경로 기반 탐색할지 이름 기반 탐색할지
             public bool isLeg; // 표면에 고정되었는지 여부. 길이를 조절하면 부모 방향으로 전파되어야 함.
             internal bool enabled;
 
             // 생성할 때 BindPose 가 아니면 문제가 생기게 될 것이다...
-            public ModifiedTransform(TransformModifier modifier, string targetName, bool isPath)
+            public BoneInfo(BoneModifier modifier, string targetName, bool isPath)
             {
                 this.modifier = modifier;
-                modifier.onRemoveModifier.AddListener(Reset);
+                this.displayName = Path.GetFileName(targetName);
                 this.targetName = targetName;
-                this.root = modifier.objectRoot;
+                this.root = modifier.root;
                 this.isPath = isPath;
                 if (isPath)
                 {
@@ -3537,22 +3423,25 @@ where T : IEquatable<T>
                 {
                     transform = TransformHelper.FindTransformRecursive(root, targetName);
                 }
-                this.name = Path.GetFileName(targetName);
                 //Debug.Log(transform.name);
                 if (transform)
                 {
+                    path = TransformHelper.GetTransformPath(transform);
                     originalPosition = transform.position;
-                    originalScale = transform.localScale;
+                    originalLocalPosition = transform.localPosition;
+                    originalLocalScale = transform.localScale;
                     if (transform.parent != null)
                     {
                         this.parent = transform.parent;
                         originalParentPosition = transform.parent.position;
-                        directionFromParent = Vector3.Normalize(originalPosition - originalParentPosition);
+                        directionWS = Vector3.Normalize(originalPosition - originalParentPosition);
+                        directionLS = parent.InverseTransformDirection(directionWS);
                     }
 
                 }
             }
-            private void FindSymmetricalBone()
+
+            public void FindSymmetricalBone()
             {
                 // 이름 기반
                 string[] L_IDs = { " L", "_L", "_Left", "Left_" };
@@ -3563,11 +3452,11 @@ where T : IEquatable<T>
                     {
                         if (targetName.Contains(L_IDs[i]))
                         {
-                            transformPair = new ModifiedTransform(modifier, targetName.Replace(L_IDs[i], R_IDs[i]), isPath);
+                            pair = new BoneInfo(modifier, targetName.Replace(L_IDs[i], R_IDs[i]), isPath);
                         }
                         else if (targetName.Contains(R_IDs[i]))
                         {
-                            transformPair = new ModifiedTransform(modifier, targetName.Replace(R_IDs[i], L_IDs[i]), isPath);
+                            pair = new BoneInfo(modifier, targetName.Replace(R_IDs[i], L_IDs[i]), isPath);
                         }
                     }
                 }
@@ -3580,338 +3469,393 @@ where T : IEquatable<T>
                 Vector3 newPosition = point + direction.normalized * distance;
                 return newPosition;
             }
+
             public void SetModification(float lengthBias, float scale)
             {
                 this.bias = lengthBias;
                 this.scale = scale;
             }
 
-            public void OnGUI()
+            //public void OnGUI()
+            //{
+            //    //transformPair.transform = (Transform)EditorGUILayout.ObjectField(transformPair.transform, typeof(Transform), false);
+            //    using (var check = new EditorGUI.ChangeCheckScope())
+            //    {
+
+            //        using (EditorHelper.Horizontal.Do())
+            //        {
+            //            using (var checkSym = new EditorGUI.ChangeCheckScope())
+            //            {
+            //                isSymmetrical = GUILayout.Toggle(isSymmetrical, "Symmetry", EditorStyles.miniButton, GUILayout.Width(80));
+            //                EditorGUILayout.ObjectField(pair?.transform, typeof(Transform), false);
+            //                //symmetricalAxis = EditorHelper.FlipAxisDrawer(symmetricalAxis);
+            //                if (checkSym.changed)
+            //                {
+            //                    ApplySymmetry();
+            //                }
+            //            }
+            //        }
+            //        using (EditorHelper.Horizontal.Do())
+            //        {
+            //            isLeg = GUILayout.Toggle(isLeg, "Leg");
+            //            if (isLeg) isSymmetrical = true;
+            //            GUILayout.Label(rootHeightBiasFactor.ToString());
+            //        }
+            //        using (EditorHelper.LabelWidth.Do(50))
+            //        {
+            //            using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+            //            {
+
+            //                using (new EditorGUILayout.HorizontalScope())
+            //                {
+            //                    this.bias = EditorGUILayout.Slider("Bias", this.bias, -1f, 1f);
+            //                    if (GUILayout.Button(Icons.resetIcon)) this.bias = 0;
+            //                }
+
+
+            //                using (new EditorGUILayout.HorizontalScope())
+            //                {
+            //                    this.scale = EditorGUILayout.Slider("Scale", this.scale, 0f, 2f);
+            //                    if (GUILayout.Button(Icons.resetIcon)) this.scale = 1;
+            //                }
+
+            //            }
+            //        }
+            //        if (check.changed) Apply();
+            //    }
+            //}
+
+            public void Apply(bool animated = false)
             {
-                //transformPair.transform = (Transform)EditorGUILayout.ObjectField(transformPair.transform, typeof(Transform), false);
-                using (var check = new EditorGUI.ChangeCheckScope())
-                {
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        using (var checkSym = new EditorGUI.ChangeCheckScope())
-                        {
-                            isSymmetrical = GUILayout.Toggle(isSymmetrical, "Symmetry", EditorStyles.miniButton, GUILayout.Width(80));
-                            EditorGUILayout.ObjectField(transformPair?.transform, typeof(Transform), false);
-                            //symmetricalAxis = EditorHelper.FlipAxisDrawer(symmetricalAxis);
-                            if (checkSym.changed)
-                            {
-                                ApplySymmetry();
-                            }
-                        }
-                    }
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        isLeg = GUILayout.Toggle(isLeg, "Leg");
-                        GUILayout.Label(rootHeightBiasFactor.ToString());
-                    }
-                    using (EditorHelper.LabelWidth.Do(50))
-                    {
-                        using (new EditorGUILayout.VerticalScope(GUI.skin.box))
-                        {
-
-                            using (new EditorGUILayout.HorizontalScope())
-                            {
-                                this.bias = EditorGUILayout.Slider("Bias", this.bias, -1f, 1f);
-                                if (GUILayout.Button(Icons.resetIcon)) this.bias = 0;
-                            }
-
-
-                            using (new EditorGUILayout.HorizontalScope())
-                            {
-                                this.scale = EditorGUILayout.Slider("Scale", this.scale, 0f, 2f);
-                                if (GUILayout.Button(Icons.resetIcon)) this.scale = 1;
-                            }
-
-                        }
-                    }
-                    if (check.changed) Apply();
-                }
+                if (!transform) return;
+                Vector3 position = animated ? transform.localPosition : originalLocalPosition;
+                transform.localPosition = MovePointInDirection(position, directionLS, bias);
+                rootHeightBiasFactor = isLeg ? bias : 0;
+                transform.localScale = originalLocalScale * scale;
+                ApplySymmetry(animated);
+                modifier.ApplyPelvisOffset(animated);
             }
 
-            public void Apply()
+            internal void ApplySymmetry(bool applyToAnimated = false)
             {
-                if (transform)
+                if (!transform) return;
+                if (isSymmetrical)
                 {
-                    transform.position = isLeg ? originalPosition : MovePointInDirection(originalPosition, directionFromParent, bias);
-                    rootHeightBiasFactor = isLeg ? bias : 0;
-                    transform.localScale = originalScale * scale;
+                    //없으면 한 번 더 찾아봄
+                    if (pair == null) FindSymmetricalBone();
+                    if (pair != null)
+                    {
+                        //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
+                        pair.isLeg = isLeg;
+                        pair.SetModification(bias, scale);
+                        pair.Apply(applyToAnimated);
+                    }
                 }
-                ApplySymmetry();
-            }
-
-            // for overriding transform animation evaluated.
-            public void ApplyToCurrent()
-            {
-                if (transform)
+                else
                 {
-                    transform.position = MovePointInDirection(transform.position, directionFromParent, bias);
-                    transform.localScale = new Vector3(scale, scale, scale);
+                    //원상복구시킴
+                    if (pair != null)
+                    {
+                        pair.Reset();
+                    }
                 }
-                ApplySymmetryCurrent();
             }
 
             public void Reset()
             {
+                if (!transform) return;
                 bias = 0;
                 scale = 1;
                 Apply();
             }
-
-
-            internal void ApplySymmetry()
-            {
-                if (isSymmetrical)
-                {
-                    //없으면 한 번 더 찾아봄
-                    if (transformPair == null) FindSymmetricalBone();
-                    if (transformPair != null)
-                    {
-                        //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
-                        transformPair.isLeg = isLeg;
-                        transformPair.SetModification(bias, scale);
-                        transformPair.Apply();
-                    }
-                }
-                else
-                {
-                    //원상복구시킴
-                    if (transformPair != null)
-                    {
-                        transformPair.Reset();
-                    }
-                }
-            }
-            internal void ApplySymmetryCurrent()
-            {
-                if (isSymmetrical)
-                {
-                    if (transformPair != null)
-                    {
-                        transformPair.SetModification(bias, scale);
-                        transformPair.ApplyToCurrent();
-                    }
-                }
-                else
-                {
-                    //원상복구시킴
-                    if (transformPair != null)
-                    {
-                        transformPair.Reset();
-                    }
-                }
-            }
         }
 
-        public string _modifierFilter;
-        public List<ModifiedTransform> modifidTransformList = new List<ModifiedTransform>();
-        internal UnityEditorInternal.ReorderableList reorderableModifierList;
-        public string[] _modelRootHierachy;
-        public UnityEvent onRemoveModifier = new UnityEvent();
-
-        Transform objectRoot;
-        Transform pelvisReference;
-        Transform footReference;
-
-        public Vector3 originalPelvisPosition;
-        public float rootHeight;
-        public float rootHeightBias;
+        string[] _fullHierachy;
+        string _nodeFilterStr = string.Empty;
+        public List<BoneInfo> boneList = new List<BoneInfo>();
+        UnityEditorInternal.ReorderableList reorderableBoneList;
+        Transform root;
+        Transform pelvisRef;
+        Transform footRef;
+        Vector3 originalPelvisPosition;
 
         // Constructor
-        public TransformModifier(Transform root)
+        public BoneModifier(Transform root)
         {
-            this.objectRoot = root;
-            this.pelvisReference = TransformHelper.FindTransformRecursive(root, (x) => x.position != Vector3.zero);
-            if(pelvisReference)
-                originalPelvisPosition = pelvisReference.position;
-            footReference = TransformHelper.FindTransformRecursive(pelvisReference, (x) =>
+            this.root = root;
+            this.pelvisRef = TransformHelper.FindTransformRecursive(root, (x) => x.position != Vector3.zero);
+            if (pelvisRef)
             {
-                bool isEndNode = x.childCount == 0;// 자식이 없고
-                bool lowerThanParent = x.position.y < x.parent.position.y; // 부모보다 낮은 위치에 있으면
-                return isEndNode && lowerThanParent; // 본 구조에서 바닥을 지지하는 발이라고 하자
-            });
-            if (pelvisReference && footReference)
-            {
-                rootHeight = pelvisReference.position.y - footReference.position.y;
+                originalPelvisPosition = pelvisRef.position;
+                footRef = TransformHelper.FindTransformRecursive(pelvisRef, (x) =>
+                {
+                    bool isEndNode = x.childCount == 0;// 자식이 없고
+                    bool lowerThanParent = x.position.y < x.parent.position.y; // 부모보다 낮은 위치에 있으면
+                    return isEndNode && lowerThanParent; // 일단 본 구조에서 바닥을 지지하는 발이라고 하자. 치마 본 등 때문에 사실상 무의미한 조건... 
+                });
             }
-            _modelRootHierachy =TransformHelper.BuildHierachialPath(root);
+            _fullHierachy = TransformHelper.BuildHierachialPath(root);
             InitModifierList();
         }
 
-        private void ApplyPelvisHeightControl()
+
+        public void Load(string dataPath)
         {
-            float heightOffet = 0;
-            foreach (var item in modifidTransformList)
+            var data = File.ReadAllText(dataPath);
+            var loaded = JsonUtility.FromJson<BoneModifier>(data);
+            if (loaded != null)
             {
-                heightOffet += item.rootHeightBiasFactor;
+                boneList.Clear();
+                foreach (var item in loaded.boneList)
+                {
+                    boneList.Add(item); //Transform 등을 직접 Assign 하지 않으면 동작하지 않음....
+                }
             }
-            pelvisReference.position = originalPelvisPosition + new Vector3(0, heightOffet, 0);
+        }
+
+        public void Save(string dataPath)
+        {
+            var data = JsonUtility.ToJson(this, true);
+            File.WriteAllText(dataPath, data);
+        }
+
+        private void ApplyPelvisOffset(bool applyToAnimated = false)
+        {
+            if (pelvisRef)
+            {
+                float heightOffet = 0;
+                foreach (var item in boneList)
+                {
+                    heightOffet += item.rootHeightBiasFactor;
+                }
+                Vector3 position = applyToAnimated ? pelvisRef.position : originalPelvisPosition;
+                heightOffet = applyToAnimated ? heightOffet / 2 : heightOffet;
+                pelvisRef.position = position + new Vector3(0, heightOffet, 0);
+            }
         }
 
         public void OnGUI()
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                _modifierFilter = EditorHelper.SearchField(_modifierFilter);
-                if (GUILayout.Button(string.IsNullOrEmpty(_modifierFilter) ? "Root" : "Find"))
+                _nodeFilterStr = EditorHelper.SearchField(_nodeFilterStr);
+                if (GUILayout.Button(Icons.searchIcon, EditorStyles.miniButton, GUILayout.Width(50)))
                 {
-                    AddModifierHandler(_modifierFilter);                    
+                    AddNodeHandler(_nodeFilterStr);
                 }
             }
-            //EditorGUILayout.ObjectField("Root",objectRoot, typeof(Transform), false);
-            EditorGUILayout.ObjectField("Pelvis", pelvisReference, typeof(Transform), false);
-            EditorGUILayout.ObjectField("Foot", footReference, typeof(Transform), false);
-            GUILayout.Label($"Pelvis Height : {rootHeight.ToString()}");
-            for (int i = 0; i < modifidTransformList.Count; i++)
+            using (EditorHelper.LabelWidth.Do(50))
             {
-                ModifiedTransform mod = modifidTransformList[i];
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    GUILayout.Label(mod.name, EditorStyles.boldLabel);
-                    using (EditorHelper.Colorize.Do(Color.white, Color.red))
+                    EditorGUILayout.ObjectField("Pelvis", pelvisRef, typeof(Transform), false);
+                    if (GUILayout.Button(Icons.searchIcon, EditorStyles.miniButton, GUILayout.Width(50)))
                     {
-                        if (GUILayout.Button("Remove", GUILayout.Width(60)))
+                        string path = string.Empty;
+                        ShowMenu(path, _fullHierachy, _fullHierachy, (x) =>
                         {
-                            mod.Reset();
-                            modifidTransformList.Remove(mod);
-                        }
+                            path = (string)x;
+                            pelvisRef = TransformHelper.GetHierachyTarget(root, path);
+                        });
+                    }
+
+                }
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.ObjectField("Foot", footRef, typeof(Transform), false);
+                    if (GUILayout.Button(Icons.searchIcon, EditorStyles.miniButton, GUILayout.Width(50)))
+                    {
+                        string path = string.Empty;
+                        ShowMenu(path, _fullHierachy, _fullHierachy, (x) =>
+                        {
+                            path = (string)x;
+                            footRef = TransformHelper.GetHierachyTarget(root, path);
+                        });
                     }
                 }
-                mod.OnGUI();
+                if (pelvisRef) GUILayout.Label($"Pelvis Height : {pelvisRef.position.y.ToString()}");
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Load", EditorStyles.miniButton, GUILayout.Width(50)))
+                    {
+                        string path = EditorUtility.OpenFilePanel("Load", Application.dataPath, "json");
+                        Load(path);
+                    }
+                    if (GUILayout.Button("Save", EditorStyles.miniButton, GUILayout.Width(50)))
+                    {
+                        string path = EditorUtility.SaveFilePanel("Save", Application.dataPath,$"{root.name}_boneModifier","json");
+                        Save(path);
+                    }
+                }
             }
-            ApplyPelvisHeightControl();
-            //reorderableModifierList.DoLayoutList();
+            //using (var check = new EditorGUI.ChangeCheckScope())
+            //{
+            //    for (int i = 0; i < nodeList.Count; i++)
+            //    {
+            //        BoneInfo node = nodeList[i];
+            //        using (new EditorGUILayout.HorizontalScope())
+            //        {
+            //            GUILayout.Label(node.displayName, EditorStyles.boldLabel);
+            //            using (EditorHelper.Colorize.Do(Color.white, Color.red))
+            //            {
+            //                if (GUILayout.Button("Remove", GUILayout.Width(60)))
+            //                {
+            //                    Remove(node);
+            //                }
+            //            }
+            //        }
+            //        node.OnGUI();
+            //    }
+            //    if (check.changed)
+            //    {
+            //    }
+            //}
+            if(boneList.Count>0)
+                reorderableBoneList.DoLayoutList();
         }
 
         private void InitModifierList()
         {
-            modifidTransformList = new List<ModifiedTransform>();
-            reorderableModifierList = new UnityEditorInternal.ReorderableList(modifidTransformList, typeof(ModifiedTransform), true, true, false, false);
+            boneList = new List<BoneInfo>();
+            reorderableBoneList = new UnityEditorInternal.ReorderableList(boneList, typeof(BoneInfo), true, true, false, false);
             //fields
-            reorderableModifierList.showDefaultBackground = false;
-            reorderableModifierList.headerHeight = 20;
-            reorderableModifierList.elementHeight = 18;
-            reorderableModifierList.footerHeight = 20;
+            reorderableBoneList.showDefaultBackground = true;
+            reorderableBoneList.headerHeight = 0;
+            reorderableBoneList.elementHeight = EditorGUIUtility.singleLineHeight * 3f;
+            reorderableBoneList.footerHeight = 0;
             //draw callback
-            reorderableModifierList.drawHeaderCallback = (position) =>
+            reorderableBoneList.drawHeaderCallback = (position) =>
             {
-                Event evt = Event.current;
-                var btn30 = position.width * 0.3333f;
-                position.width = btn30;
-                if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
-                {
-                    reorderableModifierList.onAddDropdownCallback.Invoke(position, reorderableModifierList);
-                }
+                //Event evt = Event.current;
+                //var btn30 = position.width * 0.3333f;
+                //position.width = btn30;
+                //if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
+                //{
+                //    reorderableBoneList.onAddDropdownCallback.Invoke(position, reorderableBoneList);
+                //}
 
-                position.x += position.width;
-                position.width = btn30;
-                using (new EditorGUI.DisabledScope(reorderableModifierList.index < 0))
-                {
-                    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
-                    {
-                        reorderableModifierList.onRemoveCallback(reorderableModifierList);
-                    }
-                }
-                position.x += position.width;
-                position.width = btn30;
-                using (new EditorGUI.DisabledScope(modifidTransformList.Count == 0))
-                {
-                    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
-                    {
-                        modifidTransformList.Clear();
-                    }
-                }
+                //position.x += position.width;
+                //position.width = btn30;
+                //using (new EditorGUI.DisabledScope(reorderableBoneList.index < 0))
+                //{
+                //    if (GUI.Button(position, "Remove", EditorStyles.miniButtonMid))
+                //    {
+                //        reorderableBoneList.onRemoveCallback(reorderableBoneList);
+                //    }
+                //}
+                //position.x += position.width;
+                //position.width = btn30;
+                //using (new EditorGUI.DisabledScope(boneList.Count == 0))
+                //{
+                //    if (GUI.Button(position, "Clear", EditorStyles.miniButtonRight))
+                //    {
+                //        boneList.Clear();
+                //    }
+                //}
             };
-            reorderableModifierList.drawElementCallback = (position, index, isActive, isFocused) =>
+            reorderableBoneList.drawElementCallback = (position, index, isActive, isFocused) =>
             {
-                float rectWidth = position.width;
-                float rectHeight = position.height;
-                float tglWidth = 15;
-                float btnWidth = 55;
-                position.width = tglWidth;
+                position.x -= 15;
+                position.width += 15;
+                position = new RectOffset(4, 4, 4, 4).Remove(position);
+                Rect header = new Rect(position.x,position.y, position.width, position.height * 0.5f);
+                Rect body = new Rect(position.x, position.y + header.height, position.width, position.height * 0.5f);
+                EditorHelper.RectGrid grid0 = new EditorHelper.RectGrid(header, new float[] { 1f }, new float[] { 0.1f, 0.5f, 0.1f, 0.2f, 0.1f });
+                EditorHelper.RectGrid grid1 = new EditorHelper.RectGrid(body, new float[] { 0.25f, 0.75f }, new float[] { 0.5f, 0.5f });
+
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
-                    modifidTransformList[index].enabled = EditorGUI.Toggle(position, modifidTransformList[index].enabled);
+                    var bone = boneList[index];
+                    //bone.enabled = GUI.Toggle(grid0.Get(0, 0), bone.enabled,"");
+                    GUI.Label(grid0.Get(0, 1), string.Format("{0}", bone.displayName), EditorStyles.whiteLargeLabel);
+                    bone.isSymmetrical = GUI.Toggle(grid0.Get(0, 2), bone.isSymmetrical, "▸|◂", EditorStyles.miniButton);
+                    bone.isLeg = GUI.Toggle(grid0.Get(0, 3), bone.isLeg, "Leg", EditorStyles.miniButton);
+                    if (bone.isLeg) bone.isSymmetrical = true;
+                    if (GUI.Button(grid0.Get(0, 4), Icons.clearIcon, EditorStyles.miniButton))
+                    {
+                        reorderableBoneList.onRemoveCallback(reorderableBoneList);
+                    }
+                    GUI.Label(grid1.Get(0, 0), "Bias", EditorStyles.miniLabel);
+                    bone.bias = EditorGUI.Slider(grid1.Get(1, 0), bone.bias, -1f, 1f);
+                    GUI.Label(grid1.Get(0, 1), "Scale", EditorStyles.miniLabel);
+                    bone.scale = EditorGUI.Slider(grid1.Get(1, 1), bone.scale, 0f, 2f);
                     if (check.changed)
                     {
+                        bone.Apply();
                     }
                 }
-                position.x += position.width;
-                position.width = rectWidth - btnWidth - tglWidth;
-                var style0 = new GUIStyle(EditorStyles.miniLabel);
-                EditorGUI.LabelField(position, string.Format("{0}", modifidTransformList[index].name), style0);
-                var style1 = new GUIStyle(EditorStyles.miniLabel);
-                style1.alignment = TextAnchor.MiddleRight;
-                style1.normal.textColor = Color.gray;
-                position.x += position.width;
-                position.width = btnWidth;
-                position.height = 16;
             };
-            reorderableModifierList.drawFooterCallback = position =>
+            reorderableBoneList.drawFooterCallback = position =>
             {
+                //position = margin.Remove(position);
                 //var btn20 = position.width * 0.2f;
                 //var btn25 = position.width * 0.25f;
                 //var btn30 = position.width * 0.3f;
-                var btn50 = position.width * 0.5f;
-                position.width = btn50;
-                if (GUI.Button(position, "Check All", EditorStyles.miniButtonLeft))
-                {
-                    foreach (var modifier in modifidTransformList)
-                    {
-                        modifier.enabled = true;
-                    }
-                }
+                //var btn50 = position.width * 0.5f;
+                //position.width = btn25;
+                //if (GUI.Button(position, "All", EditorStyles.miniButtonLeft))
+                //{
+                //    foreach (var modifier in boneList)
+                //    {
+                //        modifier.enabled = true;
+                //    }
+                //}
 
-                position.x += position.width;
-                position.width = btn50;
-                if (GUI.Button(position, "Uncheck All", EditorStyles.miniButtonRight))
-                {
-                    foreach (var modifier in modifidTransformList)
-                    {
-                        modifier.enabled = false;
-                    }
-                }
+                //position.x += position.width;
+                //position.width = btn25;
+                //if (GUI.Button(position, "None", EditorStyles.miniButtonRight))
+                //{
+                //    foreach (var modifier in boneList)
+                //    {
+                //        modifier.enabled = false;
+                //    }
+                //}
+                //position.x += position.width;
+                //position.width = btn25;
+                //if (GUI.Button(position, "Import", EditorStyles.miniButtonRight))
+                //{
+                //}
+                //position.x += position.width;
+                //position.width = btn25;
+                //if (GUI.Button(position, "Export", EditorStyles.miniButtonRight))
+                //{
+                //}
 
-                position.x += position.width;
             };
             //btn callback
-            reorderableModifierList.onAddDropdownCallback = (buttonRect, list) =>
+            reorderableBoneList.onAddDropdownCallback = (buttonRect, list) =>
             {
-                AddModifierHandler();
+                AddNodeHandler();
 
             };
-            reorderableModifierList.onRemoveCallback = (list) =>
+            reorderableBoneList.onRemoveCallback = (list) =>
             {
-                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
-                if (modifidTransformList.Count > 0)
+                reorderableBoneList.index = Mathf.Clamp(reorderableBoneList.index, 0, reorderableBoneList.count - 1);
+                if (boneList.Count > 0)
                 {
-                    modifidTransformList.RemoveAt(reorderableModifierList.index);
+                    int idx = reorderableBoneList.index;
+                    boneList[idx].Reset();
+                    boneList.RemoveAt(reorderableBoneList.index);
                 }
-                reorderableModifierList.index = Mathf.Clamp(reorderableModifierList.index, 0, reorderableModifierList.count - 1);
+                reorderableBoneList.index = Mathf.Clamp(reorderableBoneList.index, 0, reorderableBoneList.count - 1);
             };
-            reorderableModifierList.onChangedCallback = list => { };
-            reorderableModifierList.elementHeight = EditorGUIUtility.singleLineHeight * 3;
+            reorderableBoneList.onChangedCallback = list => { };
         }
 
-        public void AddModifierHandler(string filter = "")
+        public void AddNodeHandler(string filter = "")
         {
             var path = string.Empty;
             if (string.IsNullOrEmpty(filter))
             {
-                ShowMenu(path, _modelRootHierachy, _modelRootHierachy, (x) =>
+                ShowMenu(path, _fullHierachy, _fullHierachy, (x) =>
                 {
                     path = (string)x;
-                    AddModifier(path);
+                    Add(path);
                 });
             }
             else
             {
-                var filteredList = _modelRootHierachy.Where(x => Path.GetFileName(x).ToLower().Contains(filter.ToLower())).ToArray();
+                var filteredList = _fullHierachy.Where(x => Path.GetFileName(x).ToLower().Contains(filter.ToLower())).ToArray();
                 var filteredNames = filteredList.Select(x => Path.GetFileName(x)).ToArray();
                 var tempDic = new Dictionary<string, string>();
                 for (int i = 0; i < filteredList.Length; i++)
@@ -3923,15 +3867,35 @@ where T : IEquatable<T>
                 {
                     string key = (string)x;
                     path = tempDic[key];
-                    AddModifier(path);
+                    Add(path);
                 });
             }
-
         }
 
-        private void AddModifier(string path)
+        public void Add(string path)
         {
-            modifidTransformList.Add(new ModifiedTransform(this, path, true));
+            boneList.Add(new BoneInfo(this, path, true));
+        }
+
+        public void Add(BoneInfo node)
+        {
+            boneList.Add(node);
+        }
+
+        public void Remove(string path)
+        {
+            var bone = boneList.Where(x => x.path == path).FirstOrDefault();
+            if (bone != null)
+            {
+                bone.Reset();
+                boneList.Remove(bone);
+            }
+        }
+
+        public void Remove(BoneInfo node)
+        {
+            node.Reset();
+            boneList.Remove(node);
         }
 
         private static void ShowMenu<T>(T selected, string[] itemNames, T[] items, GenericMenu.MenuFunction2 OnSelected)
@@ -3946,11 +3910,11 @@ where T : IEquatable<T>
         }
 
         // 애니메이션이 적용된 이후에 적용하는 상황에 사용
-        internal void ApplyToCurrent()
+        public void ApplyToAnimated()
         {
-            foreach (var item in modifidTransformList)
+            foreach (var item in boneList)
             {
-                item.ApplyToCurrent();
+                item.Apply(true);
             }
         }
     }
@@ -3958,54 +3922,6 @@ where T : IEquatable<T>
     // apply animationclip to multiple actor
     public class AnimationPlayer
     {
-        public class Actor
-        {
-            public bool enabled;
-            public GameObject prefab;
-            public GameObject instance;
-            public Animator animator;
-            public Bounds bounds;
-
-            public bool isSceneObject
-            {
-                get { return prefab == null; }
-            }
-            public string name
-            {
-                get { return isSceneObject ? instance.name : prefab.name; }
-            }
-            public Actor(GameObject src, bool sceneObject)
-            {
-                this.enabled = true;
-                if (sceneObject)
-                {
-                    this.instance = src;
-                }
-                else
-                {
-                    this.prefab = src;
-                    this.instance = (GameObject)PrefabUtility.InstantiatePrefab((prefab));
-                    if (!instance)
-                    {
-                        Debug.Log(string.Format("Can't instantiate : {0}", src.name));
-                        return;
-                    }
-                    this.instance.name = prefab.name + "(Actor)";
-                }
-                Animator animator = instance.GetComponent<Animator>();
-                if (animator)
-                {
-                    this.animator = animator;
-                }
-                var renderers = instance.GetComponentsInChildren<Renderer>().ToList();
-                foreach (var renderer in renderers)
-                {
-                    bounds.Encapsulate(renderer.bounds);
-                }
-            }
-
-        }
-
         public class ClipInfo
         {
             public AnimationClip clip;
@@ -4053,7 +3969,7 @@ where T : IEquatable<T>
         internal List<Actor> actorList = new List<Actor>();
         internal List<AnimationClip> playList = new List<AnimationClip>();
         internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
-        public TransformModifier modifier;
+        public BoneModifier boneModifier;
         private int current;
         internal double time = 0.0f;
         internal float timeSpeed = 1.0f;
@@ -4072,7 +3988,6 @@ where T : IEquatable<T>
         {
             get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
         }
-        //Texture aniIcon = EditorGUIUtility.IconContent("Animator Icon").image;
 
         public AnimationPlayer()
         {
@@ -4451,13 +4366,18 @@ where T : IEquatable<T>
             {
                 InitAnimatorAndClips(actor.animator);
             }
-            modifier = new TransformModifier(actorList[0].instance.transform);
+            boneModifier = new BoneModifier(actorList[0].instance.transform);
         }
 
         public void RemoveActor(Actor actor)
         {
             if (!actor.isSceneObject) GameObject.DestroyImmediate(actor.instance);
             actorList.Remove(actor);
+        }
+
+        public Actor GetActor(GameObject instance)
+        {
+            return actorList.Where(x => x.instance == instance).FirstOrDefault();
         }
 
         public void SetActorPosition(bool grid)
@@ -4516,7 +4436,7 @@ where T : IEquatable<T>
                         if (animated.enabled)
                         {
                             AnimationMode.SampleAnimationClip(animated.instance, _currentClip, (float)time);
-                            modifier.ApplyToCurrent();                            
+                            boneModifier.ApplyToAnimated();
                         }
                     }
                     AnimationMode.EndSampling();
@@ -4808,6 +4728,251 @@ where T : IEquatable<T>
             return length;
         }
     }
+
+    #endregion
+
+    #region Utils
+
+    public static class EditorCoroutineUtility
+    {
+        public static EditorCoroutine StartCoroutine(IEnumerator routine, object owner)
+        {
+            return new EditorCoroutine(routine, owner);
+        }
+
+        public static EditorCoroutine StartCoroutineOwnerless(IEnumerator routine)
+        {
+            return new EditorCoroutine(routine);
+        }
+
+        public static void StopCoroutine(EditorCoroutine coroutine)
+        {
+            if (coroutine == null)
+            {
+                return;
+            }
+
+            coroutine.Stop();
+        }
+    }
+
+    public static class EditorWindowControl
+    {
+        public enum SelectWindowType
+        {
+            Inspector,
+            ProjectBrowser,
+            Game,
+            Console,
+            Hierarchy,
+            Scene
+        };
+
+        public static Type GetBuiltinWindowType(SelectWindowType swt)
+        {
+            System.Type unityEditorWindowType = null;
+            switch (swt)
+            {
+                case SelectWindowType.Inspector:
+                    unityEditorWindowType =
+                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.InspectorWindow");
+                    break;
+                case SelectWindowType.ProjectBrowser:
+                    unityEditorWindowType =
+                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ProjectBrowser");
+                    break;
+                case SelectWindowType.Game:
+                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
+                    break;
+                case SelectWindowType.Console:
+                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.ConsoleView");
+                    break;
+                case SelectWindowType.Hierarchy:
+                    unityEditorWindowType =
+                        typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneHierarchyWindow");
+                    break;
+                case SelectWindowType.Scene:
+                    unityEditorWindowType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.SceneView");
+                    break;
+            }
+
+            return unityEditorWindowType;
+        }
+    }
+
+    // texture utilities. not use.
+    class TexUtil
+    {
+        public enum ImageFilterMode : int
+        {
+            Nearest = 0,
+            Biliner = 1,
+            Average = 2
+        }
+
+        public static Texture2D ResizeTexture(Texture2D pSource, ImageFilterMode pFilterMode, Vector2 size)
+        {
+
+            //*** Variables
+            int i;
+
+            //*** Get All the source pixels
+            Color[] aSourceColor = pSource.GetPixels(0);
+            Vector2 vSourceSize = new Vector2(pSource.width, pSource.height);
+
+            //*** Calculate New Size
+            float xWidth = Mathf.RoundToInt((float)size.x);
+            float xHeight = Mathf.RoundToInt((float)size.y);
+
+            //*** Make New
+            Texture2D oNewTex = new Texture2D((int)xWidth, (int)xHeight, TextureFormat.RGBA32, false);
+
+            //*** Make destination array
+            int xLength = (int)xWidth * (int)xHeight;
+            Color[] aColor = new Color[xLength];
+
+            Vector2 vPixelSize = new Vector2(vSourceSize.x / xWidth, vSourceSize.y / xHeight);
+
+            //*** Loop through destination pixels and process
+            Vector2 vCenter = new Vector2();
+            for (i = 0; i < xLength; i++)
+            {
+
+                //*** Figure out x&y
+                float xX = (float)i % xWidth;
+                float xY = Mathf.Floor((float)i / xWidth);
+
+                //*** Calculate Center
+                vCenter.x = (xX / xWidth) * vSourceSize.x;
+                vCenter.y = (xY / xHeight) * vSourceSize.y;
+
+                //*** Do Based on mode
+                //*** Nearest neighbour (testing)
+                if (pFilterMode == ImageFilterMode.Nearest)
+                {
+
+                    //*** Nearest neighbour (testing)
+                    vCenter.x = Mathf.Round(vCenter.x);
+                    vCenter.y = Mathf.Round(vCenter.y);
+
+                    //*** Calculate source index
+                    int xSourceIndex = (int)((vCenter.y * vSourceSize.x) + vCenter.x);
+
+                    //*** Copy Pixel
+                    aColor[i] = aSourceColor[xSourceIndex];
+                }
+
+                //*** Bilinear
+                else if (pFilterMode == ImageFilterMode.Biliner)
+                {
+
+                    //*** Get Ratios
+                    float xRatioX = vCenter.x - Mathf.Floor(vCenter.x);
+                    float xRatioY = vCenter.y - Mathf.Floor(vCenter.y);
+
+                    //*** Get Pixel index's
+                    int xIndexTL = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
+                    int xIndexTR = (int)((Mathf.Floor(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
+                    int xIndexBL = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Floor(vCenter.x));
+                    int xIndexBR = (int)((Mathf.Ceil(vCenter.y) * vSourceSize.x) + Mathf.Ceil(vCenter.x));
+
+                    //*** Calculate Color
+                    aColor[i] = Color.Lerp(
+                        Color.Lerp(aSourceColor[xIndexTL], aSourceColor[xIndexTR], xRatioX),
+                        Color.Lerp(aSourceColor[xIndexBL], aSourceColor[xIndexBR], xRatioX),
+                        xRatioY
+                    );
+                }
+
+                //*** Average
+                else if (pFilterMode == ImageFilterMode.Average)
+                {
+
+                    //*** Calculate grid around point
+                    int xXFrom = (int)Mathf.Max(Mathf.Floor(vCenter.x - (vPixelSize.x * 0.5f)), 0);
+                    int xXTo = (int)Mathf.Min(Mathf.Ceil(vCenter.x + (vPixelSize.x * 0.5f)), vSourceSize.x);
+                    int xYFrom = (int)Mathf.Max(Mathf.Floor(vCenter.y - (vPixelSize.y * 0.5f)), 0);
+                    int xYTo = (int)Mathf.Min(Mathf.Ceil(vCenter.y + (vPixelSize.y * 0.5f)), vSourceSize.y);
+
+                    //*** Loop and accumulate
+                    //Vector4 oColorTotal = new Vector4();
+                    Color oColorTemp = new Color();
+                    float xGridCount = 0;
+                    for (int iy = xYFrom; iy < xYTo; iy++)
+                    {
+                        for (int ix = xXFrom; ix < xXTo; ix++)
+                        {
+
+                            //*** Get Color
+                            oColorTemp += aSourceColor[(int)(((float)iy * vSourceSize.x) + ix)];
+
+                            //*** Sum
+                            xGridCount++;
+                        }
+                    }
+
+                    //*** Average Color
+                    aColor[i] = oColorTemp / (float)xGridCount;
+                }
+            }
+
+            //*** Set Pixels
+            oNewTex.SetPixels(aColor);
+            oNewTex.Apply();
+
+            //*** Return
+            return oNewTex;
+        }
+
+        public static Texture2D ApplyGammaCorrection(Texture2D src)
+        {
+            Color[] srcColors = src.GetPixels(0);
+            Texture2D newTex = new Texture2D((int)src.width, (int)src.height, TextureFormat.RGBA32, false);
+            int pixelCount = (int)src.width * (int)src.height;
+            Color[] newColors = new Color[pixelCount];
+            for (int i = 0; i < pixelCount; i++)
+            {
+                newColors[i] = srcColors[i].gamma;
+            }
+
+            newTex.SetPixels(newColors);
+            newTex.Apply();
+            return newTex;
+        }
+    }
+
+    // calculate fps info
+    class FPS
+    {
+        static string formatedString = "{0} FPS ({1}ms)";
+
+        static float ms
+        {
+            get { return (float)System.Math.Round(1000f / fps, 1); }
+        }
+
+        public static float updateInterval = 0.25f;
+        static float elapsedTime = 0;
+        static float fps = 0.0F;
+
+        public static void Calculate(float deltaTime)
+        {
+            elapsedTime += deltaTime;
+            if (elapsedTime / updateInterval > 1)
+            {
+                fps = 1 / deltaTime;
+                elapsedTime = 0;
+            }
+
+            fps = (float)System.Math.Round(fps, 1);
+        }
+
+        public static string GetString()
+        {
+            return string.Format(formatedString, fps.ToString(), ms.ToString());
+        }
+    }
+
     // simple update checker. wip.
     class Updater
     {
@@ -5547,8 +5712,8 @@ where T : IEquatable<T>
             }
         }
 
-        public static readonly string[] vector3Names = {"X","Y","Z"};
-        public static readonly string[] vector4Names = { "X", "Y", "Z","W" };
+        public static readonly string[] vector3Names = { "X", "Y", "Z" };
+        public static readonly string[] vector4Names = { "X", "Y", "Z", "W" };
 
         public static Vector3 FlipAxisDrawer(Vector3 vector, string[] names = null, params GUILayoutOption[] options)
         {
@@ -5696,6 +5861,72 @@ where T : IEquatable<T>
             }
         }
 
+        public class RectGrid
+        {
+            static Rect inputRect;
+            private const float Width0 = 120;
+            private const float Width1 = 0;
+            private const float ColSpacing = 5;
+            private const float RowSpacing = 5;
+
+            int rowCount;
+            int columnCount;
+            List<Rect> rectList = new List<Rect>();
+
+            public RectGrid(Rect position, int rowCount, int columnCount)
+            {
+                inputRect = position;
+                this.rowCount = rowCount;
+                this.columnCount = columnCount;
+                for (int i = 0; i < rowCount; i++)
+                {
+                    float rowHeight = position.height / rowCount;
+                    Rect row = new Rect(position.x, position.y + rowHeight * i, position.width, rowHeight);
+                    for (int j = 0; j < columnCount; j++)
+                    {
+                        float columnWidth = row.width / columnCount;
+                        Rect column = new Rect(row.x + columnWidth * j, row.y, columnWidth, row.height);
+                        rectList.Add(column);
+                    }
+                }
+            }
+
+            public RectGrid(Rect position, float[] rowSizes, float[] columSizes)
+            {
+                inputRect = position;
+                this.rowCount = rowSizes.Length;
+                this.columnCount = columSizes.Length;
+                for (int i = 0; i < rowCount; i++)
+                {
+                    float prevOffsetY = 0f;
+                    for (int x = 0; x < i; x++)
+                    {
+                        prevOffsetY += position.height * rowSizes[x];
+                    }
+                    float positionY = i == 0 ? position.y : position.y + prevOffsetY;
+                    float rowHeight = position.height * rowSizes[i];
+                    Rect row = new Rect(position.x, positionY, position.width, rowHeight);
+                    for (int j = 0; j < columnCount; j++)
+                    {
+                        float prevOffsetX = 0f;
+                        for (int y = 0; y < j; y++)
+                        {
+                            prevOffsetX += position.width * columSizes[y];
+                        }
+                        float positionX = j == 0 ? row.x : row.x + prevOffsetX;
+                        float columnWidth = position.width * columSizes[j];
+                        Rect column = new Rect(positionX, row.y, columnWidth, row.height);
+                        rectList.Add(column);
+                    }
+                }
+            }
+
+            public Rect Get(int rowIndex, int columnIndex)
+            {
+                return rectList[(rowIndex * columnCount) + columnIndex];
+            }
+        }
+
         public static List<string> StringSelector(List<string> result, string[] src)
         {
             if (src != null)
@@ -5761,7 +5992,6 @@ where T : IEquatable<T>
             float kViewBackgroundIntensity = EditorGUIUtility.isProSkin ? 0.22f : 0.76f;
             return new Color(kViewBackgroundIntensity, kViewBackgroundIntensity, kViewBackgroundIntensity, 1f);
         }
-
     }
     // editor Styles
     class Styles
@@ -5888,7 +6118,7 @@ where T : IEquatable<T>
             centeredMiniLabel.alignment = TextAnchor.MiddleCenter;
             centeredMiniBoldLabel = new GUIStyle(EditorStyles.miniBoldLabel);
             centeredMiniBoldLabel.alignment = TextAnchor.MiddleCenter;
-            centeredMiniBoldLabel.padding = new RectOffset(-4,-4,-4,-4);
+            centeredMiniBoldLabel.padding = new RectOffset(-4, -4, -4, -4);
             rightAlignedMiniLabel = new GUIStyle(EditorStyles.miniBoldLabel);
             rightAlignedMiniLabel.alignment = TextAnchor.MiddleRight;
             //tabToolBar = new GUIStyle("dragtab");
@@ -5927,50 +6157,46 @@ where T : IEquatable<T>
         public abstract void OnDisable();
     }
 
-#endregion //----------------------------------------------------------------------------------------------------------------------------------------------------
+    #endregion //----------------------------------------------------------------------------------------------------------------------------------------------------
 
     public class See1View : EditorWindow
     {
 
         #region Properties & Fields
-        //settings shortcut (singleton)
+        // settings shortcut (singleton)
         private DataManager dataManager
         {
             get { return DataManager.instance; }
         }
-        //current data shortcut
+        // current data shortcut
         private See1ViewData currentData
         {
             get { return dataManager.current; }
         }
 
-        //main objects
+        // main objects
         PreviewRenderUtility _preview;
         GameObject _tempObj;
         GameObject _tempPickedObject;
         GameObject _mainTarget;
         public GameObject MainTarget => _mainTarget;
         Dictionary<GameObject, GameObject> _targetDic = new Dictionary<GameObject, GameObject>(); //멀티오브젝트 검사용
-
-        //GameObject _shadowGo; //Hacky ShadowCaster
         ReflectionProbe _probe;
 
         Transform _lightPivot;
         Renderer _floor;
         CustomLoader _customLoader;
 
-
-        //Animation
+        // Animation
         List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
         public UnityEvent onStopPlaying = new UnityEvent();
-        string _modifierFilter;
 
         public bool isPlaying
         {
             get { return _playerList.Count > 0 ? _playerList[0].isPlaying : false; }
         }
 
-        //GUI & Control
+        // GUI & Control
         RectSlicer _rs;
         Rect _viewPortRect;
         Rect _controlRect;
@@ -5993,7 +6219,7 @@ where T : IEquatable<T>
         AnimBoolS splashEnabled = new AnimBoolS(false);
         AnimBoolS helpEnabled = new AnimBoolS(false);
 
-        //Camera & Render
+        // Camera & Render
         public UnityEvent onChangeRenderPipeline = new UnityEvent();
         Transform _camTr;
         Transform _camPivot;
@@ -6043,7 +6269,7 @@ where T : IEquatable<T>
 
         Vector2 _destRot = new Vector2(180, 0);
 
-        //Vector2 _destLightRot = new Vector2(180, 0);
+        // Vector2 _destLightRot = new Vector2(180, 0);
         Vector3 _destPivotPos;
         float _destDistance = 1.0f; //destination distance
         float _dist = 1.0f; //current distance
@@ -6075,7 +6301,7 @@ where T : IEquatable<T>
 #if SRP
         Recent<VolumeProfile> _recentVolumeProfile;
 #endif
-        //Info
+        // Info
         GUIContent _viewInfo;
         readonly StringBuilder _sb0 = new StringBuilder();
 
@@ -6087,7 +6313,7 @@ where T : IEquatable<T>
         {
         }
 
-    void OnFocus()
+        void OnFocus()
         {
             _shortcutEnabled = true;
         }
@@ -6115,7 +6341,7 @@ where T : IEquatable<T>
 
         void OnEnable()
         {
-            //기본 초기화
+            // 기본 초기화
             InitPreviewLayerID();
             Create();
             RegisterShortcut();
@@ -6125,17 +6351,17 @@ where T : IEquatable<T>
 
         void OnDisable()
         {
-            //기타 작업
+            // 기타 작업
             if (_popup) _popup.Close();
             dataManager.current.lastLighting = GetCurrentLighting();
             dataManager.current.lastView = new View(_destRot, _destDistance, _destPivotPos, _preview.cameraFieldOfView);
             DataManager.Save();
             _customLoader?.OnDisable();
-            //기본 해제
+            // 기본 해제
             EditorSceneManager.newSceneCreated -= this.OnOpenNewScene;
             Shortcuts.Clear();
             Cleanup();
-            //마무으리
+            // 일단 추가
             GC.Collect();
             Resources.UnloadUnusedAssets();
         }
@@ -6251,6 +6477,7 @@ where T : IEquatable<T>
                 }
             }
         }
+
         void OnSelectionChange()
         {
             if (!(currentData.modelCreateMode == ModelCreateMode.Preview)) return;
@@ -6345,48 +6572,6 @@ where T : IEquatable<T>
                 () => _overlayEnabled = !_overlayEnabled);
         }
 
-        //        void SetModel(GameObject prefab)
-        //        {
-        //            if (!prefab) return;
-        //            if (prefab.GetType() != typeof(GameObject)) return;
-        //            if (_mainTarget) DestroyImmediate(_mainTarget);
-        //            //if (_shadowGo) DestroyImmediate(_shadowGo);
-        //            _mainTarget = Instantiate(prefab) as GameObject;
-
-        //            //_shadowGo = Instantiate(prefab);
-        //            if (_mainTarget != null)
-        //            {
-        //#if UNITY_2017
-        //                PrefabUtility.DisconnectPrefabInstance(_mainTarget); //새로 바뀐 프리팹 관리 때문에 optimize 적용이 힘듬.
-        //#endif
-        //                _mainTarget.name = prefab.name;
-        //                //_shadowGo.name = prefab.name + "_Shadow";
-
-        //                SetFlagsAll(_mainTarget, HideFlags.HideAndDontSave);
-        //                //SetFlagsAll(_shadowGo, HideFlags.HideAndDontSave);
-        //                SetLayerAll(_mainTarget, _previewLayer);
-        //                //SetLayerAll(_shadowGo, _previewLayer);
-        //                //ShowHideAll(_shadowGo, false);
-        //                _preview.AddSingleGO(_mainTarget);
-        //                _targetInfo.Init(_mainTarget);
-
-        //                //etc
-        //                if (currentData.reframeToTarget) FitTargetToViewport();
-        //                currentData.lastTarget = prefab;
-        //                Selection.activeGameObject = _mainTarget;
-        //                if (_treeView != null)
-        //                {
-        //                    _treeView.Reload();
-        //                }
-
-        //                Notice.Log(string.IsNullOrEmpty(_targetInfo.assetPath) ? prefab.name : _targetInfo.assetPath, false);
-        //                SetAnimation(_mainTarget, true);
-        //                ApplyModelCommandBuffers();
-        //                Repaint();
-        //                //_fade.target = true;
-        //                //_fade.target = false;
-        //            }
-        //        }
         public void AddModel(GameObject src)
         {
             AddModel(src, true);
@@ -6412,7 +6597,7 @@ where T : IEquatable<T>
             // 소스를 인스턴스화
             bool isPrefab = PrefabUtility.IsPartOfAnyPrefab(src);
             GameObject instance = null;
-            if(isPrefab)
+            if (isPrefab)
             {
                 // 소스가 프리팹이면 여기에서 적절하게 처리.
                 instance = PrefabUtility.InstantiatePrefab(src) as GameObject;
@@ -6426,7 +6611,7 @@ where T : IEquatable<T>
             // 인스턴스화가 성공적이면 실제로 씬에 투입하기 위한 준비를 해요
             if (instance != null)
             {
-                _targetDic.Add(src, instance);                
+                _targetDic.Add(src, instance);
                 if (isMain)
                 {
                     // 메인모델인 경우 적절하게 처리
@@ -6436,7 +6621,7 @@ where T : IEquatable<T>
                 SetFlagsAll(instance, HideFlags.HideAndDontSave);
                 SetLayerAll(instance, _previewLayer);
                 _preview.AddSingleGO(instance);
-                _targetInfo.Init(src,instance);
+                _targetInfo.Init(src, instance);
                 _treeView?.Reload();
                 InitAnimationPlayer(_mainTarget, true);
                 ApplyModelCommandBuffers();
@@ -6476,12 +6661,13 @@ where T : IEquatable<T>
             ApplyModelCommandBuffers();
             Repaint();
         }
-        //Shortcut for add animation quickly
-        private void AddAnimationAndPlay(AnimationClip clip)
+        
+        void AddAnimationAndPlay(AnimationClip clip)
         {
             if (clip is AnimationClip) AddAnimation(clip, true);
         }
-        private void AddAnimation(AnimationClip clip, bool instantPlay = false)
+
+        void AddAnimation(AnimationClip clip, bool instantPlay = false)
         {
             if (_playerList.Count > 0)
             {
@@ -6572,7 +6758,7 @@ where T : IEquatable<T>
 
             var floorGo = EditorUtility.CreateGameObjectWithHideFlags("Floor", HideFlags.HideAndDontSave);
             var floorFilter = floorGo.AddComponent<MeshFilter>();
-            floorFilter.sharedMesh = Quad.Get();
+            floorFilter.sharedMesh = Meshes.Quad;
             _floor = floorGo.AddComponent<MeshRenderer>();
             _floor.sharedMaterial = DefaultMaterial.Get(currentData.renderPipelineMode);
             SetLayerAll(floorGo, _previewLayer);
@@ -6618,12 +6804,12 @@ where T : IEquatable<T>
 #endif
         }
 
-        private void RefreshDefaultMaterials()
+        void RefreshDefaultMaterials()
         {
             _floor.sharedMaterial = DefaultMaterial.Get(currentData.renderPipelineMode);
         }
 
-        private void InitializePipeline()
+        void InitializePipeline()
         {
             if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
             {
@@ -6651,7 +6837,7 @@ where T : IEquatable<T>
                 _preview.camera.cameraType = currentData.cameraType;
             }
 #endif
-            
+
             Notice.Log(string.Format("{0} Render Pipeline Initialized", currentData.renderPipelineMode.ToString()));
         }
 
@@ -6786,7 +6972,7 @@ where T : IEquatable<T>
             }
         }
 
-        private Lighting GetCurrentLighting()
+        Lighting GetCurrentLighting()
         {
             var lighting = new Lighting();
             lighting.ambientSkyColor = dataManager.current.ambientSkyColor;
@@ -6841,40 +7027,6 @@ where T : IEquatable<T>
             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
         }
 
-        //private void DataChanged()
-        //{
-        //    _list = AS_PartList.Create(settings.currentData, PartChanged, TargetItemHandler, MenuItemHandler);
-        //    Selection.activeObject = settings.currentData;
-        //    SetModel(true);
-        //    EditorUtility.SetDirty(settings);
-        //}
-
-        //private void PartChanged()
-        //{
-        //    SetModel(false);
-        //    EditorUtility.SetDirty(settings.currentData);
-        //}
-
-        //private void TargetItemHandler(object target)
-        //{
-        //    PartData pData = target as PartData;
-        //    ShowMenu(pData.m_TargetPath, _modelRootHierachy, _modelRootHierachy, (x) =>
-        //    {
-        //        pData.m_TargetPath = (string)x;
-        //        SetModel(false);
-        //        EditorUtility.SetDirty(settings.currentData);
-        //    });
-        //}
-
-        //private void MenuItemHandler(object target)
-        //{
-        //    PartData pData = target as PartData;
-        //    if (pData != null)
-        //    {
-        //        settings.currentData.PartDataList.Add(pData);
-        //        EditorUtility.SetDirty(settings.currentData);
-        //    }
-        //}
         #endregion
 
         #region CommandBuffer and Render
@@ -7054,7 +7206,7 @@ where T : IEquatable<T>
             {
                 using (new QualitySettingsOverrider())
                 {
-                    using (new ShowHideRendererScope(_floor,!currentData.alphaAppliedImage))
+                    using (new ShowHideRendererScope(_floor, !currentData.alphaAppliedImage))
                     {
                         using (new RenderSettingsOverrider(AmbientMode.Flat, currentData.ambientSkyColor, _skyMaterial))
                         {
@@ -7078,7 +7230,7 @@ where T : IEquatable<T>
             }
 
             Texture tex = _preview.EndPreview();
-            RenderTexture temp = RenderTexture.GetTemporary(w ,                h , 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+            RenderTexture temp = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
             GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
             Graphics.Blit(tex, temp);
             GL.sRGBWrite = false;
@@ -7190,6 +7342,16 @@ where T : IEquatable<T>
         public void ResetAnimationPlayer()
         {
             _playerList.Clear();
+        }
+
+        public AnimationPlayer GetMainPlayer()
+        {
+            return _playerList[0];
+        }
+
+        public Actor GetMainActor()
+        {
+            return _playerList[0].GetActor(MainTarget);
         }
 
         #endregion
@@ -7731,37 +7893,39 @@ where T : IEquatable<T>
             EditorGUI.DropShadowLabel(btnRect, btn, style);
             _rs.openRight.target = GUI.Toggle(btnRect, _rs.openRight.target, btn, style);
             Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
-
-            using (EditorHelper.Fade.Do(_rs.openRight.faded))
+            using (EditorHelper.FieldWidth.Do(30))
             {
-                using (new GUILayout.AreaScope(area))
+                using (EditorHelper.Fade.Do(_rs.openRight.faded))
                 {
-                    using (var check = new EditorGUI.ChangeCheckScope())
+                    using (new GUILayout.AreaScope(area))
                     {
-                        panelMode = (SidePanelMode)GUILayout.Toolbar((int)panelMode,
-                            Enum.GetNames(typeof(SidePanelMode)), EditorStyles.toolbarButton);
-                        if (check.changed)
+                        using (var check = new EditorGUI.ChangeCheckScope())
                         {
+                            panelMode = (SidePanelMode)GUILayout.Toolbar((int)panelMode,
+                                Enum.GetNames(typeof(SidePanelMode)), EditorStyles.toolbarButton);
+                            if (check.changed)
+                            {
+                            }
                         }
-                    }
 
-                    using (var svScope = new GUILayout.ScrollViewScope(_scrollPos))
-                    {
-                        _scrollPos = svScope.scrollPosition;
-                        switch (panelMode)
+                        using (var svScope = new GUILayout.ScrollViewScope(_scrollPos))
                         {
-                            case SidePanelMode.View:
-                                OnGUI_View();
-                                break;
-                            case SidePanelMode.Model:
-                                OnGUI_Model();
-                                break;
-                            case SidePanelMode.Animation:
-                                OnGUI_Animation();
-                                break;
-                            case SidePanelMode.Misc:
-                                OnGUI_Misc();
-                                break;
+                            _scrollPos = svScope.scrollPosition;
+                            switch (panelMode)
+                            {
+                                case SidePanelMode.View:
+                                    OnGUI_View();
+                                    break;
+                                case SidePanelMode.Model:
+                                    OnGUI_Model();
+                                    break;
+                                case SidePanelMode.Animation:
+                                    OnGUI_Animation();
+                                    break;
+                                case SidePanelMode.Misc:
+                                    OnGUI_Misc();
+                                    break;
+                            }
                         }
                     }
                 }
@@ -8002,9 +8166,26 @@ where T : IEquatable<T>
                     currentData.autoFloorHeightEnabled = GUILayout.Toggle(currentData.autoFloorHeightEnabled, "Auto Floor Height", EditorStyles.miniButton);
                     using (new EditorGUI.DisabledScope(currentData.autoFloorHeightEnabled))
                     {
-                        currentData.floorHeight = EditorGUILayout.Slider("Floor Height", currentData.floorHeight, -10f, 10f);
+                        using (EditorHelper.Horizontal.Do())
+                        {
+
+                            currentData.floorHeight = EditorGUILayout.Slider("Floor Height", currentData.floorHeight, -10f, 10f);
+                            if (GUILayout.Button(Icons.resetIcon))
+                            {
+                                ResetField(currentData, "floorHeight");
+                            }
+
+                        }
                     }
-                    currentData.floorScale = EditorGUILayout.Slider("Floor Scale", currentData.floorScale, 0f, 100f);
+
+                    using (EditorHelper.Horizontal.Do())
+                    {
+                        currentData.floorScale = EditorGUILayout.Slider("Floor Scale", currentData.floorScale, 0f, 100f);
+                        if (GUILayout.Button(Icons.resetIcon))
+                        {
+                            ResetField(currentData, "floorScale");
+                        }
+                    }
 
                     if (check.changed)
                     {
@@ -8025,7 +8206,7 @@ where T : IEquatable<T>
                     {
                         _preview.ambientColor = currentData.ambientSkyColor = EditorGUILayout.ColorField(new GUIContent("Ambient"), currentData.ambientSkyColor, false, false, true);
                     }
-                    _lightRotationIndex = GUILayout.Toggle(_lightRotationIndex==0, "Rotate MainLight Only",EditorStyles.miniButtonLeft) ? 0 : 1;
+                    _lightRotationIndex = GUILayout.Toggle(_lightRotationIndex == 0, "Rotate MainLight Only", EditorStyles.miniButtonLeft) ? 0 : 1;
                     for (var i = 0; i < _preview.lights.Length; i++)
                     {
                         var previewLight = _preview.lights[i];
@@ -8153,7 +8334,7 @@ where T : IEquatable<T>
 
 
 
-                
+
             });
             // Builtin Pipeline Only Menu
             if (currentData.renderPipelineMode == RenderPipelineMode.BuiltIn)
@@ -8371,7 +8552,7 @@ where T : IEquatable<T>
                     //    }
                     //}
                     int intValue = (int)_gizmoMode;
-                    intValue =  EditorHelper.EnumFlagSelector<GizmoMode>(intValue);
+                    intValue = EditorHelper.EnumFlagSelector<GizmoMode>(intValue);
                     _gizmoMode = (GizmoMode)intValue;
                 }
             });
@@ -8405,7 +8586,7 @@ where T : IEquatable<T>
                 }
             });
 
-            EditorHelper.FoldGroup.Do("Create Mode", true, () =>
+            EditorHelper.FoldGroup.Do("Create Mode", true, (UnityAction)(() =>
             {
                 dataManager.current.modelCreateMode = (ModelCreateMode)GUILayout.Toolbar((int)dataManager.current.modelCreateMode, Enum.GetNames(typeof(ModelCreateMode)), "Button", GUILayout.Height(20));
                 Tooltip.Generate(GUIContents.Tooltip.createMode);
@@ -8465,6 +8646,19 @@ where T : IEquatable<T>
 
                                 if (GUILayout.Button("Extra Primitives", EditorStyles.popup))
                                 {
+                                    var menu = new GenericMenu();
+                                    menu.AddItem(new GUIContent("Diamond"), false, (GenericMenu.MenuFunction)(() =>
+                                    {    
+
+                                        var primitive = new GameObject("Diamond");
+                                        var filter = primitive.AddComponent<MeshFilter>();
+                                        filter.mesh = Meshes.Diamond;
+                                        var renderer = primitive.AddComponent<MeshRenderer>();
+                                        renderer.material = DefaultMaterial.Get(currentData.renderPipelineMode);
+                                        AddModel(primitive);
+                                        DestroyImmediate(primitive);
+                                    }));
+                                    menu.ShowAsContext();
                                 }
                             }
 
@@ -8491,7 +8685,7 @@ where T : IEquatable<T>
                         }
                         else
                         {
-                          EditorGUILayout.HelpBox("No custom loader class found", MessageType.None);
+                            EditorGUILayout.HelpBox("No custom loader class found", MessageType.None);
                         }
                         break;
 
@@ -8514,7 +8708,7 @@ where T : IEquatable<T>
                 {
 
                 }
-            });
+            }));
 
             EditorHelper.FoldGroup.Do("Recent", true, () =>
             {
@@ -8655,12 +8849,12 @@ where T : IEquatable<T>
                 }
             }
 
-            EditorHelper.FoldGroup.Do("Transform Modifier", true, () =>
+            EditorHelper.FoldGroup.Do("Bone Modifier", true, () =>
             {
                 if (_playerList.Count > 0)
                 {
                     var player = _playerList[0];
-                    player.modifier.OnGUI();
+                    player.boneModifier.OnGUI();
                 }
             });
             EditorHelper.FoldGroup.Do("Recent", true, () =>
@@ -8965,7 +9159,7 @@ where T : IEquatable<T>
                 if (Event.current.type == EventType.Repaint)
                 {
                     //Rect gizmoRect = new RectOffset((int)(r.x / currentData.renderScale), 0, 0, 0).Remove(r); //이유 불명. 이렇게 해야 제 위치에 나옴 ㅜㅠ
-                    Rect gizmoRect = new Rect(r.position ,r.size);
+                    Rect gizmoRect = new Rect(r.position, r.size);
                     //Rect gizmoRect = (settings.viewportMultiplier > 1) ? r : _rs.center;
                     //Store FOV
                     float fieldOfView = _preview.camera.fieldOfView;
@@ -8977,7 +9171,7 @@ where T : IEquatable<T>
                     //            Mathf.Tan((float)((double)_preview.camera.fieldOfView * 0.5 *
                     //                               (Math.PI / 180.0)))) * 57.2957801818848 * 2.0);
                     //Set Camera
-                    Rect handleCameraRect =  new Rect(gizmoRect.position + new Vector2(_rs.leftWidth,0), gizmoRect.size);
+                    Rect handleCameraRect = new Rect(gizmoRect.position + new Vector2(_rs.leftWidth, 0), gizmoRect.size);
                     //EditorGUI.DrawRect(handleCameraRect, Color.red * 0.5f);
                     Handles.SetCamera(handleCameraRect, _preview.camera);
                     var scale = _targetInfo.bounds.size.magnitude;
@@ -9103,7 +9297,7 @@ where T : IEquatable<T>
                 }
             }
         }
-#endregion
+        #endregion
 
         #region Gizmos
         void DrawWorldAxis()
@@ -9411,7 +9605,7 @@ where T : IEquatable<T>
 
         private void ApplyEnvironment()
         {
-            
+
         }
 
         void ApplyLighting(Lighting lighting, string message = "")
@@ -9682,7 +9876,7 @@ where T : IEquatable<T>
             //if (material == null || mesh == null) return;
             //Graphics.SetRenderTarget(_preview.camera.targetTexture);
             //material.SetPass(0);
-            Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, rotation, scale),material, _previewLayer, _preview.camera, 0, null, false, true ); 
+            Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, rotation, scale), material, _previewLayer, _preview.camera, 0, null, false, true);
         }
 
 
@@ -9764,6 +9958,19 @@ where T : IEquatable<T>
                 BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
             Shader shader = (mi != null) ? mi.Invoke(this, new object[] { shaderName }) as Shader : null;
             return shader;
+        }
+
+        // 특정 필드를 초기값으로 리셋하는 메서드
+        static void ResetField(object obj, string fieldName)
+        {
+            Type classType = obj.GetType();
+            FieldInfo fieldInfo = classType.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
+            if (fieldInfo != null)
+            {
+                Type fieldType = fieldInfo.FieldType;
+                var defaultValue = fieldInfo.GetValue(Initializer.defaultData);
+                fieldInfo.SetValue(obj, defaultValue);
+            }
         }
 
         #endregion
