@@ -3402,7 +3402,7 @@ where T : IEquatable<T>
 
             Vector3 directionWS = Vector3.forward;
             Vector3 directionLS = Vector3.forward;
-            public float rootHeightBiasFactor = 0;
+            public float pelvisHeightOffsetFactor = 0;
             public bool isPath; // 경로 기반 탐색할지 이름 기반 탐색할지
             public bool isLeg; // 표면에 고정되었는지 여부. 길이를 조절하면 부모 방향으로 전파되어야 함.
             internal bool enabled;
@@ -3528,10 +3528,15 @@ where T : IEquatable<T>
             public void Apply(bool animated = false)
             {
                 if (!transform) return;
+                // Stretch
                 Vector3 position = animated ? transform.localPosition : originalLocalPosition;
                 transform.localPosition = MovePointInDirection(position, directionLS, stretch);
-                rootHeightBiasFactor = isLeg ? stretch : 0;
+                // Pelvis Height Factor by stretch
+                Vector3 wpo = originalPosition - MovePointInDirection(originalPosition, directionWS, stretch);
+                pelvisHeightOffsetFactor = isLeg ? wpo.y : 0;
+                // Scale
                 transform.localScale = originalLocalScale * scale;
+                // Todo : Pelvis Height factor by scale
                 ApplySymmetry(animated);
                 modifier.ApplyPelvisOffset(animated);
             }
@@ -3658,7 +3663,7 @@ where T : IEquatable<T>
 
                 foreach (var item in boneList)
                 {
-                    heightOffet += item.rootHeightBiasFactor;
+                    heightOffet += item.pelvisHeightOffsetFactor;
                 }
                 Vector3 position = applyToAnimated ? pelvisRef.position : originalPelvisPosition;
                 heightOffet = applyToAnimated ? heightOffet / 2 : heightOffet;
