@@ -3392,7 +3392,7 @@ where T : IEquatable<T>
             public bool isSymmetrical;
             public BoneInfo pair;
 
-            public float bias = 0;
+            public float stretch = 0;
             public float scale = 1;
 
             Vector3 originalParentPosition = Vector3.zero;
@@ -3472,7 +3472,7 @@ where T : IEquatable<T>
 
             public void SetModification(float lengthBias, float scale)
             {
-                this.bias = lengthBias;
+                this.stretch = lengthBias;
                 this.scale = scale;
             }
 
@@ -3529,8 +3529,8 @@ where T : IEquatable<T>
             {
                 if (!transform) return;
                 Vector3 position = animated ? transform.localPosition : originalLocalPosition;
-                transform.localPosition = MovePointInDirection(position, directionLS, bias);
-                rootHeightBiasFactor = isLeg ? bias : 0;
+                transform.localPosition = MovePointInDirection(position, directionLS, stretch);
+                rootHeightBiasFactor = isLeg ? stretch : 0;
                 transform.localScale = originalLocalScale * scale;
                 ApplySymmetry(animated);
                 modifier.ApplyPelvisOffset(animated);
@@ -3547,7 +3547,7 @@ where T : IEquatable<T>
                     {
                         //대칭 본의 로컬 축이 대칭이 아니라면 의도치 않은 동작이 일어나게 될 것이여
                         pair.isLeg = isLeg;
-                        pair.SetModification(bias, scale);
+                        pair.SetModification(stretch, scale);
                         pair.Apply(applyToAnimated);
                     }
                 }
@@ -3564,7 +3564,7 @@ where T : IEquatable<T>
             public void Reset()
             {
                 if (!transform) return;
-                bias = 0;
+                stretch = 0;
                 scale = 1;
                 Apply();
             }
@@ -3577,7 +3577,9 @@ where T : IEquatable<T>
         Transform root;
         Transform pelvisRef;
         Transform footRef;
+        public float heightOffet;
         Vector3 originalPelvisPosition;
+        Vector3 originalFootPosition;
 
         // Constructor
         public BoneModifier(Transform root)
@@ -3593,6 +3595,7 @@ where T : IEquatable<T>
                     bool lowerThanParent = x.position.y < x.parent.position.y; // 부모보다 낮은 위치에 있으면
                     return isEndNode && lowerThanParent; // 일단 본 구조에서 바닥을 지지하는 발이라고 하자. 치마 본 등 때문에 사실상 무의미한 조건... 
                 });
+                if(footRef) originalFootPosition = footRef.position;
             }
             _fullHierachy = TransformHelper.BuildHierachialPath(root);
             InitModifierList();
@@ -3619,11 +3622,40 @@ where T : IEquatable<T>
             File.WriteAllText(dataPath, data);
         }
 
+        public void SetPevisRef(string pelvisName, bool isPath)
+        {
+            if (isPath)
+            {
+                pelvisRef = TransformHelper.GetHierachyTarget(root, pelvisName);
+            }
+            else
+            {
+                pelvisRef = TransformHelper.FindTransformRecursive(root, pelvisName);
+            }
+            if(pelvisRef)
+                originalPelvisPosition = pelvisRef.position;
+        }
+
+        public void SetFootRef(string footName, bool isPath)
+        {
+            if (isPath)
+            {
+                footRef = TransformHelper.GetHierachyTarget(root, footName);
+            }
+            else
+            {
+                footRef = TransformHelper.FindTransformRecursive(root, footName);
+            }
+            if (footRef)
+                originalFootPosition = footRef.position;
+        }
+
         private void ApplyPelvisOffset(bool applyToAnimated = false)
         {
+            heightOffet = 0;
             if (pelvisRef)
             {
-                float heightOffet = 0;
+
                 foreach (var item in boneList)
                 {
                     heightOffet += item.rootHeightBiasFactor;
@@ -3632,6 +3664,13 @@ where T : IEquatable<T>
                 heightOffet = applyToAnimated ? heightOffet / 2 : heightOffet;
                 pelvisRef.position = position + new Vector3(0, heightOffet, 0);
             }
+        }
+
+        public void ResetPelvisOffset()
+        {
+            if(boneList.Count ==0)
+                pelvisRef.position = originalPelvisPosition;
+            Debug.Log("Reset Pelvis Offset Invoked");
         }
 
         public void OnGUI()
@@ -3673,15 +3712,18 @@ where T : IEquatable<T>
                         });
                     }
                 }
-                if (pelvisRef) GUILayout.Label($"Pelvis Height : {pelvisRef.position.y.ToString()}");
+                if (pelvisRef)
+                {
+                    GUILayout.Label($"Current Pelvis Height : {pelvisRef.position.y}\nOriginal : {originalPelvisPosition.y} Offset : {heightOffet}", EditorStyles.miniLabel);
+                }
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Load", EditorStyles.miniButton, GUILayout.Width(50)))
+                    if (GUILayout.Button("Load", EditorStyles.miniButton))
                     {
                         string path = EditorUtility.OpenFilePanel("Load", Application.dataPath, "json");
                         Load(path);
                     }
-                    if (GUILayout.Button("Save", EditorStyles.miniButton, GUILayout.Width(50)))
+                    if (GUILayout.Button("Save", EditorStyles.miniButton))
                     {
                         string path = EditorUtility.SaveFilePanel("Save", Application.dataPath,$"{root.name}_boneModifier","json");
                         Save(path);
@@ -3760,25 +3802,33 @@ where T : IEquatable<T>
                 position = new RectOffset(4, 4, 4, 4).Remove(position);
                 Rect header = new Rect(position.x,position.y, position.width, position.height * 0.5f);
                 Rect body = new Rect(position.x, position.y + header.height, position.width, position.height * 0.5f);
-                EditorHelper.RectGrid grid0 = new EditorHelper.RectGrid(header, new float[] { 1f }, new float[] { 0.1f, 0.5f, 0.1f, 0.2f, 0.1f });
-                EditorHelper.RectGrid grid1 = new EditorHelper.RectGrid(body, new float[] { 0.25f, 0.75f }, new float[] { 0.5f, 0.5f });
+                EditorHelper.RectGrid headerGrid = new EditorHelper.RectGrid(header, new float[] { 1f }, new float[] { 0.1f, 0.5f, 0.1f, 0.2f, 0.1f });
+                EditorHelper.RectGrid bodyGrid = new EditorHelper.RectGrid(body, new float[] { 0.35f, 0.65f }, new float[] { 0.4f, 0.1f, 0.4f, 0.1f });
 
                 using (var check = new EditorGUI.ChangeCheckScope())
                 {
                     var bone = boneList[index];
                     //bone.enabled = GUI.Toggle(grid0.Get(0, 0), bone.enabled,"");
-                    GUI.Label(grid0.Get(0, 1), string.Format("{0}", bone.displayName), EditorStyles.whiteLargeLabel);
-                    bone.isSymmetrical = GUI.Toggle(grid0.Get(0, 2), bone.isSymmetrical, "▸|◂", EditorStyles.miniButton);
-                    bone.isLeg = GUI.Toggle(grid0.Get(0, 3), bone.isLeg, "Leg", EditorStyles.miniButton);
+                    GUI.Label(headerGrid.Get(0, 1), string.Format("{0}", bone.displayName), EditorStyles.whiteLargeLabel);
+                    bone.isSymmetrical = GUI.Toggle(headerGrid.Get(0, 2), bone.isSymmetrical, "▸|◂", EditorStyles.miniButton);
+                    bone.isLeg = GUI.Toggle(headerGrid.Get(0, 3), bone.isLeg, "Leg", EditorStyles.miniButton);
                     if (bone.isLeg) bone.isSymmetrical = true;
-                    if (GUI.Button(grid0.Get(0, 4), Icons.clearIcon, EditorStyles.miniButton))
+                    if (GUI.Button(headerGrid.Get(0, 4), Icons.clearIcon, EditorStyles.miniButton))
                     {
                         reorderableBoneList.onRemoveCallback(reorderableBoneList);
                     }
-                    GUI.Label(grid1.Get(0, 0), "Bias", EditorStyles.miniLabel);
-                    bone.bias = EditorGUI.Slider(grid1.Get(1, 0), bone.bias, -1f, 1f);
-                    GUI.Label(grid1.Get(0, 1), "Scale", EditorStyles.miniLabel);
-                    bone.scale = EditorGUI.Slider(grid1.Get(1, 1), bone.scale, 0f, 2f);
+                    GUI.Label(bodyGrid.Get(0, 0), "Stretch", EditorStyles.miniLabel);
+                    bone.stretch = EditorGUI.Slider(bodyGrid.Get(1, 0), bone.stretch, -1f, 1f);
+                    if (GUI.Button(bodyGrid.Get(1, 1), Icons.resetIcon, EditorStyles.miniButton))
+                    {
+                        bone.stretch = 0f;
+                    }
+                    GUI.Label(bodyGrid.Get(0, 2), "Scale", EditorStyles.miniLabel);
+                    bone.scale = EditorGUI.Slider(bodyGrid.Get(1, 2), bone.scale, 0f, 2f);
+                    if (GUI.Button(bodyGrid.Get(1, 3), Icons.resetIcon, EditorStyles.miniButton))
+                    {
+                        bone.scale = 1f;
+                    }
                     if (check.changed)
                     {
                         bone.Apply();
@@ -3907,6 +3957,14 @@ where T : IEquatable<T>
                 menu.AddItem(new GUIContent(itemNames[i]), selected.Equals(items[i]), OnSelected, items[i]);
             }
             menu.ShowAsContext();
+        }
+
+        public void ApplyToBindPose()
+        {
+            foreach (var item in boneList)
+            {
+                item.Apply(false);
+            }
         }
 
         // 애니메이션이 적용된 이후에 적용하는 상황에 사용
@@ -4367,6 +4425,7 @@ where T : IEquatable<T>
                 InitAnimatorAndClips(actor.animator);
             }
             boneModifier = new BoneModifier(actorList[0].instance.transform);
+            onStopPlaying.AddListener(boneModifier.ApplyToBindPose);
         }
 
         public void RemoveActor(Actor actor)
@@ -4610,7 +4669,10 @@ where T : IEquatable<T>
                 time = 0.0f;
                 ResetToInitialState();
                 AnimationMode.StopAnimationMode();
-                if (onStopPlaying != null) onStopPlaying.Invoke();
+                if (onStopPlaying != null)
+                {
+                    onStopPlaying.Invoke();
+                }
             }
         }
 
@@ -6189,7 +6251,6 @@ where T : IEquatable<T>
 
         // Animation
         List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
-        public UnityEvent onStopPlaying = new UnityEvent();
 
         public bool isPlaying
         {
@@ -7324,7 +7385,6 @@ where T : IEquatable<T>
                         Animator animator = animators[i];
                         AnimationPlayer player = new AnimationPlayer();
                         player.AddActor(animator.gameObject, true);
-                        player.onStopPlaying = onStopPlaying;
                         _playerList.Add(player);
                     }
                 }
@@ -7333,7 +7393,6 @@ where T : IEquatable<T>
                     //Create Default Animator Component
                     AnimationPlayer player = new AnimationPlayer();
                     player.AddActor(root, true);
-                    player.onStopPlaying = onStopPlaying;
                     _playerList.Add(player);
                 }
             }
