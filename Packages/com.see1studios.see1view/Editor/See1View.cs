@@ -3768,7 +3768,7 @@ where T : IEquatable<T>
             //fields
             reorderableBoneList.showDefaultBackground = true;
             reorderableBoneList.headerHeight = 0;
-            reorderableBoneList.elementHeight = EditorGUIUtility.singleLineHeight * 3f;
+            reorderableBoneList.elementHeight = EditorGUIUtility.singleLineHeight * 3.3f;
             reorderableBoneList.footerHeight = 0;
             //draw callback
             reorderableBoneList.drawHeaderCallback = (position) =>
@@ -3804,39 +3804,62 @@ where T : IEquatable<T>
             {
                 position.x -= 15;
                 position.width += 15;
-                position = new RectOffset(4, 4, 4, 4).Remove(position);
-                Rect header = new Rect(position.x,position.y, position.width, position.height * 0.5f);
-                Rect body = new Rect(position.x, position.y + header.height, position.width, position.height * 0.5f);
-                EditorHelper.RectGrid headerGrid = new EditorHelper.RectGrid(header, new float[] { 1f }, new float[] { 0.1f, 0.5f, 0.1f, 0.2f, 0.1f });
-                EditorHelper.RectGrid bodyGrid = new EditorHelper.RectGrid(body, new float[] { 0.35f, 0.65f }, new float[] { 0.4f, 0.1f, 0.4f, 0.1f });
-
-                using (var check = new EditorGUI.ChangeCheckScope())
+                EditorHelper.RectGrid grid = new EditorHelper.RectGrid(position, new float[] { 0.333f, 0.333f, 0.333f }, new float[] { 1f }, new RectOffset(0,0,2,2));
+                Rect header = grid.Get(0, 0);
+                Rect stretch = grid.Get(1, 0);
+                Rect scale = grid.Get(2, 0);
+                EditorHelper.RectGrid headerGrid =      new EditorHelper.RectGrid(header, new float[] { 1f }, new float[] {0.4f, 0.1f, 0.2f, 0.2f, 0.1f }, new RectOffset(1, 1, 0, 0));
+                EditorHelper.RectGrid stretchGrid =     new EditorHelper.RectGrid(stretch, new float[] { 1f }, new float[] {0.2f, 0.1f, 0.5f, 0.1f, 0.1f }, new RectOffset(1, 1, 0, 0));
+                EditorHelper.RectGrid scaleGrid =       new EditorHelper.RectGrid(scale, new float[] { 1f }, new float[] {0.2f, 0.1f, 0.5f, 0.1f, 0.1f }, new RectOffset(1, 1, 0, 0));
+                using (EditorHelper.FieldWidth.Do(40))
                 {
-                    var bone = boneList[index];
-                    //bone.enabled = GUI.Toggle(grid0.Get(0, 0), bone.enabled,"");
-                    GUI.Label(headerGrid.Get(0, 1), string.Format("{0}", bone.displayName), EditorStyles.whiteLargeLabel);
-                    bone.isSymmetrical = GUI.Toggle(headerGrid.Get(0, 2), bone.isSymmetrical, "▸|◂", EditorStyles.miniButton);
-                    bone.isLeg = GUI.Toggle(headerGrid.Get(0, 3), bone.isLeg, "Leg", EditorStyles.miniButton);
-                    if (bone.isLeg) bone.isSymmetrical = true;
-                    if (GUI.Button(headerGrid.Get(0, 4), Icons.clearIcon, EditorStyles.miniButton))
+                    using (var check = new EditorGUI.ChangeCheckScope())
                     {
-                        reorderableBoneList.onRemoveCallback(reorderableBoneList);
-                    }
-                    GUI.Label(bodyGrid.Get(0, 0), "Stretch", EditorStyles.miniLabel);
-                    bone.stretch = EditorGUI.Slider(bodyGrid.Get(1, 0), bone.stretch, -1f, 1f);
-                    if (GUI.Button(bodyGrid.Get(1, 1), Icons.resetIcon, EditorStyles.miniButton))
-                    {
-                        bone.stretch = 0f;
-                    }
-                    GUI.Label(bodyGrid.Get(0, 2), "Scale", EditorStyles.miniLabel);
-                    bone.scale = EditorGUI.Slider(bodyGrid.Get(1, 2), bone.scale, 0f, 2f);
-                    if (GUI.Button(bodyGrid.Get(1, 3), Icons.resetIcon, EditorStyles.miniButton))
-                    {
-                        bone.scale = 1f;
-                    }
-                    if (check.changed)
-                    {
-                        bone.Apply();
+                        var bone = boneList[index];
+                        //bone.enabled = GUI.Toggle(grid0.Get(0, 0), bone.enabled,"");
+                        GUI.Label(headerGrid.Get(0, 0), string.Format("{0}", bone.displayName), EditorStyles.boldLabel);
+                        bone.isSymmetrical = GUI.Toggle(headerGrid.Get(0, 2), bone.isSymmetrical, "Sym", EditorStyles.miniButton);
+                        bone.isLeg = GUI.Toggle(headerGrid.Get(0, 3), bone.isLeg, "Leg", EditorStyles.miniButton);
+                        if (bone.isLeg) bone.isSymmetrical = true;
+                        using (EditorHelper.Colorize.Do(Color.white, Color.red))
+                        {
+                            if (GUI.Button(headerGrid.Get(0, 4), Icons.clearIcon, EditorStyles.miniButton))
+                            {
+                                reorderableBoneList.onRemoveCallback(reorderableBoneList);
+                            }
+                        }
+                        GUI.Label(stretchGrid.Get(0, 0), "Stretch", EditorStyles.miniLabel);
+                        if (GUI.Button(stretchGrid.Get(0, 1), Icons.minusIcon, EditorStyles.miniButton))
+                        {
+                            bone.stretch -= 0.01f;
+                        }
+                        bone.stretch = EditorGUI.Slider(stretchGrid.Get(0, 2), bone.stretch, -1f, 1f);
+                        if (GUI.Button(stretchGrid.Get(0, 3), Icons.plusIcon, EditorStyles.miniButton))
+                        {
+                            bone.stretch += 0.01f;
+                        }
+                        if (GUI.Button(stretchGrid.Get(0, 4), Icons.resetIcon, EditorStyles.miniButton))
+                        {
+                            bone.stretch = 0f;
+                        }
+                        GUI.Label(scaleGrid.Get(0, 0), "Scale", EditorStyles.miniLabel);
+                        if (GUI.Button(scaleGrid.Get(0, 1), Icons.minusIcon, EditorStyles.miniButton))
+                        {
+                            bone.scale -= 0.1f;
+                        }
+                        bone.scale = EditorGUI.Slider(scaleGrid.Get(0, 2), bone.scale, 0f, 2f);
+                        if (GUI.Button(scaleGrid.Get(0, 3), Icons.plusIcon, EditorStyles.miniButton))
+                        {
+                            bone.scale += 0.1f;
+                        }
+                        if (GUI.Button(scaleGrid.Get(0, 4), Icons.resetIcon, EditorStyles.miniButton))
+                        {
+                            bone.scale = 1f;
+                        }
+                        if (check.changed)
+                        {
+                            bone.Apply();
+                        }
                     }
                 }
             };
@@ -5939,7 +5962,7 @@ where T : IEquatable<T>
             int rowCount;
             int columnCount;
             List<Rect> rectList = new List<Rect>();
-
+            RectOffset offset;
             public RectGrid(Rect position, int rowCount, int columnCount)
             {
                 inputRect = position;
@@ -5958,8 +5981,9 @@ where T : IEquatable<T>
                 }
             }
 
-            public RectGrid(Rect position, float[] rowSizes, float[] columSizes)
+            public RectGrid(Rect position, float[] rowSizes, float[] columSizes, RectOffset offset)
             {
+                this.offset = offset;
                 inputRect = position;
                 this.rowCount = rowSizes.Length;
                 this.columnCount = columSizes.Length;
@@ -5990,7 +6014,7 @@ where T : IEquatable<T>
 
             public Rect Get(int rowIndex, int columnIndex)
             {
-                return rectList[(rowIndex * columnCount) + columnIndex];
+                return offset.Remove(rectList[(rowIndex * columnCount) + columnIndex]);
             }
         }
 
