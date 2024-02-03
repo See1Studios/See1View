@@ -2905,7 +2905,7 @@ where T : IEquatable<T>
             var roots = scene.GetRootGameObjects();
             var rends = roots.SelectMany(x => x.GetComponentsInChildren<Renderer>()).ToList();
             var materials = rends.SelectMany(x => x.sharedMaterials).Distinct().ToList();
-            var staticMeshes = roots.SelectMany(x => x.GetComponentsInChildren<MeshFilter>()).Select(x => x.mesh).ToList();
+            var staticMeshes = roots.SelectMany(x => x.GetComponentsInChildren<MeshFilter>()).Select(x => x.sharedMesh).ToList();
             var skinnedMeshes = roots.SelectMany(x => x.GetComponentsInChildren<SkinnedMeshRenderer>()).Select(x => x.sharedMesh).ToList();
             var meshes = staticMeshes.Union(skinnedMeshes);
             var shaders = materials.Where(x => x != null).Select(y => y.shader).Distinct().ToList();
