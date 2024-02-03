@@ -46,6 +46,7 @@ using Object = UnityEngine.Object;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
+using static See1Studios.See1View.See1View;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -74,8 +75,13 @@ namespace See1Studios.See1View
         Preview,
         Custom
     }
+    public enum LeftPanelMode
+    {
+        Hierachy,
+        Shader
+    }
 
-    public enum SidePanelMode
+    public enum RightPanelMode
     {
         View,
         Model,
@@ -2542,6 +2548,7 @@ where T : IEquatable<T>
             : base(state)
         {
             this.scene = scene;
+            showAlternatingRowBackgrounds = true;
             Reload();
         }
 
@@ -2615,7 +2622,9 @@ where T : IEquatable<T>
             // To optimize reload time we could delay fetching the transform.name until it used for rendering (prevents allocating strings 
             // for items not rendered in large trees)
             // We just set depth to -1 here and then call SetupDepthsFromParentsAndChildren at the end of BuildRootAndRows to set the depths.
-            return new TreeViewItem(gameObject.GetInstanceID(), -1, gameObject.name);
+            var item = new TreeViewItem(gameObject.GetInstanceID(), -1, gameObject.name);
+            item.icon = EditorGUIUtility.ObjectContent(gameObject, typeof(GameObject)).image as Texture2D;
+            return item;
         }
 
         protected override IList<int> GetAncestors(int id)
@@ -2676,6 +2685,9 @@ where T : IEquatable<T>
                 return;
 
             Rect r = args.rowRect;
+            //Rect iconRect = new RectOffset(0,235,0,0).Remove(r);
+            //EditorGUI.DrawTextureTransparent(iconRect, args.item.icon, ScaleMode.ScaleToFit,1,1, ColorWriteMask.All);
+
             r.x += GetContentIndent(args.item);
             r.width = 16f;
 
@@ -2874,6 +2886,76 @@ where T : IEquatable<T>
             transforms.RemoveAll(t => IsDescendantOf(t, transforms));
         }
     }
+
+    class ShaderTreeView : TreeView
+    {
+        Scene scene;
+
+        public ShaderTreeView(Scene scene, TreeViewState state) : base(state)
+        {
+            this.scene = scene;
+            showAlternatingRowBackgrounds = true;
+            Reload();
+        }
+
+        protected override TreeViewItem BuildRoot()
+        {
+            var root = new TreeViewItem { id = 0, depth = -1, displayName = "Root" };
+            var list = new List<TreeViewItem>();
+            var roots = scene.GetRootGameObjects();
+            var rends = roots.SelectMany(x => x.GetComponentsInChildren<Renderer>()).ToList();
+            var materials = rends.SelectMany(x => x.sharedMaterials).Distinct().ToList();
+            var staticMeshes = roots.SelectMany(x => x.GetComponentsInChildren<MeshFilter>()).Select(x => x.mesh).ToList();
+            var skinnedMeshes = roots.SelectMany(x => x.GetComponentsInChildren<SkinnedMeshRenderer>()).Select(x => x.sharedMesh).ToList();
+            var meshes = staticMeshes.Union(skinnedMeshes);
+            var shaders = materials.Where(x => x != null).Select(y => y.shader).Distinct().ToList();
+
+            int id = 0;
+            for (int i = 0; i < shaders.Count; i++)
+            {
+                Shader shader = shaders[i];
+                var shaderItem = new TreeViewItem { displayName = shader.name };
+                shaderItem.id = id;
+                shaderItem.depth = 0;
+                shaderItem.icon = EditorGUIUtility.ObjectContent(shader, shader.GetType()).image as Texture2D;
+                id++;
+                list.Add(shaderItem);
+                var matSelection = materials.Where(x => x.shader == shader).Distinct().ToList();
+                for (int j = 0; j < matSelection.Count; j++)
+                {
+                    Material mat = matSelection[j];
+                    var matItem = new TreeViewItem { displayName = mat.name };
+                    matItem.id = id;
+                    matItem.depth = 1;
+                    matItem.icon = EditorGUIUtility.ObjectContent(mat, mat.GetType()).image as Texture2D;
+                    id++;
+                    list.Add(matItem);
+                    var rendSelection = rends.Where(x => x.sharedMaterials.Contains(mat)).Distinct().ToList();
+                    for (int k = 0; k < rendSelection.Count; k++)
+                    {
+                        Renderer rend = rendSelection[k];
+                        var rendItem = new TreeViewItem { displayName = rend.name };
+                        rendItem.id = id;
+                        rendItem.depth = 2;
+                        rendItem.icon = EditorGUIUtility.ObjectContent(rend, rend.GetType()).image as Texture2D;
+                        id++;
+                        list.Add(rendItem);
+                    }
+                }
+            }
+            // Utility method that initializes the TreeViewItem.children and -parent for all items.
+            SetupParentsAndChildrenFromDepths(root, list);
+
+            // Return root of the tree
+            return root;
+        }
+
+        public void RegisterItems()
+        {
+
+        }
+    }
+
     // popup window context for size input.
     public class SizePopup : PopupWindowContent
     {    //Search results can be filtered by specifying a series of properties that sounds should match. 
@@ -3365,6 +3447,173 @@ where T : IEquatable<T>
         }
     }
 
+    public class ParticlePlayer
+    {
+        List<ParticleSystem> _psList = new List<ParticleSystem>();
+
+        float time;
+        private bool isPlayable = false;
+        private bool isLooping = true;
+        private float timeSpeed = 1f;
+        private bool isPlaying = false;
+        bool includeChildren = true;
+
+        public void Init(List<ParticleSystem> psList)
+        {
+            _psList = psList;
+            time = 0;
+        }
+
+        public void Update(float delta)
+        {
+            //foreach (var ps in _psList)
+            //{
+            //    time += delta;
+            //    //ps.Simulate(time, true, false);
+            //}
+            if (isPlaying)
+            {
+                time += delta * timeSpeed;
+
+                if (Selection.activeObject != _psList[0])
+                {
+                    Selection.activeObject = _psList[0];
+                }
+            }
+        }
+
+        void SetPlaybackTime(float _time)
+        {
+            ParticleSystemEditorUtilsRefl.playbackTime = _time;
+            ParticleSystemEditorUtilsRefl.PerformCompleteResimulation();
+        }
+
+        public void OnGUI_Control()
+        {
+            isPlayable = (_psList.Count > 0);
+            if (isPlayable)
+            {
+                GUILayout.Space(20);
+                var progressRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight * 1.1f, GUIStyle.none);
+                progressRect = new RectOffset(16, 16, 0, 0).Remove(progressRect);
+                time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentParticleLength(), GUIStyle.none, GUIStyle.none);
+                float length = GetCurrentParticleLength();
+                float progress = (float)time / length;
+                EditorGUI.ProgressBar(progressRect, progress, $"{progress} : {length.ToString("0.00")}s,");
+                SetPlaybackTime(progress);
+
+                using (var hr = new EditorGUILayout.HorizontalScope())
+                {
+                    var infoRect = new RectOffset(16, 16, 0, 0).Remove(hr.rect);
+                    //EditorGUI.DropShadowLabel(infoRect, string.Format("{0}", currentClipInfo.Print()), EditorStyles.miniLabel);
+                    GUIStyle style = new GUIStyle(EditorStyles.miniLabel);
+                    style.alignment = TextAnchor.MiddleRight;
+                    //EditorGUI.DropShadowLabel(infoRect, string.Format("Speed : {0}X\n Frame : {1}", timeSpeed.ToString("0.0"), (_currentClip.frameRate * progress * _currentClip.length).ToString("000")), style);
+                    GUILayout.FlexibleSpace();
+
+                    using (var check = new EditorGUI.ChangeCheckScope())
+                    {
+                        if (AnimationMode.InAnimationMode()) GUI.backgroundColor = Color.red;
+                        isPlaying = GUILayout.Toggle(isPlaying, isPlaying ? "Pause" : "Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30));
+                        if (check.changed)
+                        {
+                            if (isPlaying) Play();
+                        }
+                        GUI.backgroundColor = Color.white;
+                    }
+
+                    if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
+                    {
+                        Stop();
+                    }
+
+                    isLooping = GUILayout.Toggle(isLooping, "Loop", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30));
+
+                    if (GUILayout.Button(Icons.minusIcon, "ButtonLeft", GUILayout.Height(30)))
+                    {
+                        timeSpeed = Mathf.Max(0, (timeSpeed * 10 - 1f) * 0.1f);
+
+                    }
+
+                    if (Mathf.Approximately(timeSpeed, 0.5f)) GUI.backgroundColor = Color.cyan;
+                    if (GUILayout.Button("0.5x", "ButtonMid", GUILayout.Height(30)))
+                    {
+                        timeSpeed = 0.5f;
+
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    if (Mathf.Approximately(timeSpeed, 1.0f)) GUI.backgroundColor = Color.cyan;
+                    if (GUILayout.Button("1.0x", "ButtonMid", GUILayout.Height(30)))
+                    {
+                        timeSpeed = 1.0f;
+
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    if (Mathf.Approximately(timeSpeed, 2.0f)) GUI.backgroundColor = Color.cyan;
+                    if (GUILayout.Button("2.0x", "ButtonMid", GUILayout.Height(30)))
+                    {
+                        timeSpeed = 2.0f;
+
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    if (GUILayout.Button(Icons.plusIcon, "ButtonRight", GUILayout.Height(30)))
+                    {
+                        timeSpeed = Mathf.Min(2, (timeSpeed * 10 + 1f) * 0.1f);
+
+                    }
+
+                    //_showEvent = GUILayout.Toggle(_showEvent, "Event", "Button", GUILayout.Height(30));
+
+                    GUILayout.FlexibleSpace();
+                }
+            }
+        }
+
+        private float GetCurrentParticleLength()
+        {
+            return _psList[0].main.duration;
+        }
+
+        internal void Play()
+        {
+            isPlaying = true;
+            ParticleSystem particleSystem = _psList[0];
+            particleSystem.Play(includeChildren);
+            particleSystem.Simulate(time, true, false);
+        }
+
+        internal void Restart()
+        {
+            Stop();
+            Play();
+        }
+
+        internal void Stop()
+        {
+            isPlaying = false;
+            time = 0;
+            ParticleSystem particleSystem = _psList[0];
+            particleSystem.Stop(includeChildren, ParticleSystemStopBehavior.StopEmitting);
+            particleSystem.Clear();
+        }
+
+        internal void Clear()
+        {
+            ParticleSystem particleSystem = _psList[0];
+            particleSystem.Stop(includeChildren, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
+        internal void Pause(bool includeChildren)
+        {
+            isPlaying = false;
+            ParticleSystem particleSystem = _psList[0];
+            particleSystem.Pause();
+        }
+    }
+
     // apply modification to actor bone hierachy
     public class BoneModifier
     {
@@ -3596,8 +3845,8 @@ where T : IEquatable<T>
                 originalPelvisPosition = pelvisRef.position;
                 footRef = TransformHelper.FindTransformRecursive(pelvisRef, (x) =>
                 {
-                    bool isEndNode = x.childCount == 0;// 자식이 없고
-                    bool lowerThanParent = x.position.y < x.parent.position.y; // 부모보다 낮은 위치에 있으면
+                    bool isEndNode = x.childCount == 0;// 자식이 없고                    
+                    bool lowerThanParent = x.parent ? x.position.y < x.parent.position.y : false; // 부모보다 낮은 위치에 있으면
                     return isEndNode && lowerThanParent; // 일단 본 구조에서 바닥을 지지하는 발이라고 하자. 치마 본 등 때문에 사실상 무의미한 조건... 
                 });
                 if(footRef) originalFootPosition = footRef.position;
@@ -4572,8 +4821,7 @@ where T : IEquatable<T>
                 time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentClipLength(), GUIStyle.none, GUIStyle.none);
                 float length = GetCurrentClipLength();
                 float progress = (float)time / length;
-                EditorGUI.ProgressBar(progressRect, progress,
-                    string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
+                EditorGUI.ProgressBar(progressRect, progress, string.Format("{0} : {1}s", GetCurrentClipName(), length.ToString("0.00")));
 
                 if (_showEvent)
                 {
@@ -6278,30 +6526,36 @@ where T : IEquatable<T>
         Renderer _floor;
         CustomLoader _customLoader;
 
+        // Particle
+        ParticlePlayer _particlePlayer = new ParticlePlayer();
         // Animation
-        List<AnimationPlayer> _playerList = new List<AnimationPlayer>();
+        List<AnimationPlayer> _animPlayerList = new List<AnimationPlayer>();
 
         public bool isPlaying
         {
-            get { return _playerList.Count > 0 ? _playerList[0].isPlaying : false; }
+            get { return _animPlayerList.Count > 0 ? _animPlayerList[0].isPlaying : false; }
         }
 
         // GUI & Control
         RectSlicer _rs;
         Rect _viewPortRect;
         Rect _controlRect;
-        Vector2 _scrollPos;
-        Vector2 _scrollPos1;
+        Vector2 _scrollPosL;
+        Vector2 _scrollPosR;
         bool _isStartDragValid = false;
         float _deltaTime;
         double _lastTimeSinceStartup = 0f;
         const int _labelWidth = 95;
         const int _toolbarHeight = 21; //oldskin 18 newskin 21
-        TransformTreeView _treeView;
-        TreeViewState _treeViewState;
+        TransformTreeView _transformTreeView;
+        TreeViewState _transformTreeViewState;
+        ShaderTreeView _shaderTreeView;
+        TreeViewState _shaderTreeViewState;
+        SearchField _treeViewSearchField;
         TargetInfo _targetInfo = new TargetInfo();
         bool _shortcutEnabled;
-        SidePanelMode panelMode = SidePanelMode.View;
+        LeftPanelMode leftPanelMode = LeftPanelMode.Hierachy;
+        RightPanelMode rightPanelMode = RightPanelMode.View;
         PopupWindow _popup;
         SizePopup _sizePopup;
         bool _guiEnabled = true;
@@ -6471,9 +6725,11 @@ where T : IEquatable<T>
                 UpdateLight(rot);
             }
 
-            for (int i = 0; i < _playerList.Count; i++)
+            _particlePlayer.Update(_deltaTime);
+
+            for (int i = 0; i < _animPlayerList.Count; i++)
             {
-                _playerList[i].Update(_deltaTime);
+                _animPlayerList[i].Update(_deltaTime);
             }
 
             SetMaterialProperties();
@@ -6657,7 +6913,7 @@ where T : IEquatable<T>
                 }
             });
             Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"),
-                () => _playerList.FirstOrDefault()?.TogglePlay());
+                () => _animPlayerList.FirstOrDefault()?.TogglePlay());
             Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"),
                 () => _overlayEnabled = !_overlayEnabled);
         }
@@ -6712,7 +6968,9 @@ where T : IEquatable<T>
                 SetLayerAll(instance, _previewLayer);
                 _preview.AddSingleGO(instance);
                 _targetInfo.Init(src, instance);
-                _treeView?.Reload();
+                _transformTreeView?.Reload();
+                _shaderTreeView?.Reload();
+                _particlePlayer.Init(_targetInfo.particleSystems);
                 InitAnimationPlayer(_mainTarget, true);
                 ApplyModelCommandBuffers();
                 if (currentData.forceUpdateComponent)
@@ -6741,9 +6999,13 @@ where T : IEquatable<T>
             {
                 _targetDic.Remove(pair.Key);
             }
-            if (_treeView != null)
+            if (_transformTreeView != null)
             {
-                _treeView.Reload();
+                _transformTreeView.Reload();
+            }
+            if (_shaderTreeView != null)
+            {
+                _shaderTreeView.Reload();
             }
             RunInEditHelper2.Clean();
             Notice.Log(string.Format("{0} Removed", name), false);
@@ -6759,11 +7021,11 @@ where T : IEquatable<T>
 
         void AddAnimation(AnimationClip clip, bool instantPlay = false)
         {
-            if (_playerList.Count > 0)
+            if (_animPlayerList.Count > 0)
             {
-                _playerList[0].AddClip(clip);
+                _animPlayerList[0].AddClip(clip);
                 _recentAnimation.Add(AssetDatabase.GetAssetPath(clip));
-                if (instantPlay) _playerList[0].PlayInstant(clip);
+                if (instantPlay) _animPlayerList[0].PlayInstant(clip);
             }
         }
 
@@ -6997,16 +7259,23 @@ where T : IEquatable<T>
 
         void InitTreeView()
         {
+            // Transform Tree
             var fi = _preview.GetType().GetField("m_PreviewScene", BindingFlags.Instance | BindingFlags.NonPublic);
             if (fi != null)
             {
                 var previewScene = fi.GetValue(_preview);
                 var scene = (UnityEngine.SceneManagement.Scene)(previewScene.GetType()
                     .GetField("m_Scene", BindingFlags.Instance | BindingFlags.NonPublic)).GetValue(previewScene);
-                if (_treeViewState == null)
-                    _treeViewState = new TreeViewState();
-                _treeView = new TransformTreeView(scene, _treeViewState);
-                _treeView.onDragObject = (go) => { AddModel(go, false); };
+                if (_transformTreeViewState == null) _transformTreeViewState = new TreeViewState();
+                _transformTreeView = new TransformTreeView(scene, _transformTreeViewState);
+                _transformTreeView.onDragObject = (go) => { AddModel(go, false); };
+                // Shader Tree
+                if (_shaderTreeViewState == null) _shaderTreeViewState = new TreeViewState();
+                if (_shaderTreeView == null) _shaderTreeView = new ShaderTreeView(scene, _shaderTreeViewState);
+                // Search Field
+                _treeViewSearchField = new SearchField();
+                _treeViewSearchField.downOrUpArrowKeyPressed += _transformTreeView.SetFocusAndEnsureSelectedItem;
+                _treeViewSearchField.downOrUpArrowKeyPressed += _shaderTreeView.SetFocusAndEnsureSelectedItem;
             }
         }
 
@@ -7384,20 +7653,20 @@ where T : IEquatable<T>
         {
             if (!root)
             {
-                _playerList.Clear();
+                _animPlayerList.Clear();
                 return;
             }
             //기존 수집된 애니메이터에 문제가 있는지 검사 (모델 옵션이 바뀜에 따라 있던 애니메이터가 없어지는 경우가 생김.
-            if (_playerList.Any(x => x.actorList.Any(ani => ani.instance == null)))
+            if (_animPlayerList.Any(x => x.actorList.Any(ani => ani.instance == null)))
             {
                 reset = true;
             }
 
             //애니메이션이 재생중인 경우 모델이 바뀌어도 애니메이션은 초기화하지 않고 계속 재생하기 위해 여기에서 바로 Deoptimize 해줌.
             //Todo Animator 를 재수집해서 기존과 동일한 건 유지하고 아닌 건 새로 추가해줘야...
-            if (!reset && _playerList.Count > 0)
+            if (!reset && _animPlayerList.Count > 0)
             {
-                foreach (var player in _playerList)
+                foreach (var player in _animPlayerList)
                 {
                     if (player.isPlaying) player.DeOptimizeObject();
                 }
@@ -7405,7 +7674,7 @@ where T : IEquatable<T>
             //애니메이션 초기화 및 재수집. 일반적인 경우.
             else
             {
-                _playerList.Clear();
+                _animPlayerList.Clear();
                 Animator[] animators = root.GetComponentsInChildren<Animator>();
                 if (animators.Length > 0)
                 {
@@ -7414,7 +7683,7 @@ where T : IEquatable<T>
                         Animator animator = animators[i];
                         AnimationPlayer player = new AnimationPlayer();
                         player.AddActor(animator.gameObject, true);
-                        _playerList.Add(player);
+                        _animPlayerList.Add(player);
                     }
                 }
                 else
@@ -7422,24 +7691,24 @@ where T : IEquatable<T>
                     //Create Default Animator Component
                     AnimationPlayer player = new AnimationPlayer();
                     player.AddActor(root, true);
-                    _playerList.Add(player);
+                    _animPlayerList.Add(player);
                 }
             }
         }
 
         public void ResetAnimationPlayer()
         {
-            _playerList.Clear();
+            _animPlayerList.Clear();
         }
 
         public AnimationPlayer GetMainPlayer()
         {
-            return _playerList[0];
+            return _animPlayerList[0];
         }
 
         public Actor GetMainActor()
         {
-            return _playerList[0].GetActor(MainTarget);
+            return _animPlayerList[0].GetActor(MainTarget);
         }
 
         #endregion
@@ -7924,47 +8193,45 @@ where T : IEquatable<T>
             Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
             using (new GUILayout.AreaScope(area))
             {
-                Rect top = new Rect(area.x, area.y, area.width, EditorGUIUtility.singleLineHeight);
-                //EditorGUI.LabelField(top, "Preview Hierachy", EditorStyles.toolbarButton);
-                if (GUI.Button(top, "Unlock Inspector", EditorStyles.toolbarButton))
+
+                using (var check = new EditorGUI.ChangeCheckScope())
+                {
+                    leftPanelMode = (LeftPanelMode)GUILayout.Toolbar((int)leftPanelMode, Enum.GetNames(typeof(LeftPanelMode)), EditorStyles.toolbarButton);
+                    if (check.changed)
+                    {
+                    }
+                }
+                switch (leftPanelMode)
+                {
+                    case LeftPanelMode.Hierachy:
+                        _transformTreeView.searchString = _treeViewSearchField.OnToolbarGUI(_transformTreeView.searchString);
+                        break;
+                    case LeftPanelMode.Shader:
+                        _shaderTreeView.searchString = _treeViewSearchField.OnToolbarGUI(_shaderTreeView.searchString);
+                        break;
+                }
+                using (var svScope = new GUILayout.ScrollViewScope(_scrollPosL))
+                {
+                    _scrollPosL = svScope.scrollPosition;
+                    switch (leftPanelMode)
+                    {
+                        case LeftPanelMode.Hierachy:
+                            if (_transformTreeView != null)
+                            {
+                                _transformTreeView.OnGUI(area);
+                            }
+                            break;
+                        case LeftPanelMode.Shader:
+                            if (_shaderTreeView != null)
+                            {
+                                _shaderTreeView.OnGUI(area);
+                            }
+                            break;
+                    }
+                }
+                if (GUILayout.Button("Unlock Inspector", EditorStyles.toolbarButton))
                 {
                     UnlockInspector();
-                }
-
-                using (var svScope = new GUILayout.ScrollViewScope(_scrollPos1))
-                {
-                    _scrollPos1 = svScope.scrollPosition;
-
-                    area.y += EditorGUIUtility.singleLineHeight + 4;
-
-                    if (_treeView != null)
-                    {
-                        _treeView.OnGUI(area);
-                    }
-                }
-            }
-        }
-
-        void OnGUI_TreeView(Rect r)
-        {
-            Rect area = new RectOffset(2, 2, 2, 2).Remove(r);
-            using (new GUILayout.AreaScope(area))
-            {
-                //if (GUILayout.Button("Unlock Inspector", EditorStyles.miniButton))
-                //{
-                //    UnlockObject();
-                //}
-
-                using (var svScope = new GUILayout.ScrollViewScope(_scrollPos1))
-                {
-                    _scrollPos1 = svScope.scrollPosition;
-                    EditorGUI.LabelField(r, "Preview Hierachy", EditorStyles.largeLabel);
-                    area.y += EditorGUIUtility.singleLineHeight + 4;
-
-                    if (_treeView != null)
-                    {
-                        _treeView.OnGUI(area);
-                    }
                 }
             }
         }
@@ -7989,28 +8256,28 @@ where T : IEquatable<T>
                     {
                         using (var check = new EditorGUI.ChangeCheckScope())
                         {
-                            panelMode = (SidePanelMode)GUILayout.Toolbar((int)panelMode,
-                                Enum.GetNames(typeof(SidePanelMode)), EditorStyles.toolbarButton);
+                            rightPanelMode = (RightPanelMode)GUILayout.Toolbar((int)rightPanelMode,
+                                Enum.GetNames(typeof(RightPanelMode)), EditorStyles.toolbarButton);
                             if (check.changed)
                             {
                             }
                         }
 
-                        using (var svScope = new GUILayout.ScrollViewScope(_scrollPos))
+                        using (var svScope = new GUILayout.ScrollViewScope(_scrollPosR))
                         {
-                            _scrollPos = svScope.scrollPosition;
-                            switch (panelMode)
+                            _scrollPosR = svScope.scrollPosition;
+                            switch (rightPanelMode)
                             {
-                                case SidePanelMode.View:
+                                case RightPanelMode.View:
                                     OnGUI_View();
                                     break;
-                                case SidePanelMode.Model:
+                                case RightPanelMode.Model:
                                     OnGUI_Model();
                                     break;
-                                case SidePanelMode.Animation:
+                                case RightPanelMode.Animation:
                                     OnGUI_Animation();
                                     break;
-                                case SidePanelMode.Misc:
+                                case RightPanelMode.Misc:
                                     OnGUI_Misc();
                                     break;
                             }
@@ -8833,6 +9100,14 @@ where T : IEquatable<T>
                                 RemoveModel(target.Value);
                             }
                         }
+                        GUILayout.Label("Particle", EditorStyles.boldLabel);
+                        foreach (var ps in _targetInfo.particleSystems)
+                        {
+                            using (EditorHelper.Horizontal.Do())
+                            {
+                                EditorGUILayout.ObjectField("", ps, typeof(ParticleSystem), false);
+                            }
+                        }
                     }
                 }
             });
@@ -8898,9 +9173,9 @@ where T : IEquatable<T>
         void OnGUI_Animation()
         {
             EditorHelper.IconLabel(typeof(Animation), "Animation");
-            for (int a = 0; a < _playerList.Count; a++)
+            for (int a = 0; a < _animPlayerList.Count; a++)
             {
-                var player = _playerList[a];
+                var player = _animPlayerList[a];
                 EditorHelper.FoldGroup.Do(string.Format($"Animator{a}:{player.name}"), true, () =>
                 {
                     for (int b = 0; b < player.actorList.Count; b++)
@@ -8928,7 +9203,7 @@ where T : IEquatable<T>
                                 if (dragged_object is AnimationClip)
                                 {
                                     var clip = dragged_object as AnimationClip;
-                                    _playerList.FirstOrDefault().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
+                                    _animPlayerList.FirstOrDefault().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
                                 }
                             }
                         }
@@ -8939,9 +9214,9 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Bone Modifier", true, () =>
             {
-                if (_playerList.Count > 0)
+                if (_animPlayerList.Count > 0)
                 {
-                    var player = _playerList[0];
+                    var player = _animPlayerList[0];
                     player.boneModifier.OnGUI();
                 }
             });
@@ -8953,9 +9228,9 @@ where T : IEquatable<T>
             {
                 if (GUILayout.Button("Add Current"))
                 {
-                    if (_playerList.Count > 0)
+                    if (_animPlayerList.Count > 0)
                     {
-                        var player = _playerList[0];
+                        var player = _animPlayerList[0];
                         if (player.playList.Count > 0)
                         {
                             var steel = new Steel(player.currentClipInfo.clip, player.time);
@@ -8974,7 +9249,7 @@ where T : IEquatable<T>
                     {
                         if (GUILayout.Button(string.Format("{0}:{1}", steel.animationClip.name, steel.time.ToString("F")), EditorStyles.miniButton))
                         {
-                            var player = _playerList[0];
+                            var player = _animPlayerList[0];
                         }
                         if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.Width(30)))
                         {
@@ -8994,9 +9269,9 @@ where T : IEquatable<T>
             Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
             using (new GUILayout.AreaScope(area))
             {
-                if (_playerList.Count == 0) return;
+                if (_animPlayerList.Count == 0) return;
                 //if (_player == null) return;
-                foreach (var animationPlayer in _playerList)
+                foreach (var animationPlayer in _animPlayerList)
                 {
                     animationPlayer.OnGUI_Control();
                 }
@@ -9008,64 +9283,10 @@ where T : IEquatable<T>
             if (!_overlayEnabled) return;
             if (_targetInfo.particleSystems == null) return;
             if (_targetInfo.particleSystems.Count == 0) return;
-            Rect area = new RectOffset(4, 4, 4, 4).Remove(r);
-            //EditorGUI.DrawRect(psRect, GetInvertedLuminaceGrayscaleColor(_preview.camera.backgroundColor) * 0.5f);
+            Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
             using (new GUILayout.AreaScope(area))
             {
-                ParticleSystem particleSystem = _targetInfo.particleSystems[0];
-                if (particleSystem)
-                {
-                    GUIStyle style = new GUIStyle();
-                    var progressRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight, style);
-                    //EditorGUI.DrawRect(progressRect, Color.red);
-                    //particleSystem.main.time = GUI.HorizontalSlider(progressRect, (float)_player.time, 0, _player.GetCurrentClipLength(), style, style);
-                    float length = particleSystem.main.duration;
-                    EditorGUI.ProgressBar(progressRect, (float)particleSystem.time / length,
-                        string.Format("{0} : {1}s", particleSystem.name, length.ToString("0.00")));
-
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        GUILayout.FlexibleSpace();
-                        if (GUILayout.Button("Play", "ButtonLeft", GUILayout.Width(50), GUILayout.Height(30)))
-                        {
-                            Selection.activeGameObject = _mainTarget;
-                            foreach (var ps in _targetInfo.particleSystems)
-                            {
-                                ps.Play();
-                            }
-                        }
-
-                        if (GUILayout.Button("Restart", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
-                        {
-                            Selection.activeGameObject = _mainTarget;
-                            foreach (var ps in _targetInfo.particleSystems)
-                            {
-                                ps.Stop();
-                                ps.Play();
-                            }
-                        }
-
-                        if (GUILayout.Button("Stop", "ButtonMid", GUILayout.Width(50), GUILayout.Height(30)))
-                        {
-                            Selection.activeGameObject = _mainTarget;
-                            foreach (var ps in _targetInfo.particleSystems)
-                            {
-                                ps.Clear();
-                            }
-                        }
-
-                        if (GUILayout.Button("Pause", "ButtonRight", GUILayout.Width(50), GUILayout.Height(30)))
-                        {
-                            Selection.activeGameObject = _mainTarget;
-                            foreach (var ps in _targetInfo.particleSystems)
-                            {
-                                ps.Pause();
-                            }
-                        }
-
-                        GUILayout.FlexibleSpace();
-                    }
-                }
+                _particlePlayer.OnGUI_Control();
             }
         }
 
@@ -9917,7 +10138,7 @@ where T : IEquatable<T>
 
                 // If the scroll position does not match the detection value, 
                 //       it is ~99% likely that no scroll bar exists
-                return (_scrollPos != detectionValue);
+                return (_scrollPosL != detectionValue);
             }
 
             return false;
@@ -10008,7 +10229,7 @@ where T : IEquatable<T>
         #endregion
 
         #region Reflection
-
+        
         private Scene GetPreviewScene()
         {
             var fi = _preview.GetType().GetField("m_PreviewScene", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -10060,6 +10281,119 @@ where T : IEquatable<T>
                 fieldInfo.SetValue(obj, defaultValue);
             }
         }
+        private void GetParticleSystemUtils()
+        {
+            var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var propInfo = typeof(Camera).GetProperty("PreviewCullingLayer", flags);
+            _previewLayer = (int)propInfo.GetValue(null, new object[0]);
+            //Debug.Log(string.Format("{0} : PreviewLayerID is {1}", this.GetType().Name, _previewLayer.ToString()));
+        }
+
+        public static class ParticleSystemEditorUtilsRefl
+        {
+            public static PropertyInfo simulationSpeedInfo;
+            public static PropertyInfo playbackTimeInfo;
+            public static PropertyInfo playbackIsScrubbingInfo;
+            public static PropertyInfo playbackIsPlayingInfo;
+            public static PropertyInfo playbackIsPausedInfo;
+            public static PropertyInfo resimulationInfo;
+            public static PropertyInfo previewLayersInfo;
+            public static PropertyInfo renderInSceneViewInfo;
+            public static PropertyInfo lockedParticleSystemInfo;
+            public static MethodInfo PerformCompleteResimulationInfo;
+            //UnityEditor.ParticleSystemEditorUtils
+
+            static ParticleSystemEditorUtilsRefl()
+            {
+                var PsUtils = typeof(UnityEditor.EditorUtility).Assembly.GetType("UnityEditor.ParticleSystemEditorUtils", false, true);
+                playbackTimeInfo = PsUtils.GetProperty("playbackTime", BindingFlags.Static | BindingFlags.NonPublic);
+                playbackIsScrubbingInfo = PsUtils.GetProperty("playbackIsScrubbing", BindingFlags.Static | BindingFlags.NonPublic);
+                playbackIsPlayingInfo = PsUtils.GetProperty("playbackIsPlaying", BindingFlags.Static | BindingFlags.NonPublic);
+                playbackIsPausedInfo = PsUtils.GetProperty("playbackIsPaused", BindingFlags.Static | BindingFlags.NonPublic);
+                resimulationInfo = PsUtils.GetProperty("resimulation", BindingFlags.Static | BindingFlags.NonPublic);
+                previewLayersInfo = PsUtils.GetProperty("previewLayers", BindingFlags.Static | BindingFlags.NonPublic);
+                renderInSceneViewInfo = PsUtils.GetProperty("renderInSceneView", BindingFlags.Static | BindingFlags.NonPublic);
+                lockedParticleSystemInfo = PsUtils.GetProperty("lockedParticleSystem", BindingFlags.Static | BindingFlags.NonPublic);
+                PerformCompleteResimulationInfo = PsUtils.GetMethod("PerformCompleteResimulation", (BindingFlags.Static | BindingFlags.NonPublic));
+            }
+
+            public static float simulationSpeed
+            {
+                get { return (float)simulationSpeedInfo.GetValue(null); }
+                set { simulationSpeedInfo.SetValue(null, value); }
+            }
+
+            public static float playbackTime
+            {
+                get { return (float)playbackTimeInfo.GetValue(null); }
+                set { playbackTimeInfo.SetValue(null, value); }
+            }
+
+            public static bool playbackIsScrubbing
+            {
+                get { return (bool)playbackIsScrubbingInfo.GetValue(null); }
+                set { playbackIsScrubbingInfo.SetValue(null, value); }
+            }
+
+            public static bool playbackIsPlaying
+            {
+                get { return (bool)playbackIsPlayingInfo.GetValue(null); }
+                set { playbackIsPlayingInfo.SetValue(null, value); }
+            }
+
+            public static bool playbackIsPaused
+            {
+                get { return (bool)playbackIsPausedInfo.GetValue(null); }
+                set { playbackIsPausedInfo.SetValue(null, value); }
+            }
+
+            public static bool resimulation
+            {
+                get { return (bool)resimulationInfo.GetValue(null); }
+                set { resimulationInfo.SetValue(null, value); }
+            }
+
+            public static uint previewLayers
+            {
+                get { return (uint)previewLayersInfo.GetValue(null); }
+                set { previewLayersInfo.SetValue(null, value); }
+            }
+
+            public static bool renderInSceneView
+            {
+                get { return (bool)renderInSceneViewInfo.GetValue(null); }
+                set { renderInSceneViewInfo.SetValue(null, value); }
+            }
+
+            public static ParticleSystem lockedParticleSystem
+            {
+                get { return (ParticleSystem)lockedParticleSystemInfo.GetValue(null); }
+                set { lockedParticleSystemInfo.SetValue(null, value); }
+            }
+
+            public static void PerformCompleteResimulation()
+            {
+
+                PerformCompleteResimulationInfo.Invoke(null, null);
+            }
+
+            public static ParticleSystem GetRoot(ParticleSystem ps)
+            {
+                if (ps == null)
+                {
+                    return null;
+                }
+
+                Transform transform = ps.transform;
+                while ((bool)transform.parent && transform.parent.gameObject.GetComponent<ParticleSystem>() != null)
+                {
+                    transform = transform.parent;
+                }
+
+                return transform.gameObject.GetComponent<ParticleSystem>();
+            }
+        }
+    
 
         #endregion
 
