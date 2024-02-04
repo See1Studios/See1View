@@ -47,6 +47,7 @@ using Object = UnityEngine.Object;
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
 using static See1Studios.See1View.See1View;
+using PlasticPipe.PlasticProtocol.Messages;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -75,10 +76,11 @@ namespace See1Studios.See1View
         Preview,
         Custom
     }
+
     public enum LeftPanelMode
     {
-        Hierachy,
-        Shader
+        Transform,
+        Render
     }
 
     public enum RightPanelMode
@@ -2887,11 +2889,11 @@ where T : IEquatable<T>
         }
     }
 
-    class ShaderTreeView : TreeView
+    class RenderTreeView : TreeView
     {
         Scene scene;
 
-        public ShaderTreeView(Scene scene, TreeViewState state) : base(state)
+        public RenderTreeView(Scene scene, TreeViewState state) : base(state)
         {
             this.scene = scene;
             showAlternatingRowBackgrounds = true;
@@ -2930,6 +2932,18 @@ where T : IEquatable<T>
                     matItem.icon = EditorGUIUtility.ObjectContent(mat, mat.GetType()).image as Texture2D;
                     id++;
                     list.Add(matItem);
+
+                    var texList = GetTexturesFromMaterial(mat);
+                    foreach (var tex in texList)
+                    {
+                        var texItem = new TreeViewItem { displayName = tex.name };
+                        texItem.id = id;
+                        texItem.depth = 2;
+                        texItem.icon = EditorGUIUtility.ObjectContent(tex, tex.GetType()).image as Texture2D;
+                        id++;
+                        list.Add(texItem);
+                    }
+
                     var rendSelection = rends.Where(x => x.sharedMaterials.Contains(mat)).Distinct().ToList();
                     for (int k = 0; k < rendSelection.Count; k++)
                     {
@@ -2940,6 +2954,31 @@ where T : IEquatable<T>
                         rendItem.icon = EditorGUIUtility.ObjectContent(rend, rend.GetType()).image as Texture2D;
                         id++;
                         list.Add(rendItem);
+                        Mesh mesh = null;
+                        if (rend is SkinnedMeshRenderer)
+                        {
+                            var smr = (SkinnedMeshRenderer)rend;
+                            mesh = smr.sharedMesh;
+                        }
+                        if (rend is MeshRenderer)
+                        {
+                            var mf = rend.GetComponent<MeshFilter>();;
+                            mesh = mf.sharedMesh;
+                        }
+                        if (rend is ParticleSystemRenderer)
+                        {
+                            var pr = (ParticleSystemRenderer)rend;
+                            mesh = pr.mesh;
+                        }
+                        if(mesh!=null)
+                        {
+                            var meshItem = new TreeViewItem { displayName = mesh.name };
+                            meshItem.id = id;
+                            meshItem.depth = 3;
+                            meshItem.icon = EditorGUIUtility.ObjectContent(mesh, mesh.GetType()).image as Texture2D;
+                            id++;
+                            list.Add(meshItem);
+                        }
                     }
                 }
             }
@@ -2950,10 +2989,20 @@ where T : IEquatable<T>
             return root;
         }
 
-        public void RegisterItems()
+        List<Texture> GetTexturesFromMaterial(Material mat)
         {
-
+            List<Texture> list = new List<Texture>();
+            var textureNames = mat.GetTexturePropertyNames();
+            foreach (var texName in textureNames)
+            {
+                Texture tex = mat.GetTexture(texName);
+                if (tex) list.Add(tex);
+            }
+            return list;
         }
+        //protected override void DoubleClickedItem(int id)
+        //{
+        //}
     }
 
     // popup window context for size input.
@@ -3499,7 +3548,7 @@ where T : IEquatable<T>
                 time = GUI.HorizontalSlider(progressRect, (float)time, 0, GetCurrentParticleLength(), GUIStyle.none, GUIStyle.none);
                 float length = GetCurrentParticleLength();
                 float progress = (float)time / length;
-                EditorGUI.ProgressBar(progressRect, progress, $"{progress} : {length.ToString("0.00")}s,");
+                EditorGUI.ProgressBar(progressRect, progress, $"{time} : {length.ToString("0.00")}s,");
                 SetPlaybackTime(progress);
 
                 using (var hr = new EditorGUILayout.HorizontalScope())
@@ -6547,14 +6596,16 @@ where T : IEquatable<T>
         double _lastTimeSinceStartup = 0f;
         const int _labelWidth = 95;
         const int _toolbarHeight = 21; //oldskin 18 newskin 21
+        // GUI Tree View
         TransformTreeView _transformTreeView;
         TreeViewState _transformTreeViewState;
-        ShaderTreeView _shaderTreeView;
-        TreeViewState _shaderTreeViewState;
+        RenderTreeView _renderTreeView;
+        TreeViewState _renderTreeViewState;
         SearchField _treeViewSearchField;
+        // Misc
         TargetInfo _targetInfo = new TargetInfo();
         bool _shortcutEnabled;
-        LeftPanelMode leftPanelMode = LeftPanelMode.Hierachy;
+        LeftPanelMode leftPanelMode = LeftPanelMode.Transform;
         RightPanelMode rightPanelMode = RightPanelMode.View;
         PopupWindow _popup;
         SizePopup _sizePopup;
@@ -6969,7 +7020,7 @@ where T : IEquatable<T>
                 _preview.AddSingleGO(instance);
                 _targetInfo.Init(src, instance);
                 _transformTreeView?.Reload();
-                _shaderTreeView?.Reload();
+                _renderTreeView?.Reload();
                 _particlePlayer.Init(_targetInfo.particleSystems);
                 InitAnimationPlayer(_mainTarget, true);
                 ApplyModelCommandBuffers();
@@ -7003,9 +7054,9 @@ where T : IEquatable<T>
             {
                 _transformTreeView.Reload();
             }
-            if (_shaderTreeView != null)
+            if (_renderTreeView != null)
             {
-                _shaderTreeView.Reload();
+                _renderTreeView.Reload();
             }
             RunInEditHelper2.Clean();
             Notice.Log(string.Format("{0} Removed", name), false);
@@ -7270,12 +7321,12 @@ where T : IEquatable<T>
                 _transformTreeView = new TransformTreeView(scene, _transformTreeViewState);
                 _transformTreeView.onDragObject = (go) => { AddModel(go, false); };
                 // Shader Tree
-                if (_shaderTreeViewState == null) _shaderTreeViewState = new TreeViewState();
-                if (_shaderTreeView == null) _shaderTreeView = new ShaderTreeView(scene, _shaderTreeViewState);
+                if (_renderTreeViewState == null) _renderTreeViewState = new TreeViewState();
+                if (_renderTreeView == null) _renderTreeView = new RenderTreeView(scene, _renderTreeViewState);
                 // Search Field
                 _treeViewSearchField = new SearchField();
                 _treeViewSearchField.downOrUpArrowKeyPressed += _transformTreeView.SetFocusAndEnsureSelectedItem;
-                _treeViewSearchField.downOrUpArrowKeyPressed += _shaderTreeView.SetFocusAndEnsureSelectedItem;
+                _treeViewSearchField.downOrUpArrowKeyPressed += _renderTreeView.SetFocusAndEnsureSelectedItem;
             }
         }
 
@@ -8203,11 +8254,11 @@ where T : IEquatable<T>
                 }
                 switch (leftPanelMode)
                 {
-                    case LeftPanelMode.Hierachy:
+                    case LeftPanelMode.Transform:
                         _transformTreeView.searchString = _treeViewSearchField.OnToolbarGUI(_transformTreeView.searchString);
                         break;
-                    case LeftPanelMode.Shader:
-                        _shaderTreeView.searchString = _treeViewSearchField.OnToolbarGUI(_shaderTreeView.searchString);
+                    case LeftPanelMode.Render:
+                        _renderTreeView.searchString = _treeViewSearchField.OnToolbarGUI(_renderTreeView.searchString);
                         break;
                 }
                 using (var svScope = new GUILayout.ScrollViewScope(_scrollPosL))
@@ -8215,16 +8266,16 @@ where T : IEquatable<T>
                     _scrollPosL = svScope.scrollPosition;
                     switch (leftPanelMode)
                     {
-                        case LeftPanelMode.Hierachy:
+                        case LeftPanelMode.Transform:
                             if (_transformTreeView != null)
                             {
                                 _transformTreeView.OnGUI(area);
                             }
                             break;
-                        case LeftPanelMode.Shader:
-                            if (_shaderTreeView != null)
+                        case LeftPanelMode.Render:
+                            if (_renderTreeView != null)
                             {
-                                _shaderTreeView.OnGUI(area);
+                                _renderTreeView.OnGUI(area);
                             }
                             break;
                     }
