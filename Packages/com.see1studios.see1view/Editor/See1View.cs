@@ -48,6 +48,7 @@ using Object = UnityEngine.Object;
 using UnityEngine.Rendering.PostProcessing;
 using static See1Studios.See1View.See1View;
 using PlasticPipe.PlasticProtocol.Messages;
+using UnityEngine.UIElements;
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -2147,6 +2148,7 @@ where T : IEquatable<T>
                 RenderSettings.ambientIntensity = ambientIntensity;
                 RenderSettings.ambientLight = ambientLight;
                 RenderSettings.ambientMode = ambientMode;
+                RenderSettings.ambientProbe = ambientProbe;
 #if UNITY_2022_3_OR_NEWER
                 RenderSettings.customReflectionTexture = customReflection;
 #else
@@ -2177,6 +2179,7 @@ where T : IEquatable<T>
                 ambientIntensity = RenderSettings.ambientIntensity;
                 ambientLight = RenderSettings.ambientLight;
                 ambientMode = RenderSettings.ambientMode;
+                ambientProbe = RenderSettings.ambientProbe;
 #if UNITY_2022_3_OR_NEWER
                 customReflection = (Cubemap)RenderSettings.customReflectionTexture;
 #else
@@ -2208,17 +2211,23 @@ where T : IEquatable<T>
             RenderSettings.skybox = skybox;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientSkyColor = ambientSkyColor;
+            DynamicGI.synchronousMode = true;
+            DynamicGI.UpdateEnvironment();
         }
 
         public RenderSettingsOverrider(RenderSettingsData c)
         {
             savedRenderSettings.CopyFromRenderSettings(); //backup
+            DynamicGI.synchronousMode = true;
+            DynamicGI.UpdateEnvironment();
             c.CopyToRenderSettings();
         }
 
         public void Dispose()
         {
             savedRenderSettings.CopyToRenderSettings();
+            DynamicGI.UpdateEnvironment();
+            DynamicGI.synchronousMode = false;
         }
     }
     // override renderpipeline in scope. 
@@ -2897,6 +2906,7 @@ where T : IEquatable<T>
         {
             this.scene = scene;
             showAlternatingRowBackgrounds = true;
+            SetUseHorizontalScroll(true);
             Reload();
         }
 
@@ -2984,9 +2994,56 @@ where T : IEquatable<T>
             }
             // Utility method that initializes the TreeViewItem.children and -parent for all items.
             SetupParentsAndChildrenFromDepths(root, list);
-
             // Return root of the tree
             return root;
+        }
+
+        protected override void RowGUI(RowGUIArgs args)
+        {
+            Event evt = Event.current;
+            extraSpaceBeforeIconAndLabel = 18f;
+
+            // GameObject isStatic toggle 
+            //var gameObject = GetGameObject(args.item.id);
+            //if (gameObject == null)
+            //    return;
+
+            Rect r = args.rowRect;
+            //Rect iconRect = new RectOffset(0,235,0,0).Remove(r);
+            //EditorGUI.DrawTextureTransparent(iconRect, args.item.icon, ScaleMode.ScaleToFit,1,1, ColorWriteMask.All);
+
+            r.x += GetContentIndent(args.item);
+            r.width = 16f;
+
+            // Ensure row is selected before using the toggle (usability)
+            if (evt.type == EventType.MouseDown && r.Contains(evt.mousePosition))
+                SelectionClick(args.item, false);
+
+            //EditorGUI.BeginChangeCheck();
+            //bool activeInHierarchy = EditorGUI.Toggle(r, gameObject.activeInHierarchy);
+            //if (EditorGUI.EndChangeCheck())
+            //    gameObject.SetActive(activeInHierarchy);
+            //EditorGUI.DrawTextureTransparent(r, args.item.icon);
+            GUI.DrawTexture(r, args.item.icon, ScaleMode.ScaleToFit);
+            
+            r.x += 16f;
+            r.width = args.rowRect.width;
+            EditorGUI.DropShadowLabel(r, args.item.displayName, EditorStyles.whiteMiniLabel);
+            r.x += r.width - 60;
+            r.width = 18;
+            r.height = EditorGUIUtility.singleLineHeight;
+
+            //Delete root gameObject only
+            //if (gameObject.transform.parent == null)
+            //{
+
+            //    if (GUI.Button(r, "x", EditorStyles.miniButton))
+            //    {
+
+            //    }
+            //}
+
+            //base.RowGUI(args);
         }
 
         List<Texture> GetTexturesFromMaterial(Material mat)
@@ -3003,6 +3060,23 @@ where T : IEquatable<T>
         //protected override void DoubleClickedItem(int id)
         //{
         //}
+
+        private void SetUseHorizontalScroll(bool value)
+        {
+            FieldInfo guiFieldInfo = typeof(TreeView).GetField("m_GUI", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (null == guiFieldInfo)
+            {
+                throw new Exception("TreeView API has changed.");
+            }
+            object gui = guiFieldInfo.GetValue(this);
+
+            FieldInfo useHorizontalScrollFieldInfo = gui.GetType().GetField("m_UseHorizontalScroll", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (null == useHorizontalScrollFieldInfo)
+            {
+                throw new Exception("TreeView API has changed.");
+            }
+            useHorizontalScrollFieldInfo.SetValue(gui, value);
+        }
     }
 
     // popup window context for size input.
@@ -9947,6 +10021,7 @@ where T : IEquatable<T>
         {
             _probe.customBakedTexture = currentData.cubeMap;
             currentData.CubeMapMipMapBias = currentData.CubeMapMipMapBias;
+            DynamicGI.synchronousMode = true;
             DynamicGI.UpdateEnvironment();
         }
 
