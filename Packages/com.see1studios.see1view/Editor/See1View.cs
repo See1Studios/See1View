@@ -7299,8 +7299,10 @@ where T : IEquatable<T>
                 _urpCamera = _preview.camera.GetUniversalAdditionalCameraData();
                 _urpCamera.volumeLayerMask = ~_previewLayer;
                 _preview.camera.cameraType = currentData.cameraType;
-                //_urpRenderer = (UniversalRendererData)ScriptableObject.CreateInstance<UniversalRendererData>();                
+                _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
+                ApplyURPData();      
             }
+
 #endif
 #if HDRP
             if (currentData.renderPipelineMode == RenderPipelineMode.HighDefinition)
@@ -7317,7 +7319,22 @@ where T : IEquatable<T>
 
             Notice.Log(string.Format("{0} Render Pipeline Initialized", currentData.renderPipelineMode.ToString()));
         }
+#if URP
+        private void ApplyURPData()
+        {
+            UniversalRenderPipelineAsset urpPipelineAsset = currentData.renderPipelineAsset as UniversalRenderPipelineAsset;
+            urpPipelineAsset.renderScale = currentData.renderScale;
+            _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
+            _urpCamera.dithering = currentData.urpData.dithering;
+        }
+#endif
 
+#if HDRP
+        private void ApplyHDRPData()
+        {
+
+        }
+#endif
         void Cleanup()
         {
             if (_camPivot) DestroyImmediate(_camPivot.gameObject);
@@ -8941,10 +8958,7 @@ where T : IEquatable<T>
                         currentData.urpData.dithering = GUILayout.Toggle(currentData.urpData.dithering, "Enable Dithering", EditorStyles.miniButton);
                         if (check.changed)
                         {
-                            UniversalRenderPipelineAsset urpPipelineAsset = currentData.renderPipelineAsset as UniversalRenderPipelineAsset;
-                            urpPipelineAsset.renderScale = currentData.renderScale;
-                            _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
-                            _urpCamera.dithering = currentData.urpData.dithering;
+                            ApplyURPData();
                         }
                     }
                 });
