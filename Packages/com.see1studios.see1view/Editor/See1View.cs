@@ -43,11 +43,10 @@ using UnityEngine.Networking;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
+using TreeView = UnityEditor.IMGUI.Controls.TreeView;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using static See1Studios.See1View.See1View;
-using PlasticPipe.PlasticProtocol.Messages;
 using UnityEngine.UIElements;
 #endif
 #if URP
@@ -6619,6 +6618,112 @@ where T : IEquatable<T>
         public abstract void OnDisable();
     }
 
+    public static class ParticleSystemEditorUtilsRefl
+    {
+        public static PropertyInfo simulationSpeedInfo;
+        public static PropertyInfo playbackTimeInfo;
+        public static PropertyInfo playbackIsScrubbingInfo;
+        public static PropertyInfo playbackIsPlayingInfo;
+        public static PropertyInfo playbackIsPausedInfo;
+        public static PropertyInfo resimulationInfo;
+        public static PropertyInfo previewLayersInfo;
+        public static PropertyInfo renderInSceneViewInfo;
+        public static PropertyInfo lockedParticleSystemInfo;
+        public static MethodInfo PerformCompleteResimulationInfo;
+        //UnityEditor.ParticleSystemEditorUtils
+
+        static ParticleSystemEditorUtilsRefl()
+        {
+            var PsUtils = typeof(UnityEditor.EditorUtility).Assembly.GetType("UnityEditor.ParticleSystemEditorUtils", false, true);
+            playbackTimeInfo = PsUtils.GetProperty("playbackTime", BindingFlags.Static | BindingFlags.NonPublic);
+            playbackIsScrubbingInfo = PsUtils.GetProperty("playbackIsScrubbing", BindingFlags.Static | BindingFlags.NonPublic);
+            playbackIsPlayingInfo = PsUtils.GetProperty("playbackIsPlaying", BindingFlags.Static | BindingFlags.NonPublic);
+            playbackIsPausedInfo = PsUtils.GetProperty("playbackIsPaused", BindingFlags.Static | BindingFlags.NonPublic);
+            resimulationInfo = PsUtils.GetProperty("resimulation", BindingFlags.Static | BindingFlags.NonPublic);
+            previewLayersInfo = PsUtils.GetProperty("previewLayers", BindingFlags.Static | BindingFlags.NonPublic);
+            renderInSceneViewInfo = PsUtils.GetProperty("renderInSceneView", BindingFlags.Static | BindingFlags.NonPublic);
+            lockedParticleSystemInfo = PsUtils.GetProperty("lockedParticleSystem", BindingFlags.Static | BindingFlags.NonPublic);
+            PerformCompleteResimulationInfo = PsUtils.GetMethod("PerformCompleteResimulation", (BindingFlags.Static | BindingFlags.NonPublic));
+        }
+
+        public static float simulationSpeed
+        {
+            get { return (float)simulationSpeedInfo.GetValue(null); }
+            set { simulationSpeedInfo.SetValue(null, value); }
+        }
+
+        public static float playbackTime
+        {
+            get { return (float)playbackTimeInfo.GetValue(null); }
+            set { playbackTimeInfo.SetValue(null, value); }
+        }
+
+        public static bool playbackIsScrubbing
+        {
+            get { return (bool)playbackIsScrubbingInfo.GetValue(null); }
+            set { playbackIsScrubbingInfo.SetValue(null, value); }
+        }
+
+        public static bool playbackIsPlaying
+        {
+            get { return (bool)playbackIsPlayingInfo.GetValue(null); }
+            set { playbackIsPlayingInfo.SetValue(null, value); }
+        }
+
+        public static bool playbackIsPaused
+        {
+            get { return (bool)playbackIsPausedInfo.GetValue(null); }
+            set { playbackIsPausedInfo.SetValue(null, value); }
+        }
+
+        public static bool resimulation
+        {
+            get { return (bool)resimulationInfo.GetValue(null); }
+            set { resimulationInfo.SetValue(null, value); }
+        }
+
+        public static uint previewLayers
+        {
+            get { return (uint)previewLayersInfo.GetValue(null); }
+            set { previewLayersInfo.SetValue(null, value); }
+        }
+
+        public static bool renderInSceneView
+        {
+            get { return (bool)renderInSceneViewInfo.GetValue(null); }
+            set { renderInSceneViewInfo.SetValue(null, value); }
+        }
+
+        public static ParticleSystem lockedParticleSystem
+        {
+            get { return (ParticleSystem)lockedParticleSystemInfo.GetValue(null); }
+            set { lockedParticleSystemInfo.SetValue(null, value); }
+        }
+
+        public static void PerformCompleteResimulation()
+        {
+
+            PerformCompleteResimulationInfo.Invoke(null, null);
+        }
+
+        public static ParticleSystem GetRoot(ParticleSystem ps)
+        {
+            if (ps == null)
+            {
+                return null;
+            }
+
+            Transform transform = ps.transform;
+            while ((bool)transform.parent && transform.parent.gameObject.GetComponent<ParticleSystem>() != null)
+            {
+                transform = transform.parent;
+            }
+
+            return transform.gameObject.GetComponent<ParticleSystem>();
+        }
+    }
+
+
     #endregion //----------------------------------------------------------------------------------------------------------------------------------------------------
 
     public class See1View : EditorWindow
@@ -10429,111 +10534,6 @@ where T : IEquatable<T>
             //Debug.Log(string.Format("{0} : PreviewLayerID is {1}", this.GetType().Name, _previewLayer.ToString()));
         }
 
-        public static class ParticleSystemEditorUtilsRefl
-        {
-            public static PropertyInfo simulationSpeedInfo;
-            public static PropertyInfo playbackTimeInfo;
-            public static PropertyInfo playbackIsScrubbingInfo;
-            public static PropertyInfo playbackIsPlayingInfo;
-            public static PropertyInfo playbackIsPausedInfo;
-            public static PropertyInfo resimulationInfo;
-            public static PropertyInfo previewLayersInfo;
-            public static PropertyInfo renderInSceneViewInfo;
-            public static PropertyInfo lockedParticleSystemInfo;
-            public static MethodInfo PerformCompleteResimulationInfo;
-            //UnityEditor.ParticleSystemEditorUtils
-
-            static ParticleSystemEditorUtilsRefl()
-            {
-                var PsUtils = typeof(UnityEditor.EditorUtility).Assembly.GetType("UnityEditor.ParticleSystemEditorUtils", false, true);
-                playbackTimeInfo = PsUtils.GetProperty("playbackTime", BindingFlags.Static | BindingFlags.NonPublic);
-                playbackIsScrubbingInfo = PsUtils.GetProperty("playbackIsScrubbing", BindingFlags.Static | BindingFlags.NonPublic);
-                playbackIsPlayingInfo = PsUtils.GetProperty("playbackIsPlaying", BindingFlags.Static | BindingFlags.NonPublic);
-                playbackIsPausedInfo = PsUtils.GetProperty("playbackIsPaused", BindingFlags.Static | BindingFlags.NonPublic);
-                resimulationInfo = PsUtils.GetProperty("resimulation", BindingFlags.Static | BindingFlags.NonPublic);
-                previewLayersInfo = PsUtils.GetProperty("previewLayers", BindingFlags.Static | BindingFlags.NonPublic);
-                renderInSceneViewInfo = PsUtils.GetProperty("renderInSceneView", BindingFlags.Static | BindingFlags.NonPublic);
-                lockedParticleSystemInfo = PsUtils.GetProperty("lockedParticleSystem", BindingFlags.Static | BindingFlags.NonPublic);
-                PerformCompleteResimulationInfo = PsUtils.GetMethod("PerformCompleteResimulation", (BindingFlags.Static | BindingFlags.NonPublic));
-            }
-
-            public static float simulationSpeed
-            {
-                get { return (float)simulationSpeedInfo.GetValue(null); }
-                set { simulationSpeedInfo.SetValue(null, value); }
-            }
-
-            public static float playbackTime
-            {
-                get { return (float)playbackTimeInfo.GetValue(null); }
-                set { playbackTimeInfo.SetValue(null, value); }
-            }
-
-            public static bool playbackIsScrubbing
-            {
-                get { return (bool)playbackIsScrubbingInfo.GetValue(null); }
-                set { playbackIsScrubbingInfo.SetValue(null, value); }
-            }
-
-            public static bool playbackIsPlaying
-            {
-                get { return (bool)playbackIsPlayingInfo.GetValue(null); }
-                set { playbackIsPlayingInfo.SetValue(null, value); }
-            }
-
-            public static bool playbackIsPaused
-            {
-                get { return (bool)playbackIsPausedInfo.GetValue(null); }
-                set { playbackIsPausedInfo.SetValue(null, value); }
-            }
-
-            public static bool resimulation
-            {
-                get { return (bool)resimulationInfo.GetValue(null); }
-                set { resimulationInfo.SetValue(null, value); }
-            }
-
-            public static uint previewLayers
-            {
-                get { return (uint)previewLayersInfo.GetValue(null); }
-                set { previewLayersInfo.SetValue(null, value); }
-            }
-
-            public static bool renderInSceneView
-            {
-                get { return (bool)renderInSceneViewInfo.GetValue(null); }
-                set { renderInSceneViewInfo.SetValue(null, value); }
-            }
-
-            public static ParticleSystem lockedParticleSystem
-            {
-                get { return (ParticleSystem)lockedParticleSystemInfo.GetValue(null); }
-                set { lockedParticleSystemInfo.SetValue(null, value); }
-            }
-
-            public static void PerformCompleteResimulation()
-            {
-
-                PerformCompleteResimulationInfo.Invoke(null, null);
-            }
-
-            public static ParticleSystem GetRoot(ParticleSystem ps)
-            {
-                if (ps == null)
-                {
-                    return null;
-                }
-
-                Transform transform = ps.transform;
-                while ((bool)transform.parent && transform.parent.gameObject.GetComponent<ParticleSystem>() != null)
-                {
-                    transform = transform.parent;
-                }
-
-                return transform.gameObject.GetComponent<ParticleSystem>();
-            }
-        }
-    
 
         #endregion
 
