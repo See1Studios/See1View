@@ -48,6 +48,9 @@ using TreeView = UnityEditor.IMGUI.Controls.TreeView;
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.UIElements;
+using UnityEditor.Animations;
+
+
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -4376,6 +4379,116 @@ where T : IEquatable<T>
         }
     }
 
+
+    public class AnimationManager
+    {
+        public List<AnimationPlayer> playerList = new List<AnimationPlayer>();
+
+        public bool isPlaying
+        {
+
+            get { return playerList.Count > 0 ? playerList[0].isPlaying : false; }
+
+        }
+
+        public int playerCount { get { return playerList.Count; } }
+
+        public AnimationPlayer GetMainPlayer()
+        {
+            return playerList[0];
+        }
+
+        internal void Cleanup()
+        {
+            playerList.Clear();
+        }
+
+        internal void Reset()
+        {
+            playerList.Clear();
+        }
+
+        internal bool IsActorInVaiid()
+        {
+            return (playerList.Any(x => x.actorList.Any(ani => ani.instance == null)));
+        }
+
+        internal bool PlayerExists()
+        {
+            return playerList.Count > 0;
+        }
+
+        internal void PreparePlay()
+        {
+            foreach (var player in playerList)
+            {
+                if (player.isPlaying) player.DeOptimizeObject();
+            }
+        }
+
+        internal void ResetAllPlayers(GameObject root)
+        {
+            playerList.Clear();
+            Animator[] animators = root.GetComponentsInChildren<Animator>();
+            if (animators.Length > 0)
+            {
+                for (int i = 0; i < animators.Length; i++)
+                {
+                    Animator animator = animators[i];
+                    AnimationPlayer player = new AnimationPlayer();
+                    player.AddActor(animator.gameObject, true);
+                    playerList.Add(player);
+                }
+            }
+            else
+            {
+                //Create Default Animator Component
+                AnimationPlayer player = new AnimationPlayer();
+                player.AddActor(root, true);
+                playerList.Add(player);
+            }
+        }
+
+        internal void Update(float deltaTime)
+        {
+            for (int i = 0; i < playerList.Count; i++)
+            {
+                playerList[i].Update(deltaTime);
+            }
+        }
+
+        internal void TogglePlay()
+        {
+            playerList.FirstOrDefault()?.TogglePlay();
+        }
+
+        internal bool CanAddAnimation(AnimationClip clip, bool instantPlay)
+        {
+            if (playerList.Count > 0)
+            {
+                playerList[0].AddClip(clip);
+                if (instantPlay) playerList[0].PlayInstant(clip);
+                return true;
+            }
+            return false;
+        }
+
+        internal AnimationPlayer GetPlayer(int a)
+        {
+           return playerList[a];
+        }
+
+        internal void OnGUI()
+        {
+            if (!PlayerExists()) return;
+            //if (_player == null) return;
+            foreach (var player in playerList)
+            {
+                player.OnGUI_Control();
+            }
+        }
+    }
+
     // apply animationclip to multiple actor
     public class AnimationPlayer
     {
@@ -4425,8 +4538,10 @@ where T : IEquatable<T>
         internal UnityEditorInternal.ReorderableList reorderableClipList;
         internal List<Actor> actorList = new List<Actor>();
         internal List<AnimationClip> playList = new List<AnimationClip>();
+        internal List<Tuple<string, AnimationClip[]>> srcClipList = new List<Tuple<string, AnimationClip[]>>();
         internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
         public BoneModifier boneModifier;
+        private string currentSrcGroupName = string.Empty;
         private int current;
         internal double time = 0.0f;
         internal float timeSpeed = 1.0f;
@@ -4613,19 +4728,42 @@ where T : IEquatable<T>
             reorderableActorList.onChangedCallback = list => { };
         }
 
+        void ShowSrcSelector()
+        {
+            var menu = new GenericMenu();
+            foreach (var srcClips in srcClipList)
+            {
+                menu.AddItem(new GUIContent($"{srcClips.Item1}", srcClips.Item2.Length.ToString()), false,
+                x =>
+                {
+                    Tuple<string, AnimationClip[]> selectedTuple = (Tuple<string, AnimationClip[]>)x;
+                    BuildClipInfoList(selectedTuple);
+                }, srcClips);
+            }
+            menu.ShowAsContext();
+        }
+
         private void InitClipList()
         {
             clipInfoList = new List<ClipInfo>();
             reorderableClipList = new UnityEditorInternal.ReorderableList(clipInfoList, typeof(ClipInfo), true, true, false, false);
             //fields
             reorderableClipList.showDefaultBackground = false;
-            reorderableClipList.headerHeight = 20;
+            reorderableClipList.headerHeight = 40;
             reorderableClipList.elementHeight = 18;
             reorderableClipList.footerHeight = 20;
             //draw callback
             reorderableClipList.drawHeaderCallback = (position) =>
             {
                 Event evt = Event.current;
+
+                position.height = 20f;
+                if (GUI.Button(position, currentSrcGroupName))
+                {
+                    ShowSrcSelector();
+                }
+                
+                position.y += position.height;
                 var btn30 = position.width * 0.3333f;
                 position.width = btn30;
                 if (GUI.Button(position, "Add", EditorStyles.miniButtonLeft))
@@ -4804,14 +4942,26 @@ where T : IEquatable<T>
                     //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
                     //DeOptimizeObject();
                     var clips = AnimationUtility.GetAnimationClips(actor.instance);
-                    foreach (var clip in clips)
-                    {
-                        if (Enumerable.Any(clipInfoList, x => x.clip == clip)) continue;
-                        clipInfoList.Add(new ClipInfo(clip));
-                    }
+                    string key = animator.runtimeAnimatorController ? animator.runtimeAnimatorController.name : animator.name;
+                    var tuple = new Tuple<string, AnimationClip[]>(key, clips);
+                    srcClipList.Add(tuple);
+                    BuildClipInfoList(tuple);
                 }
             }
             RefreshPlayList();
+        }
+
+        private void BuildClipInfoList(Tuple<string, AnimationClip[]> tuple)
+        {
+            clipInfoList.Clear();
+            foreach (var clip in tuple.Item2)
+            {
+                // duplicates pass
+                if (Enumerable.Any(clipInfoList, x => x.clip == clip)) continue;
+                clipInfoList.Add(new ClipInfo(clip));
+                Debug.Log(clip.name);
+            }
+            currentSrcGroupName = tuple.Item1;
         }
 
         public void AddActor(GameObject go, bool isSceneObject, bool collectClip = true)
@@ -4865,7 +5015,11 @@ where T : IEquatable<T>
             RefreshPlayList();
         }
 
-
+        public void AddSourceClips(AnimatorController controller)
+        {
+            Tuple<string, AnimationClip[]> tuple = new Tuple<string, AnimationClip[]>(controller.name, controller.animationClips);
+            srcClipList.Add(tuple);
+        }
 
         void ToggleAnimationMode()
         {
@@ -6757,12 +6911,8 @@ where T : IEquatable<T>
         // Particle
         ParticlePlayer _particlePlayer = new ParticlePlayer();
         // Animation
-        List<AnimationPlayer> _animPlayerList = new List<AnimationPlayer>();
-
-        public bool isPlaying
-        {
-            get { return _animPlayerList.Count > 0 ? _animPlayerList[0].isPlaying : false; }
-        }
+        AnimationManager _animManager = new AnimationManager();
+        public bool isAnimationPlaying => _animManager.isPlaying;
 
         // GUI & Control
         RectSlicer _rs;
@@ -6957,10 +7107,8 @@ where T : IEquatable<T>
 
             _particlePlayer.Update(_deltaTime);
 
-            for (int i = 0; i < _animPlayerList.Count; i++)
-            {
-                _animPlayerList[i].Update(_deltaTime);
-            }
+            _animManager.Update(_deltaTime);
+
 
             SetMaterialProperties();
             FPS.Calculate(_deltaTime);
@@ -7142,10 +7290,10 @@ where T : IEquatable<T>
                     RemoveModel(selected);
                 }
             });
-            Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"),
-                () => _animPlayerList.FirstOrDefault()?.TogglePlay());
-            Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"),
-                () => _overlayEnabled = !_overlayEnabled);
+            Shortcuts.Add(KeyCode.Space, new GUIContent("Toggle Play"), () => _animManager.TogglePlay());
+            Shortcuts.Add(KeyCode.BackQuote, new GUIContent("Toggle Overlay"), () => _overlayEnabled = !_overlayEnabled);
+            Shortcuts.Add(KeyCode.LeftBracket, new GUIContent("Toggle Left Panel"), () => _rs.openLeft.target = !_rs.openLeft.target);
+            Shortcuts.Add(KeyCode.RightBracket, new GUIContent("Toggle Right Panel"), () => _rs.openRight.target = !_rs.openRight.target);
         }
 
         public void AddModel(GameObject src)
@@ -7201,7 +7349,7 @@ where T : IEquatable<T>
                 _transformTreeView?.Reload();
                 _renderTreeView?.Reload();
                 _particlePlayer.Init(_targetInfo.particleSystems);
-                InitAnimationPlayer(_mainTarget, true);
+                InitAnimationManager(_mainTarget, true);
                 ApplyModelCommandBuffers();
                 if (currentData.forceUpdateComponent)
                 {
@@ -7251,11 +7399,9 @@ where T : IEquatable<T>
 
         void AddAnimation(AnimationClip clip, bool instantPlay = false)
         {
-            if (_animPlayerList.Count > 0)
+            if(_animManager.CanAddAnimation(clip, instantPlay))
             {
-                _animPlayerList[0].AddClip(clip);
                 _recentAnimation.Add(AssetDatabase.GetAssetPath(clip));
-                if (instantPlay) _animPlayerList[0].PlayInstant(clip);
             }
         }
 
@@ -7896,66 +8042,41 @@ where T : IEquatable<T>
 
         #region Animation
 
-        public void InitAnimationPlayer(GameObject root, bool reset)
+        public void InitAnimationManager(GameObject root, bool reset)
         {
             if (!root)
             {
-                _animPlayerList.Clear();
+                _animManager.Cleanup();
                 return;
             }
             //기존 수집된 애니메이터에 문제가 있는지 검사 (모델 옵션이 바뀜에 따라 있던 애니메이터가 없어지는 경우가 생김.
-            if (_animPlayerList.Any(x => x.actorList.Any(ani => ani.instance == null)))
-            {
-                reset = true;
-            }
-
+            if(_animManager.IsActorInVaiid()) reset = true;
             //애니메이션이 재생중인 경우 모델이 바뀌어도 애니메이션은 초기화하지 않고 계속 재생하기 위해 여기에서 바로 Deoptimize 해줌.
             //Todo Animator 를 재수집해서 기존과 동일한 건 유지하고 아닌 건 새로 추가해줘야...
-            if (!reset && _animPlayerList.Count > 0)
+            if (!reset && _animManager.PlayerExists())
             {
-                foreach (var player in _animPlayerList)
-                {
-                    if (player.isPlaying) player.DeOptimizeObject();
-                }
+                _animManager.PreparePlay();
             }
             //애니메이션 초기화 및 재수집. 일반적인 경우.
             else
             {
-                _animPlayerList.Clear();
-                Animator[] animators = root.GetComponentsInChildren<Animator>();
-                if (animators.Length > 0)
-                {
-                    for (int i = 0; i < animators.Length; i++)
-                    {
-                        Animator animator = animators[i];
-                        AnimationPlayer player = new AnimationPlayer();
-                        player.AddActor(animator.gameObject, true);
-                        _animPlayerList.Add(player);
-                    }
-                }
-                else
-                {
-                    //Create Default Animator Component
-                    AnimationPlayer player = new AnimationPlayer();
-                    player.AddActor(root, true);
-                    _animPlayerList.Add(player);
-                }
+                _animManager.ResetAllPlayers(root);
             }
         }
 
         public void ResetAnimationPlayer()
         {
-            _animPlayerList.Clear();
+            _animManager.Reset();
         }
 
         public AnimationPlayer GetMainPlayer()
         {
-            return _animPlayerList[0];
+            return _animManager.GetMainPlayer();
         }
 
         public Actor GetMainActor()
         {
-            return _animPlayerList[0].GetActor(MainTarget);
+            return _animManager.GetMainPlayer().GetActor(MainTarget);
         }
 
         #endregion
@@ -9417,9 +9538,9 @@ where T : IEquatable<T>
         void OnGUI_Animation()
         {
             EditorHelper.IconLabel(typeof(Animation), "Animation");
-            for (int a = 0; a < _animPlayerList.Count; a++)
+            for (int a = 0; a <_animManager.playerCount; a++)
             {
-                var player = _animPlayerList[a];
+                var player = _animManager.GetPlayer(a);
                 EditorHelper.FoldGroup.Do(string.Format($"Animator{a}:{player.name}"), true, () =>
                 {
                     for (int b = 0; b < player.actorList.Count; b++)
@@ -9447,7 +9568,7 @@ where T : IEquatable<T>
                                 if (dragged_object is AnimationClip)
                                 {
                                     var clip = dragged_object as AnimationClip;
-                                    _animPlayerList.FirstOrDefault().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
+                                   _animManager.GetMainPlayer().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
                                 }
                             }
                         }
@@ -9458,9 +9579,9 @@ where T : IEquatable<T>
 
             EditorHelper.FoldGroup.Do("Bone Modifier", true, () =>
             {
-                if (_animPlayerList.Count > 0)
+                if (_animManager.PlayerExists())
                 {
-                    var player = _animPlayerList[0];
+                    var player = _animManager.GetMainPlayer();
                     player.boneModifier.OnGUI();
                 }
             });
@@ -9472,9 +9593,9 @@ where T : IEquatable<T>
             {
                 if (GUILayout.Button("Add Current"))
                 {
-                    if (_animPlayerList.Count > 0)
+                    if (_animManager.PlayerExists())
                     {
-                        var player = _animPlayerList[0];
+                        var player = _animManager.GetMainPlayer();
                         if (player.playList.Count > 0)
                         {
                             var steel = new Steel(player.currentClipInfo.clip, player.time);
@@ -9493,7 +9614,7 @@ where T : IEquatable<T>
                     {
                         if (GUILayout.Button(string.Format("{0}:{1}", steel.animationClip.name, steel.time.ToString("F")), EditorStyles.miniButton))
                         {
-                            var player = _animPlayerList[0];
+                            var player = _animManager.GetMainPlayer();
                         }
                         if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.Width(30)))
                         {
@@ -9513,12 +9634,7 @@ where T : IEquatable<T>
             Rect area = new RectOffset(0, 0, 0, 0).Remove(r);
             using (new GUILayout.AreaScope(area))
             {
-                if (_animPlayerList.Count == 0) return;
-                //if (_player == null) return;
-                foreach (var animationPlayer in _animPlayerList)
-                {
-                    animationPlayer.OnGUI_Control();
-                }
+                _animManager.OnGUI();
             }
         }
 
