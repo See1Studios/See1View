@@ -44,13 +44,10 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 using TreeView = UnityEditor.IMGUI.Controls.TreeView;
+using UnityEditor.Animations;
 
 #if UNITY_POST_PROCESSING_STACK_V2
 using UnityEngine.Rendering.PostProcessing;
-using UnityEngine.UIElements;
-using UnityEditor.Animations;
-
-
 #endif
 #if URP
 using UnityEngine.Rendering.Universal;
@@ -2918,11 +2915,11 @@ where T : IEquatable<T>
             var list = new List<TreeViewItem>();
             var roots = scene.GetRootGameObjects();
             var rends = roots.SelectMany(x => x.GetComponentsInChildren<Renderer>()).ToList();
-            var materials = rends.SelectMany(x => x.sharedMaterials).Distinct().ToList();
-            var staticMeshes = roots.SelectMany(x => x.GetComponentsInChildren<MeshFilter>()).Select(x => x.sharedMesh).ToList();
-            var skinnedMeshes = roots.SelectMany(x => x.GetComponentsInChildren<SkinnedMeshRenderer>()).Select(x => x.sharedMesh).ToList();
+            var materials = rends.SelectMany(x => x.sharedMaterials).Where(m=>m).Distinct().ToList();
+            var staticMeshes = roots.SelectMany(x => x.GetComponentsInChildren<MeshFilter>()).Where(mf=>mf.sharedMesh).Select(x => x.sharedMesh).ToList();
+            var skinnedMeshes = roots.SelectMany(x => x.GetComponentsInChildren<SkinnedMeshRenderer>()).Where(smr => smr.sharedMesh).Select(x => x.sharedMesh).ToList();
             var meshes = staticMeshes.Union(skinnedMeshes);
-            var shaders = materials.Where(x => x != null).Select(y => y.shader).Distinct().ToList();
+            var shaders = materials.Where(x => x).Select(y => y.shader).Distinct().ToList();
 
             int id = 0;
             for (int i = 0; i < shaders.Count; i++)
@@ -3721,8 +3718,11 @@ where T : IEquatable<T>
             isPlaying = false;
             time = 0;
             ParticleSystem particleSystem = _psList[0];
-            particleSystem.Stop(includeChildren, ParticleSystemStopBehavior.StopEmitting);
-            particleSystem.Clear();
+            if (particleSystem)
+            {
+                particleSystem.Stop(includeChildren, ParticleSystemStopBehavior.StopEmitting);
+                particleSystem.Clear();
+            }
         }
 
         internal void Clear()
@@ -3983,6 +3983,7 @@ where T : IEquatable<T>
 
         public void Load(string dataPath)
         {
+            if (string.IsNullOrEmpty(dataPath)) return;
             var data = File.ReadAllText(dataPath);
             var loaded = JsonUtility.FromJson<BoneModifier>(data);
             if (loaded != null)
@@ -3997,6 +3998,7 @@ where T : IEquatable<T>
 
         public void Save(string dataPath)
         {
+            if (string.IsNullOrEmpty(dataPath)) return;
             var data = JsonUtility.ToJson(this, true);
             File.WriteAllText(dataPath, data);
         }
@@ -4382,6 +4384,7 @@ where T : IEquatable<T>
 
     public class AnimationManager
     {
+
         public List<AnimationPlayer> playerList = new List<AnimationPlayer>();
 
         public bool isPlaying
@@ -4392,6 +4395,11 @@ where T : IEquatable<T>
         }
 
         public int playerCount { get { return playerList.Count; } }
+
+        internal bool PlayerExists()
+        {
+            return playerList.Count > 0;
+        }
 
         public AnimationPlayer GetMainPlayer()
         {
@@ -4413,10 +4421,6 @@ where T : IEquatable<T>
             return (playerList.Any(x => x.actorList.Any(ani => ani.instance == null)));
         }
 
-        internal bool PlayerExists()
-        {
-            return playerList.Count > 0;
-        }
 
         internal void PreparePlay()
         {
@@ -4492,8 +4496,22 @@ where T : IEquatable<T>
     // apply animationclip to multiple actor
     public class AnimationPlayer
     {
-        public class ClipInfo
+
+        public class GroupInfo
         {
+            public string name;
+            public AnimationClip[] clips;
+            private string key;
+
+            public GroupInfo(string key, AnimationClip[] clips)
+            {
+                this.key = key;
+                this.clips = clips;
+            }
+        }
+
+        public class ClipInfo
+        {            
             public AnimationClip clip;
             public bool enabled;
             //public int loopTimes;
@@ -4536,12 +4554,15 @@ where T : IEquatable<T>
         public string name = string.Empty;
         internal UnityEditorInternal.ReorderableList reorderableActorList;
         internal UnityEditorInternal.ReorderableList reorderableClipList;
+
         internal List<Actor> actorList = new List<Actor>();
-        internal List<AnimationClip> playList = new List<AnimationClip>();
-        internal List<Tuple<string, AnimationClip[]>> srcClipList = new List<Tuple<string, AnimationClip[]>>();
-        internal List<ClipInfo> clipInfoList = new List<ClipInfo>();
-        public BoneModifier boneModifier;
+        internal List<GroupInfo> srcGroupList = new List<GroupInfo>(); // 여러 애니메이션 그룹을 추가해서 재생
+        internal List<ClipInfo> clipInfoList = new List<ClipInfo>(); // 소스에서 선택된 애니메이션 목록 
+        internal List<AnimationClip> playList = new List<AnimationClip>(); // 애니메이션 목록에서 실제 플레이할 목록
         private string currentSrcGroupName = string.Empty;
+
+        // 실시간 본 수정자
+        public BoneModifier boneModifier;
         private int current;
         internal double time = 0.0f;
         internal float timeSpeed = 1.0f;
@@ -4558,7 +4579,9 @@ where T : IEquatable<T>
 
         internal ClipInfo currentClipInfo
         {
-            get { return clipInfoList.FirstOrDefault(x => x.clip == _currentClip); }
+            get { 
+                return clipInfoList.FirstOrDefault(x => x.clip == _currentClip);
+            }
         }
 
         public AnimationPlayer()
@@ -4731,14 +4754,13 @@ where T : IEquatable<T>
         void ShowSrcSelector()
         {
             var menu = new GenericMenu();
-            foreach (var srcClips in srcClipList)
+            foreach (var groupInfo in srcGroupList)
             {
-                menu.AddItem(new GUIContent($"{srcClips.Item1}", srcClips.Item2.Length.ToString()), false,
-                x =>
+                menu.AddItem(new GUIContent($"{groupInfo.name}", groupInfo.clips.Length.ToString()), false, x =>
                 {
-                    Tuple<string, AnimationClip[]> selectedTuple = (Tuple<string, AnimationClip[]>)x;
-                    BuildClipInfoList(selectedTuple);
-                }, srcClips);
+                    GroupInfo info = (GroupInfo)x;
+                    BuildClipInfoList(info);
+                }, groupInfo);
             }
             menu.ShowAsContext();
         }
@@ -4932,7 +4954,7 @@ where T : IEquatable<T>
             }
         }
 
-        void InitAnimatorAndClips(Animator animator)
+        void InitAnimatorAndClips(Animator animator, string customName = "")
         {
             foreach (var actor in actorList.ToArray())
             {
@@ -4942,26 +4964,31 @@ where T : IEquatable<T>
                     //스킨드메쉬 초기화 및 애니메이션 가능하게 디옵티마이즈.
                     //DeOptimizeObject();
                     var clips = AnimationUtility.GetAnimationClips(actor.instance);
-                    string key = animator.runtimeAnimatorController ? animator.runtimeAnimatorController.name : animator.name;
-                    var tuple = new Tuple<string, AnimationClip[]>(key, clips);
-                    srcClipList.Add(tuple);
-                    BuildClipInfoList(tuple);
+                    string controllerName = "";
+                    if (animator.runtimeAnimatorController is AnimatorController animatorController)
+                    {
+                        controllerName = animatorController.name;
+                    }
+                    name = string.IsNullOrEmpty(customName) ? controllerName : customName;
+                    var group = new GroupInfo(name, clips);
+                    srcGroupList.Add(group);
+                    BuildClipInfoList(group);
                 }
             }
             RefreshPlayList();
         }
 
-        private void BuildClipInfoList(Tuple<string, AnimationClip[]> tuple)
+        private void BuildClipInfoList(GroupInfo groupInfo)
         {
             clipInfoList.Clear();
-            foreach (var clip in tuple.Item2)
+            foreach (var clip in groupInfo.clips)
             {
                 // duplicates pass
                 if (Enumerable.Any(clipInfoList, x => x.clip == clip)) continue;
                 clipInfoList.Add(new ClipInfo(clip));
-                Debug.Log(clip.name);
             }
-            currentSrcGroupName = tuple.Item1;
+            currentSrcGroupName = groupInfo.name;
+            RefreshPlayList();
         }
 
         public void AddActor(GameObject go, bool isSceneObject, bool collectClip = true)
@@ -5017,8 +5044,8 @@ where T : IEquatable<T>
 
         public void AddSourceClips(AnimatorController controller)
         {
-            Tuple<string, AnimationClip[]> tuple = new Tuple<string, AnimationClip[]>(controller.name, controller.animationClips);
-            srcClipList.Add(tuple);
+            GroupInfo group = new GroupInfo(controller.name, controller.animationClips);
+            srcGroupList.Add(group);
         }
 
         void ToggleAnimationMode()
@@ -7391,7 +7418,7 @@ where T : IEquatable<T>
             ApplyModelCommandBuffers();
             Repaint();
         }
-        
+
         void AddAnimationAndPlay(AnimationClip clip)
         {
             if (clip is AnimationClip) AddAnimation(clip, true);
@@ -7399,7 +7426,7 @@ where T : IEquatable<T>
 
         void AddAnimation(AnimationClip clip, bool instantPlay = false)
         {
-            if(_animManager.CanAddAnimation(clip, instantPlay))
+            if (_animManager.CanAddAnimation(clip, instantPlay))
             {
                 _recentAnimation.Add(AssetDatabase.GetAssetPath(clip));
             }
@@ -7551,7 +7578,7 @@ where T : IEquatable<T>
                 _urpCamera.volumeLayerMask = ~_previewLayer;
                 _preview.camera.cameraType = currentData.cameraType;
                 _urpCamera.antialiasing = (AntialiasingMode)currentData.urpData.antialiasing;
-                ApplyURPData();      
+                ApplyURPData();
             }
 
 #endif
@@ -7813,6 +7840,7 @@ where T : IEquatable<T>
                     var mr = renderer as MeshRenderer;
                     if (smr)
                     {
+                        if (!smr.sharedMesh) continue;
                         for (int j = 0; j < smr.sharedMesh.subMeshCount; j++)
                         {
                             int submeshIndex = j;
@@ -7822,10 +7850,14 @@ where T : IEquatable<T>
                     else if (mr)
                     {
                         var mf = mr.GetComponent<MeshFilter>();
-                        for (int j = 0; j < mf.sharedMesh.subMeshCount; j++)
+                        if (mf)
                         {
-                            int submeshIndex = j;
-                            buffer.DrawRenderer(renderer, mat, submeshIndex, -1);
+                            if (!mf.sharedMesh) continue;
+                            for (int j = 0; j < mf.sharedMesh.subMeshCount; j++)
+                            {
+                                int submeshIndex = j;
+                                buffer.DrawRenderer(renderer, mat, submeshIndex, -1);
+                            }
                         }
                     }
                 }
@@ -8050,7 +8082,7 @@ where T : IEquatable<T>
                 return;
             }
             //기존 수집된 애니메이터에 문제가 있는지 검사 (모델 옵션이 바뀜에 따라 있던 애니메이터가 없어지는 경우가 생김.
-            if(_animManager.IsActorInVaiid()) reset = true;
+            if (_animManager.IsActorInVaiid()) reset = true;
             //애니메이션이 재생중인 경우 모델이 바뀌어도 애니메이션은 초기화하지 않고 계속 재생하기 위해 여기에서 바로 Deoptimize 해줌.
             //Todo Animator 를 재수집해서 기존과 동일한 건 유지하고 아닌 건 새로 추가해줘야...
             if (!reset && _animManager.PlayerExists())
@@ -9051,7 +9083,7 @@ where T : IEquatable<T>
                     if (check.changed)
                     {
                         onChangeRenderPipeline?.Invoke();
-                        Debug.Log("Pipeline Asset Chaned");
+                        Debug.Log("Pipeline Asset Changed");
                     }
                 }
 
@@ -9368,7 +9400,7 @@ where T : IEquatable<T>
                                 {
                                     var menu = new GenericMenu();
                                     menu.AddItem(new GUIContent("Diamond"), false, (GenericMenu.MenuFunction)(() =>
-                                    {    
+                                    {
 
                                         var primitive = new GameObject("Diamond");
                                         var filter = primitive.AddComponent<MeshFilter>();
@@ -9458,8 +9490,8 @@ where T : IEquatable<T>
                     {
                         using (EditorHelper.Horizontal.Do())
                         {
-                            EditorGUILayout.ObjectField("", target.Key, typeof(GameObject), false, GUILayout.Width(100));
-                            EditorGUILayout.ObjectField("", target.Value, typeof(GameObject), false, GUILayout.Width(100));
+                            EditorGUILayout.ObjectField("", target.Key, typeof(GameObject), false, GUILayout.Width(95));
+                            EditorGUILayout.ObjectField("", target.Value, typeof(GameObject), false, GUILayout.Width(95));
                             if (GUILayout.Button(Icons.minusIcon, EditorStyles.miniButton))
                             {
                                 RemoveModel(target.Value);
@@ -9538,10 +9570,10 @@ where T : IEquatable<T>
         void OnGUI_Animation()
         {
             EditorHelper.IconLabel(typeof(Animation), "Animation");
-            for (int a = 0; a <_animManager.playerCount; a++)
+            for (int a = 0; a < _animManager.playerCount; a++)
             {
                 var player = _animManager.GetPlayer(a);
-                EditorHelper.FoldGroup.Do(string.Format($"Animator{a}:{player.name}"), true, () =>
+                EditorHelper.FoldGroup.Do(string.Format($"{player.name}"), true, () =>
                 {
                     for (int b = 0; b < player.actorList.Count; b++)
                     {
@@ -9568,7 +9600,7 @@ where T : IEquatable<T>
                                 if (dragged_object is AnimationClip)
                                 {
                                     var clip = dragged_object as AnimationClip;
-                                   _animManager.GetMainPlayer().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
+                                    _animManager.GetMainPlayer().clipInfoList.Add(new AnimationPlayer.ClipInfo(clip));
                                 }
                             }
                         }
@@ -9587,44 +9619,52 @@ where T : IEquatable<T>
             });
             EditorHelper.FoldGroup.Do("Recent", true, () =>
             {
-                _recentAnimation.OnGUI();
+                if (_animManager.PlayerExists())
+                {
+                    _recentAnimation.OnGUI();
+                }
             });
             EditorHelper.FoldGroup.Do("Steel", false, () =>
             {
-                if (GUILayout.Button("Add Current"))
+                if (_animManager.PlayerExists())
                 {
-                    if (_animManager.PlayerExists())
+                    if (GUILayout.Button("Add Current"))
                     {
-                        var player = _animManager.GetMainPlayer();
-                        if (player.playList.Count > 0)
-                        {
-                            var steel = new Steel(player.currentClipInfo.clip, player.time);
-                            currentData.steelList.Add(steel);
-                        }
-                    }
-                }
-                if (GUILayout.Button("Clear"))
-                {
-                    currentData.steelList.Clear();
-                }
-                for (int i = 0; i < currentData.steelList.Count; i++)
-                {
-                    Steel steel = currentData.steelList[i];
-                    using (EditorHelper.Horizontal.Do())
-                    {
-                        if (GUILayout.Button(string.Format("{0}:{1}", steel.animationClip.name, steel.time.ToString("F")), EditorStyles.miniButton))
+                        if (_animManager.PlayerExists())
                         {
                             var player = _animManager.GetMainPlayer();
-                        }
-                        if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.Width(30)))
-                        {
-                            currentData.steelList.Remove(steel);
+                            if (player.playList.Count > 0)
+                            {
+                                var steel = new Steel(player.currentClipInfo.clip, player.time);
+                                currentData.steelList.Add(steel);
+                            }
                         }
                     }
+                    if (GUILayout.Button("Clear"))
+                    {
+                        currentData.steelList.Clear();
+                    }
+                    for (int i = 0; i < currentData.steelList.Count; i++)
+                    {
+                        Steel steel = currentData.steelList[i];
+                        using (EditorHelper.Horizontal.Do())
+                        {
+                            if (GUILayout.Button(string.Format("{0}:{1}", steel.animationClip.name, steel.time.ToString("F")), EditorStyles.miniButton))
+                            {
 
+                                var player = _animManager.GetMainPlayer();
+                            }
+
+                            if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.Width(30)))
+                            {
+                                currentData.steelList.Remove(steel);
+                            }
+                        }
+                    }
                 }
             });
         }
+    
 
 
 
