@@ -21,10 +21,10 @@
     "lastView": {
         "name": "",
         "rotation": {
-            "x": -172.05685424804688,
-            "y": 7.017046928405762
+            "x": -223.49020385742188,
+            "y": 4.592845916748047
         },
-        "distance": 4.214980125427246,
+        "distance": 4.3259077072143559,
         "pivot": {
             "x": 0.0,
             "y": 0.8849430084228516,
@@ -421,7 +421,7 @@
     "_lastTarget": {
         "instanceID": 0
     },
-    "cubemapPath": "Assets/Common/CasualDay4K.tga",
+    "cubemapPath": "",
     "profilePath": "Assets/ThirdPerson/Scenes/PlaygroundHQ/PostProcess Profile.asset",
-    "renderPipelinePath": "Assets/See1ViewURP.asset"
+    "renderPipelinePath": ""
 }
