@@ -493,15 +493,19 @@ namespace See1Studios.See1View
 
         public See1ViewData current
         {
-            get { return dataList[dataIndex]; }
+            get
+            {
+                if(dataList.Count<1) Add("Default");
+                return dataList[dataIndex];
+            }
         }
 
 
-        private int _dataIndex;
+        private int _dataIndex = 0;
 
         public int dataIndex
         {
-            get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count - 1); }
+            get { return _dataIndex = Mathf.Clamp(_dataIndex, 0, dataList.Count > 0 ? dataList.Count - 1 : 0 ); }
             set { _dataIndex = value; }
         }
 
@@ -537,6 +541,8 @@ namespace See1Studios.See1View
                     targetPath = $"Assets/Editor/";
                     break;
             }
+
+            if (!Directory.Exists(targetPath)) Directory.CreateDirectory(targetPath);
             return targetPath;
         }
 
