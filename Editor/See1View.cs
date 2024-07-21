@@ -8799,8 +8799,8 @@ where T : IEquatable<T>
                 if (!EditorUserBuildSettings.activeBuildTarget.ToString().Contains("Standalone") &&
                     currentData.alphaAppliedImage && currentData.postProcessEnabled)
                 {
-                    EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ",
-                        MessageType.Warning);
+                    // EditorGUILayout.HelpBox("Only standalone platforms supports alpha blended post process ",
+                    //     MessageType.Warning);
                 }
 
             });
