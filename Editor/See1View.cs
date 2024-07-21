@@ -7834,7 +7834,7 @@ where T : IEquatable<T>
             CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, buffer);
             //_preview.camera.RemoveCommandBuffer(cameraEvent, buffer);
             buffer.Clear();
-            if (_mainTarget && set)
+            if (_mainTarget && mat && set)
             {
                 _preview.camera.AddCommandBuffer(cameraEvent, buffer);
                 var renderers = _mainTarget.GetComponentsInChildren<Renderer>();
@@ -7874,7 +7874,7 @@ where T : IEquatable<T>
         {
             CommandBufferManager.RemoveBufferFromAllEvent(_preview.camera, buffer);
             buffer.Clear();
-            if (_mainTarget && set)
+            if (_mainTarget && mat && set)
             {
                 int nameID = Shader.PropertyToID("See1View");
                 _preview.camera.AddCommandBuffer(cameraEvent, buffer);
